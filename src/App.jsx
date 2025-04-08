@@ -1,4 +1,4 @@
-src/App.jsximport React, { useState } from 'react';
+import React, { useState } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 import { useSpeechSynthesis } from 'react-speech-kit';
 
