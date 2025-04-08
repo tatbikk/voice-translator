@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
-import { useSpeechSynthesis } from 'react-speech-kit';
 
 export default function App() {
   const [sourceText, setSourceText] = useState('');
@@ -8,7 +7,6 @@ export default function App() {
   const [isTranslating, setIsTranslating] = useState(false);
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
-  const { speak } = useSpeechSynthesis();
 
   const login = useGoogleLogin({
     onSuccess: tokenResponse => console.log(tokenResponse),
@@ -16,9 +14,14 @@ export default function App() {
 
   const translateText = async (text) => {
     setIsTranslating(true);
-    const data = { translation: `Translated: ${text}` };
+
+    // ترجمة تجريبية مؤقتة
+    const data = { translation: `تمت الترجمة: ${text}` };
     setTranslatedText(data.translation);
-    speak({ text: data.translation });
+
+    // يمكنك مستقبلاً تشغيل الصوت هنا باستخدام مكتبة أخرى
+    console.log("ترجمة بالصوت:", data.translation);
+
     setIsTranslating(false);
   };
 
