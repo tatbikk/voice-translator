@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:">
+<style>
+{{@fonts}}
+@page { size: A4; margin: 30mm 18mm 22mm 18mm; }
+html { font-family: 'Plex Arabic', sans-serif; font-size: 11pt; color: #1e252e; }
+body { margin: 0; }
+.head { display: flex; align-items: center; gap: 12mm; }
+.logo { width: 26mm; height: 26mm; border: 1px solid #a9b4c0; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 8pt; color: #536274; padding: 2mm; box-sizing: border-box; }
+.lines p { margin: 0; font-family: 'Naskh', serif; font-size: 12.5pt; line-height: 1.6; }
+.rule { margin-top: 5mm; border-top: 2.2pt solid #2a3440; }
+.rule + .rule { margin-top: 1.2pt; border-top: 0.6pt solid #2a3440; }
+h1 { font-family: 'Naskh', serif; font-weight: 700; font-size: 18pt; text-align: center; margin: 8mm 0 3mm; }
+.refs { display: flex; justify-content: space-between; font-size: 10pt; color: #3a4757; border-bottom: 0.6pt solid #a9b4c0; padding-bottom: 2mm; }
+.refs bdi { direction: ltr; unicode-bidi: isolate; }
+.body { margin-top: 6mm; line-height: 1.9; font-family: 'Naskh', serif; font-size: 12pt; }
+.body p { margin: 0 0 3mm; text-align: justify; }
+.body table { width: 100%; border-collapse: collapse; margin: 3mm 0; font-family: 'Plex Arabic', sans-serif; font-size: 10pt; }
+.body td, .body th { border: 0.6pt solid #a9b4c0; padding: 1.5mm 2mm; text-align: start; }
+.signatures { display: flex; flex-wrap: wrap; gap: 6mm; margin-top: 12mm; page-break-inside: avoid; }
+.signature { flex: 1 1 50mm; border: 0.8pt solid #2a3440; padding: 3mm; min-height: 24mm; }
+.signature .role { font-weight: 600; }
+.signature .stamp { margin-top: 2mm; border: 1.2pt double #2a3440; padding: 1.5mm 2mm; display: inline-block; font-weight: 600; }
+.signature .pending { color: #536274; }
+</style>
+</head>
+<body>
+<div class="head">
+  <div class="logo">{{logoSlot}}</div>
+  <div class="lines">{{#headerLines}}<p>{{line}}</p>{{/headerLines}}</div>
+</div>
+<div class="rule"></div><div class="rule"></div>
+<h1>{{title}}</h1>
+<div class="refs"><span>{{caseNumberLabel}}: <bdi>{{caseNumber}}</bdi> — {{nationalRefLabel}}: <bdi>{{nationalRef}}</bdi></span><span>{{dateLabel}}: {{date}}</span></div>
+<div class="body">{{@body}}</div>
+<div class="signatures">{{#signatures}}<div class="signature"><div class="role">{{role}}</div><div>{{name}}</div>{{#signed}}<div class="stamp">{{stamp}}</div><div>{{when}}</div>{{/signed}}{{#pending}}<div class="pending">{{pendingText}}</div>{{/pending}}</div>{{/signatures}}</div>
+</body>
+</html>

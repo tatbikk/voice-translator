@@ -4,7 +4,7 @@
 // addon), the workspace core bundled, and "server-only" replaced by a shim because these entry points run in plain
 // Node, not inside Next.js.
 import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { cpSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -29,6 +29,7 @@ const entryPoints = {
   'boot-check': 'src/cli/boot-check.ts',
   'db-roles': 'src/cli/db-roles.ts',
   release: 'src/cli/release.ts',
+  'load-rules': 'src/cli/load-rules.ts',
 };
 
 await build({
@@ -48,4 +49,10 @@ await build({
   sourcemap: true,
   logLevel: 'warning',
   legalComments: 'none',
+});
+
+// The document templates are files edited without programming; every process
+// that generates documents (web, worker, seed) reads them from dist-server/templates.
+cpSync(fileURLToPath(new URL('../src/server/documents/templates', import.meta.url)), fileURLToPath(new URL('../dist-server/templates', import.meta.url)), {
+  recursive: true,
 });

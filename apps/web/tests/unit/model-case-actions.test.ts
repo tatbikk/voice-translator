@@ -87,7 +87,7 @@ describe('model case: available actions', () => {
 
   it('gives every case and envelope action a label, its confirmation lines and a legal basis', () => {
     for (const rule of Object.values(ACTIONS)) {
-      if (rule.resourceKind !== 'case' && rule.resourceKind !== 'envelope') continue;
+      if (!rule || (rule.resourceKind !== 'case' && rule.resourceKind !== 'envelope')) continue;
       expect(MESSAGES.ar[rule.labelKey], rule.labelKey).toBeTruthy();
       if (rule.confirm) {
         expect(MESSAGES.ar[rule.effectKey], rule.effectKey).toBeTruthy();

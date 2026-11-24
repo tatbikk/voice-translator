@@ -47,6 +47,14 @@ export function knowsCase(subject: UserSubject, snapshot: CaseSnapshot): boolean
   return (['EXPERT', 'GARNISHEE', 'SUMMONS_HOLDER'] as const).some((r) => holdsRelation(subject, snapshot, r));
 }
 
+/** Whether a document of the given visibility may be shown to the subject. */
+export function documentVisible(subject: UserSubject, snapshot: CaseSnapshot, visibility: 'CASE' | 'PANEL' | 'JUDGE'): boolean {
+  if (visibility === 'CASE') return true;
+  const judge = holdsRelation(subject, snapshot, 'RAPPORTEUR');
+  if (visibility === 'JUDGE') return judge;
+  return judge || holdsRelation(subject, snapshot, 'PANEL') || holdsRelation(subject, snapshot, 'NEXT_SIGNER');
+}
+
 function decideCaseScoped(rule: ActionRule, subject: UserSubject, resource: Resource | undefined, context: AuthorizationContext): Decision {
   if (NEVER_CASE_CONTENT.includes(subject.role)) return deny('NOT_FOUND');
   if (rule.resourceKind !== null && resource?.kind !== rule.resourceKind) return deny('NOT_FOUND');
@@ -62,14 +70,17 @@ function decideCaseScoped(rule: ActionRule, subject: UserSubject, resource: Reso
     return { allowed: true, rule };
   }
 
-  if (resource?.kind !== 'case') return deny('NOT_FOUND');
+  if (resource?.kind !== 'case' && resource?.kind !== 'case-document') return deny('NOT_FOUND');
   const snapshot = resource.snapshot;
   if (!knowsCase(subject, snapshot)) return deny('NOT_FOUND');
 
   if (!procedure) {
-    // An access action (the case page): its own holders.
+    // An access action (the case page, a document): its own holders, and for a
+    // document its visibility. A document one may not see does not exist for him.
     const holders = rule.caseHolders ?? [];
-    return holders.some((h) => holds(subject, snapshot, h)) ? { allowed: true, rule } : deny('ROLE_NOT_PERMITTED');
+    if (!holders.some((h) => holds(subject, snapshot, h))) return deny('NOT_FOUND');
+    if (resource.kind === 'case-document' && !documentVisible(subject, snapshot, resource.visibility)) return deny('NOT_FOUND');
+    return { allowed: true, rule };
   }
   if (!context.now) throw new Error('authorize: platform time is required for a case file');
   const now = context.now;

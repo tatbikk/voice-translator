@@ -3,6 +3,7 @@
 import arActions from './ar/actions.json';
 import arAdmin from './ar/admin.json';
 import arAuth from './ar/auth.json';
+import arCase from './ar/case.json';
 import arCaseActions from './ar/case-actions.json';
 import arCommon from './ar/common.json';
 import arComponents from './ar/components.json';
@@ -22,6 +23,7 @@ export const AR_FILES: Readonly<Record<string, Messages>> = {
   actions: arActions,
   admin: arAdmin,
   auth: arAuth,
+  case: arCase,
   'case-actions': arCaseActions,
   common: arCommon,
   components: arComponents,

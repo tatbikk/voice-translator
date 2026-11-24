@@ -124,7 +124,16 @@ export async function requirePending(
   loginRedirect('/dashboard');
 }
 
-export async function requirePage(pageId: string, action: ActionCode, resource?: Resource): Promise<PageContext> {
+/**
+ * The page guard. The resource may be given as a loader, run only once the
+ * session is established: a file that does not exist is then answered exactly
+ * like a file the subject may not see.
+ */
+export async function requirePage(
+  pageId: string,
+  action: ActionCode,
+  resource?: Resource | (() => Promise<Resource | null>),
+): Promise<PageContext & { resource: Resource | undefined }> {
   const context = await requireGate(pageId);
   const { session } = context;
   if (!session?.subject) {
@@ -133,15 +142,21 @@ export async function requirePage(pageId: string, action: ActionCode, resource?:
     if (session?.session.state === 'PENDING_ROLE') redirect('/login/role');
     loginRedirect(context.path);
   }
-  const decision = authorize(session.subject, action, resource, {
+  const loaded = typeof resource === 'function' ? await resource() : resource;
+  if (loaded === null) {
+    await refuseOnce('AUTHZ', 'NOT_FOUND', refusalTarget(pageId, context.path));
+    notFound();
+  }
+  const decision = authorize(session.subject, action, loaded, {
     mode: context.mode,
     demoToolsEnabled: context.demoToolsEnabled,
+    now: clock.now(),
   });
   if (!decision.allowed) {
     await refuseOnce('AUTHZ', decision.reason, refusalTarget(pageId, context.path));
     notFound();
   }
-  return { ...context, session, subject: session.subject };
+  return { ...context, session, subject: session.subject, resource: loaded };
 }
 
 export async function requireDemo(pageId: string, action: ActionCode): Promise<GateContext> {

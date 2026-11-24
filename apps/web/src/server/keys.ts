@@ -6,7 +6,7 @@ import { getEnv } from './config/env';
 // that a value signed for one purpose can never be replayed for another.
 
 export type SessionKeyPurpose = 'access-cookie' | 'csrf' | 'client-id' | 'device-cookie' | 'second-factor' | 'identifier';
-export type MasterKeyPurpose = 'secret-store-v1' | 'event-chain-v1';
+export type MasterKeyPurpose = 'secret-store-v1' | 'event-chain-v1' | 'signature-simulated-v1';
 
 const cache = new Map<string, Buffer>();
 

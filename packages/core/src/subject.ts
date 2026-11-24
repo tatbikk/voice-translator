@@ -38,6 +38,8 @@ export type Resource =
   | { readonly kind: 'demo-account'; readonly userId: string; readonly isDemo: boolean }
   /** a case file, as the server built it from the database for this request */
   | { readonly kind: 'case'; readonly snapshot: CaseSnapshot }
+  /** one document of a case file, with the visibility the file gives it */
+  | { readonly kind: 'case-document'; readonly snapshot: CaseSnapshot; readonly visibility: 'CASE' | 'PANEL' | 'JUDGE' }
   /** a bailiff's envelope */
   | { readonly kind: 'envelope'; readonly snapshot: EnvelopeSnapshot }
   /** a filing not yet made (Phase 2) */

@@ -1,4 +1,4 @@
-// Database schema of the digital court platform (Phase 0).
+// Database schema of the digital court platform (Phases 0 and 1).
 // Documented in docs/data-model.md. Raw-SQL protections (append-only event log,
 // one-way database stamp, monotonic platform clock) are appended to the
 // migration; runtime-role grants are applied by src/cli/db-roles.ts.
@@ -93,8 +93,9 @@ model Panel {
   kind      PanelKind
   createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
-  roles    RoleAssignment[]
-  hearings Hearing[]
+  roles     RoleAssignment[]
+  hearings  Hearing[]
+  caseFiles CaseFile[]
 
   @@index([courtId])
 }
@@ -131,6 +132,9 @@ model User {
   activationTokens ActivationToken[]
   knownDevices     KnownDevice[]
   notifications    Notification[]
+  rapporteurOf     CaseFile[]          @relation("CaseRapporteur")
+  representations  Representation[]
+  signingCredential SigningCredential?
 }
 
 model RoleAssignment {
@@ -242,6 +246,7 @@ enum AttemptKind {
   ACCESS_CODE
   REAUTH
   ACTIVATION
+  SIGNING_SECRET
 }
 
 model AuthAttempt {
@@ -446,7 +451,46 @@ model CaseFile {
   isDemo        Boolean    @default(false)
   createdAt     DateTime   @db.Timestamptz(3)
 
+  // Phase 1: the whole file (docs/data-model.md, «توسعة المرحلة 1»).
+  kind                   CaseKind       @default(FIRST_INSTANCE)
+  caseType               String?
+  subject                String?
+  panelId                String?        @db.Uuid
+  panel                  Panel?         @relation(fields: [panelId], references: [id])
+  rapporteurUserId       String?        @db.Uuid
+  rapporteur             User?          @relation("CaseRapporteur", fields: [rapporteurUserId], references: [id])
+  procedure              ProcedureKind  @default(WRITTEN)
+  parentCaseFileId       String?        @db.Uuid
+  parentCaseFile         CaseFile?      @relation("CaseParent", fields: [parentCaseFileId], references: [id])
+  childCaseFiles         CaseFile[]     @relation("CaseParent")
+  /// platform time
+  registeredAt           DateTime?      @db.Timestamptz(3)
+  registrationStampedAt  DateTime?      @db.Timestamptz(3)
+  referredToProsecutionAt DateTime?     @db.Timestamptz(3)
+  readyAt                DateTime?      @db.Timestamptz(3)
+  /// the day the judgment is to be pronounced (art. 108)
+  pronouncementDate      String?
+  /// procedural facts set by the transitions of later phases (CaseFact codes)
+  facts                  String[]       @default([])
+
+  parties       CaseParty[]
+  claims        Claim[]
+  documents     Document[]
+  timeLimits    TimeLimit[]
+  envelopes     Envelope[]
+  listings      HearingListing[]
+  decisions     Decision[]
+  investigations Investigation[]
+  fees          FeeAssessment[]
+  payments      Payment[]
+  treasury      TreasuryEntry[]
+  enforcement   EnforcementStep[]
+  appealsFrom   Appeal[]       @relation("AppealLower")
+  appealsTo     Appeal[]       @relation("AppealUpper")
+
   @@unique([courtId, number, code, year])
+  @@index([rapporteurUserId])
+  @@index([panelId])
 }
 
 model Hearing {
@@ -458,8 +502,499 @@ model Hearing {
   room      String
   startsAt  DateTime @db.Timestamptz(3)
   isDemo    Boolean  @default(false)
+  kind      HearingKind @default(ORDINARY)
+  heldAt    DateTime?   @db.Timestamptz(3)
 
   caseFiles CaseFile[]
+  listings  HearingListing[]
 
   @@index([courtId, startsAt])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1: the file, its parties, claims, documents, procedure, money, enforcement,
+// rules and signatures (docs/data-model.md, «توسعة المرحلة 1»). Every legal time
+// below is platform time.
+
+enum CaseKind {
+  FIRST_INSTANCE
+  APPEAL
+  ENFORCEMENT
+}
+
+enum ProcedureKind {
+  WRITTEN
+  ORAL
+}
+
+enum HearingKind {
+  ORDINARY
+  PRONOUNCEMENT
+}
+
+enum PartySide {
+  PLAINTIFF
+  DEFENDANT
+  GUARANTOR
+  APPELLANT
+  RESPONDENT
+  ENFORCEMENT_CREDITOR
+  ENFORCEMENT_DEBTOR
+  GARNISHEE
+}
+
+enum PersonKind {
+  NATURAL
+  LEGAL
+  PUBLIC
+}
+
+model CaseParty {
+  id                  String     @id @default(uuid()) @db.Uuid
+  caseFileId          String     @db.Uuid
+  caseFile            CaseFile   @relation(fields: [caseFileId], references: [id])
+  side                PartySide
+  personKind          PersonKind
+  displayName         String
+  legalForm           String?
+  legalRepresentative String?
+  /// national identity card or trade register number (fictitious in the demo)
+  idNumber            String?
+  litigantUserId      String?    @db.Uuid
+  organizationId      String?    @db.Uuid
+  eServiceAcceptedAt  DateTime?  @db.Timestamptz(3)
+  /// procedural facts about the party (PartyFact codes)
+  facts               String[]   @default([])
+  position            Int        @default(0)
+
+  addresses       PartyAddress[]
+  representations Representation[]
+  claims          Claim[]
+  envelopes       Envelope[]
+  timeLimits      TimeLimit[]
+
+  @@index([caseFileId])
+  @@index([litigantUserId])
+  @@index([organizationId])
+}
+
+enum AddressKind {
+  DOMICILE
+  REGISTERED_OFFICE
+  ELECTED
+  ELECTRONIC
+  PHONE
+}
+
+enum AddressSource {
+  DECLARED
+  COMMERCIAL_REGISTER
+  NATIONAL_ID_DATABASE
+  PLATFORM
+}
+
+model PartyAddress {
+  id                  String        @id @default(uuid()) @db.Uuid
+  partyId             String        @db.Uuid
+  party               CaseParty     @relation(fields: [partyId], references: [id])
+  kind                AddressKind
+  value               String
+  source              AddressSource
+  withinCourtDistrict Boolean?
+  validFrom           DateTime      @db.Timestamptz(3)
+  supersededAt        DateTime?     @db.Timestamptz(3)
+
+  @@index([partyId])
+}
+
+model Representation {
+  id                     String    @id @default(uuid()) @db.Uuid
+  partyId                String    @db.Uuid
+  party                  CaseParty @relation(fields: [partyId], references: [id])
+  lawyerUserId           String    @db.Uuid
+  lawyer                 User      @relation(fields: [lawyerUserId], references: [id])
+  startedAt              DateTime  @db.Timestamptz(3)
+  endedAt                DateTime? @db.Timestamptz(3)
+  /// consent to service of decisions through the professional account (art. 633)
+  accountServiceConsentAt DateTime? @db.Timestamptz(3)
+
+  @@index([partyId])
+  @@index([lawyerUserId])
+}
+
+enum ClaimCategory {
+  PRINCIPAL
+  COUNTER
+  INCIDENTAL
+}
+
+enum ClaimNature {
+  DEBT
+  DAMAGES
+  LEGAL_INTEREST
+  PROVISIONAL_ENFORCEMENT
+  COSTS
+  OTHER
+}
+
+model Claim {
+  id          String        @id @default(uuid()) @db.Uuid
+  caseFileId  String        @db.Uuid
+  caseFile    CaseFile      @relation(fields: [caseFileId], references: [id])
+  partyId     String?       @db.Uuid
+  party       CaseParty?    @relation(fields: [partyId], references: [id])
+  category    ClaimCategory
+  nature      ClaimNature
+  /// centimes; null when the claim has no fixed amount
+  amountCents BigInt?
+  basis       String?
+  filedAt     DateTime      @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+enum DocumentNature {
+  ORIGINAL
+  CERTIFIED_COPY
+  PHOTOCOPY
+}
+
+enum DocumentChannel {
+  ELECTRONIC
+  PAPER
+}
+
+enum DocumentVisibility {
+  /// everyone related to the file
+  CASE
+  /// the panel, before pronouncement (judgment drafts)
+  PANEL
+  /// the judge alone
+  JUDGE
+}
+
+model Document {
+  id                    String             @id @default(uuid()) @db.Uuid
+  caseFileId            String             @db.Uuid
+  caseFile              CaseFile           @relation(fields: [caseFileId], references: [id])
+  /// generated name in the document bucket, never chosen by the depositor
+  storageKey            String             @unique
+  sha256                String             @db.Char(64)
+  byteSize              Int
+  mediaType             String
+  docType               String
+  title                 String?
+  declaredNature        DocumentNature?
+  channel               DocumentChannel
+  paperOriginalLocation String?
+  depositedByUserId     String?            @db.Uuid
+  depositedByPartyId    String?            @db.Uuid
+  depositedAt           DateTime           @db.Timestamptz(3)
+  generated             Boolean            @default(false)
+  /// generated by a simulated component: carries the demo banner
+  simulated             Boolean            @default(false)
+  withdrawnAt           DateTime?          @db.Timestamptz(3)
+  visibility            DocumentVisibility @default(CASE)
+
+  circles SignatureCircle[]
+
+  @@index([caseFileId])
+}
+
+enum TimeLimitStatus {
+  RUNNING
+  MET
+  ELAPSED
+  CLOSED
+}
+
+model TimeLimit {
+  id            String          @id @default(uuid()) @db.Uuid
+  caseFileId    String          @db.Uuid
+  caseFile      CaseFile        @relation(fields: [caseFileId], references: [id])
+  ruleCode      String
+  ruleSetId     String          @db.Uuid
+  partyId       String?         @db.Uuid
+  party         CaseParty?      @relation(fields: [partyId], references: [id])
+  startsAt      DateTime        @db.Timestamptz(3)
+  endsAt        DateTime        @db.Timestamptz(3)
+  lastDay       String
+  electronic    Boolean         @default(false)
+  status        TimeLimitStatus @default(RUNNING)
+  closedAt      DateTime?       @db.Timestamptz(3)
+  computation   Json
+
+  @@index([caseFileId])
+  @@index([status, endsAt])
+}
+
+enum EnvelopeChannel {
+  ELECTRONIC
+  BAILIFF
+  CLERK
+  ADMINISTRATIVE
+  REGISTERED_MAIL
+}
+
+enum EnvelopeStatus {
+  READY
+  DISPATCHED
+  IN_PROGRESS
+  SERVED
+  REFUSED
+  FAILED_UNKNOWN
+  FAILED_MOVED
+}
+
+model Envelope {
+  id             String          @id @default(uuid()) @db.Uuid
+  caseFileId     String          @db.Uuid
+  caseFile       CaseFile        @relation(fields: [caseFileId], references: [id])
+  partyId        String          @db.Uuid
+  party          CaseParty       @relation(fields: [partyId], references: [id])
+  purpose        String
+  channel        EnvelopeChannel
+  agentUserId    String?         @db.Uuid
+  status         EnvelopeStatus  @default(READY)
+  dispatchedAt   DateTime?       @db.Timestamptz(3)
+  servedAt       DateTime?       @db.Timestamptz(3)
+  deemedServedAt DateTime?       @db.Timestamptz(3)
+  documentId     String?         @db.Uuid
+  createdAt      DateTime        @db.Timestamptz(3)
+
+  certificate DeliveryCertificate?
+  receipt     ReceiptNotice?
+
+  @@index([caseFileId])
+  @@index([agentUserId])
+}
+
+model DeliveryCertificate {
+  id                String   @id @default(uuid()) @db.Uuid
+  envelopeId        String   @unique @db.Uuid
+  envelope          Envelope @relation(fields: [envelopeId], references: [id])
+  recipientName     String?
+  recipientIdNumber String?
+  recipientCapacity String?
+  /// when the act was done, not when it was sent (prompt, «عمل المفوض القضائي في الميدان»)
+  occurredAt        DateTime @db.Timestamptz(3)
+  signature         String
+  outcome           String
+  recordedByUserId  String   @db.Uuid
+  source            String
+}
+
+model ReceiptNotice {
+  id         String   @id @default(uuid()) @db.Uuid
+  envelopeId String   @unique @db.Uuid
+  envelope   Envelope @relation(fields: [envelopeId], references: [id])
+  issuedAt   DateTime @db.Timestamptz(3)
+}
+
+model HearingListing {
+  id                String   @id @default(uuid()) @db.Uuid
+  hearingId         String   @db.Uuid
+  hearing           Hearing  @relation(fields: [hearingId], references: [id])
+  caseFileId        String   @db.Uuid
+  caseFile          CaseFile @relation(fields: [caseFileId], references: [id])
+  outcome           String?
+  outcomeReason     String?
+  minutesDocumentId String?  @db.Uuid
+
+  @@unique([hearingId, caseFileId])
+}
+
+model Decision {
+  id                     String    @id @default(uuid()) @db.Uuid
+  caseFileId             String    @db.Uuid
+  caseFile               CaseFile  @relation(fields: [caseFileId], references: [id])
+  kind                   String
+  subjectCode            String
+  documentId             String?   @db.Uuid
+  signatureCircleId      String?   @db.Uuid
+  issuedAt               DateTime  @db.Timestamptz(3)
+  pronouncedAt           DateTime? @db.Timestamptz(3)
+  provisionalEnforcement Boolean   @default(false)
+  final                  Boolean   @default(false)
+
+  @@index([caseFileId])
+}
+
+model Investigation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  caseFileId         String    @db.Uuid
+  caseFile           CaseFile  @relation(fields: [caseFileId], references: [id])
+  kind               String
+  orderDecisionId    String?   @db.Uuid
+  expertUserId       String?   @db.Uuid
+  mission            String?
+  depositAmountCents BigInt?
+  depositPartyId     String?   @db.Uuid
+  depositedAt        DateTime? @db.Timestamptz(3)
+  acceptedAt         DateTime? @db.Timestamptz(3)
+  declinedAt         DateTime? @db.Timestamptz(3)
+  partiesSummonedAt  DateTime? @db.Timestamptz(3)
+  reportDocumentId   String?   @db.Uuid
+  reportDepositedAt  DateTime? @db.Timestamptz(3)
+  returnedAt         DateTime? @db.Timestamptz(3)
+  feesOrderedCents   BigInt?
+  feesPaidAt         DateTime? @db.Timestamptz(3)
+  createdAt          DateTime  @db.Timestamptz(3)
+
+  @@index([caseFileId])
+  @@index([expertUserId])
+}
+
+model Appeal {
+  id              String   @id @default(uuid()) @db.Uuid
+  lowerCaseFileId String   @db.Uuid
+  lower           CaseFile @relation("AppealLower", fields: [lowerCaseFileId], references: [id])
+  upperCaseFileId String?  @db.Uuid
+  upper           CaseFile? @relation("AppealUpper", fields: [upperCaseFileId], references: [id])
+  kind            String
+  appellantPartyId String  @db.Uuid
+  filedAt         DateTime @db.Timestamptz(3)
+}
+
+model FeeAssessment {
+  id         String   @id @default(uuid()) @db.Uuid
+  caseFileId String   @db.Uuid
+  caseFile   CaseFile @relation(fields: [caseFileId], references: [id])
+  filing     String
+  ruleSetId  String   @db.Uuid
+  totalCents BigInt
+  breakdown  Json
+  assessedAt DateTime @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model Payment {
+  id                String        @id @default(uuid()) @db.Uuid
+  caseFileId        String        @db.Uuid
+  caseFile          CaseFile      @relation(fields: [caseFileId], references: [id])
+  purpose           String
+  amountCents       BigInt
+  payerUserId       String?       @db.Uuid
+  payerPartyId      String?       @db.Uuid
+  status            PaymentStatus
+  operationRef      String
+  receiptDocumentId String?       @db.Uuid
+  paidAt            DateTime      @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+model TreasuryEntry {
+  id                     String   @id @default(uuid()) @db.Uuid
+  caseFileId             String   @db.Uuid
+  caseFile               CaseFile @relation(fields: [caseFileId], references: [id])
+  paymentId              String?  @db.Uuid
+  direction              String
+  amountCents            BigInt
+  purpose                String
+  beneficiary            String?
+  authorizedByDecisionId String?  @db.Uuid
+  at                     DateTime @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+model EnforcementStep {
+  id             String   @id @default(uuid()) @db.Uuid
+  caseFileId     String   @db.Uuid
+  caseFile       CaseFile @relation(fields: [caseFileId], references: [id])
+  kind           String
+  outcome        String?
+  amountCents    BigInt?
+  organizationId String?  @db.Uuid
+  documentId     String?  @db.Uuid
+  occurredAt     DateTime @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+// Dated, sourced rule tables (prompt, rule 5). Written by the release step only:
+// the runtime role reads them (src/cli/db-roles.ts).
+
+model RuleSet {
+  id            String   @id @default(uuid()) @db.Uuid
+  kind          String
+  version       String
+  validFrom     String
+  validTo       String?
+  contentSha256 String   @db.Char(64)
+  content       Json
+  loadedAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  changes RuleChange[]
+
+  @@unique([kind, version])
+}
+
+model RuleChange {
+  id                String    @id @default(uuid()) @db.Uuid
+  ruleSetId         String    @db.Uuid
+  ruleSet           RuleSet   @relation(fields: [ruleSetId], references: [id])
+  enteredByUserId   String?   @db.Uuid
+  validatedByUserId String?   @db.Uuid
+  enteredAt         DateTime  @db.Timestamptz(3)
+  validatedAt       DateTime? @db.Timestamptz(3)
+}
+
+// Signatures (prompt, «التوقيع الإلكتروني»).
+
+model SigningCredential {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @unique @db.Uuid
+  user       User     @relation(fields: [userId], references: [id])
+  secretHash String
+  setAt      DateTime @db.Timestamptz(3)
+}
+
+enum CircleStatus {
+  OPEN
+  COMPLETED
+  VOIDED
+}
+
+model SignatureCircle {
+  id             String       @id @default(uuid()) @db.Uuid
+  documentId     String       @db.Uuid
+  document       Document     @relation(fields: [documentId], references: [id])
+  purpose        String
+  /// [{ userId, roleAssignmentId, role }] in signing order
+  signers        Json
+  documentSha256 String       @db.Char(64)
+  status         CircleStatus @default(OPEN)
+  voidReason     String?
+  openedAt       DateTime     @db.Timestamptz(3)
+  completedAt    DateTime?    @db.Timestamptz(3)
+
+  signatures Signature[]
+
+  @@index([documentId])
+}
+
+model Signature {
+  id                     String          @id @default(uuid()) @db.Uuid
+  circleId               String          @db.Uuid
+  circle                 SignatureCircle @relation(fields: [circleId], references: [id])
+  position               Int
+  signerUserId           String          @db.Uuid
+  signerRoleAssignmentId String          @db.Uuid
+  signerRole             String
+  documentSha256         String          @db.Char(64)
+  /// platform time
+  signedAt               DateTime        @db.Timestamptz(3)
+  provider               String
+  providerRef            String
+
+  @@unique([circleId, position])
 }

@@ -24,6 +24,7 @@ export const ACTION_CODES = [
   'admin.accounts.create',
   'admin.accounts.reissue-activation',
   'case.view',
+  'case.document.read',
   'events.chain-status.view',
   'environment.view',
   'demo.accounts.list',
@@ -203,6 +204,19 @@ const BASE_ACTIONS: Readonly<Record<BaseActionCode, ActionRule>> = {
     caseHolders: CASE_VIEW_HOLDERS,
     requires: [],
     resourceKind: 'case',
+  }),
+  'case.document.read': rule('case.document.read', {
+    // A document of the file: who may open the file, within the document's
+    // visibility (a judgment before pronouncement: the panel, and the clerk when
+    // the signature circle reaches him; interface book, «واجهة كتابة الضبط»).
+    level: 'SCRIPT',
+    legalBasis: lawArticles(631, 637),
+    confirm: false,
+    button: false,
+    holders: CASE_VIEW_HOLDERS.flatMap((h) => h.roles),
+    caseHolders: CASE_VIEW_HOLDERS,
+    requires: [],
+    resourceKind: 'case-document',
   }),
   'events.chain-status.view': rule('events.chain-status.view', {
     level: 'SCRIPT',

@@ -13,7 +13,8 @@ export interface EndpointMeta {
   readonly access:
     | { readonly kind: 'public' | 'pre-gate' | 'gate' | 'session' }
     | { readonly kind: 'pending-session'; readonly states: readonly string[]; readonly action?: ActionCode }
-    | { readonly kind: 'action' | 'demo'; readonly action: ActionCode };
+    | { readonly kind: 'action' | 'demo'; readonly action: ActionCode }
+    | { readonly kind: 'named-action'; readonly prefix: 'case.' };
   /** import path of the route module */
   readonly module: string;
   /** demo endpoints exist only in a demo build */
@@ -99,6 +100,34 @@ export const ENDPOINTS: readonly EndpointMeta[] = [
     module: '@/app/api/v1/public/case-status/route',
   },
   { id: 'public.hearings', method: 'GET', path: '/api/v1/public/hearings', access: { kind: 'gate' }, module: '@/app/api/v1/public/hearings/route' },
+  {
+    id: 'cases.available-actions',
+    method: 'GET',
+    path: '/api/v1/cases/:caseId/available-actions',
+    access: { kind: 'action', action: 'case.view' },
+    module: '@/app/api/v1/cases/[caseId]/available-actions/route',
+  },
+  {
+    id: 'cases.action',
+    method: 'POST',
+    path: '/api/v1/cases/:caseId/actions/:action',
+    access: { kind: 'named-action', prefix: 'case.' },
+    module: '@/app/api/v1/cases/[caseId]/actions/[action]/route',
+  },
+  {
+    id: 'cases.document.file',
+    method: 'GET',
+    path: '/api/v1/cases/:caseId/documents/:documentId/file',
+    access: { kind: 'action', action: 'case.document.read' },
+    module: '@/app/api/v1/cases/[caseId]/documents/[documentId]/file/route',
+  },
+  {
+    id: 'cases.document.signatures',
+    method: 'GET',
+    path: '/api/v1/cases/:caseId/documents/:documentId/signatures',
+    access: { kind: 'action', action: 'case.document.read' },
+    module: '@/app/api/v1/cases/[caseId]/documents/[documentId]/signatures/route',
+  },
   {
     id: 'demo.outbox',
     method: 'GET',

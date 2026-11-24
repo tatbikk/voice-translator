@@ -33,5 +33,6 @@
   "errors.page.error.title": "تعذر عرض الصفحة",
   "errors.page.error.text": "وقع خلل أثناء عرض الصفحة. يرجى إعادة المحاولة.",
   "errors.page.retry": "إعادة المحاولة",
-  "errors.page.home": "العودة إلى صفحة الاستقبال"
+  "errors.page.home": "العودة إلى صفحة الاستقبال",
+  "errors.ACTION_NOT_EXECUTABLE_HERE": "تعذر مباشرة الإجراء من هذا المسار: يباشر من الشاشة المخصصة له."
 }

@@ -117,6 +117,44 @@ export const EVENT_TYPES = {
     outcome: 'DONE',
     details: detailsOf({ previousHeadSeq: count.nullable(), previousHeadHash: hash.nullable() }),
   },
+  'rules.loaded': {
+    outcome: 'DONE',
+    details: detailsOf({ kind: z.enum(['TIME_LIMITS', 'FEES', 'HOLIDAYS', 'INTEREST']), version: code, contentSha256: hash }),
+  },
+  'document.stored': {
+    outcome: 'DONE',
+    details: detailsOf({ documentId: id, sha256: hash, byteSize: count, generated: z.boolean(), docType: code }),
+  },
+  'document.downloaded': { outcome: 'DONE', details: detailsOf({ documentId: id }) },
+  'document.generation.failed': { outcome: 'FAILED', details: detailsOf({ template: code, errorClass: code }) },
+  'signature.secret.set': { outcome: 'DONE', details: detailsOf({ userId: id }) },
+  'signature.circle.opened': {
+    outcome: 'DONE',
+    details: detailsOf({ circleId: id, documentId: id, documentSha256: hash, signers: count, purpose: code }),
+  },
+  'signature.signed': {
+    outcome: 'DONE',
+    details: detailsOf({ circleId: id, documentId: id, position: count, documentSha256: hash, provider: code }),
+  },
+  'signature.refused': {
+    outcome: 'DENIED',
+    details: detailsOf({ circleId: id, reason: z.enum(['NOT_YOUR_TURN', 'CIRCLE_CLOSED', 'INVALID_SECRET', 'LOCKED', 'NO_SECRET']) }),
+  },
+  'signature.circle.completed': { outcome: 'DONE', details: detailsOf({ circleId: id, documentId: id }) },
+  'signature.circle.voided': {
+    outcome: 'DONE',
+    details: detailsOf({ circleId: id, documentId: id, reason: z.enum(['DOCUMENT_CHANGED']), currentSha256: hash }),
+  },
+  'signature.verified': {
+    outcome: 'DONE',
+    details: detailsOf({ documentId: id, valid: count, changed: count }),
+  },
+  'case.action.not-executed': { outcome: 'DENIED', details: detailsOf({ action: code }) },
+  /** a procedural act of the file (from Phase 2, by its executor; in the demo data, the seeded history) */
+  'case.transition.recorded': {
+    outcome: 'DONE',
+    details: detailsOf({ action: code, fromStatus: code, toStatus: code }),
+  },
   'events.chain.verified': {
     outcome: 'DONE',
     details: detailsOf({ headSeq: count, mode: z.enum(['INCREMENTAL', 'FULL']) }),

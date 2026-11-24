@@ -19,6 +19,7 @@ import { clock } from '@/server/clock';
 import { closeDb, getDb } from '@/server/db';
 import { appendStandaloneEvent } from '@/server/events/append';
 import { hashPassword } from '@/server/auth/passwords';
+import { seedCaseContent } from './seed-cases';
 import {
   DEMO_CASES,
   DEMO_COURTS,
@@ -126,6 +127,7 @@ async function main(): Promise<void> {
   // Schema and grants (both idempotent).
   run([prismaCli(), 'migrate', 'deploy']);
   run([join(webRoot, 'dist-server', 'db-roles.mjs')]);
+  run([join(webRoot, 'dist-server', 'load-rules.mjs')]);
 
   const stamper = new pg.Client({ connectionString: env.MIGRATION_DATABASE_URL });
   await stamper.connect();
@@ -243,6 +245,8 @@ async function main(): Promise<void> {
     caseFiles += 1;
   }
 
+  const filledCases = await seedCaseContent({ courtIds, panelIds, signingSecret: env.SEED_DEMO_PASSWORD });
+
   if (previousHead) {
     await appendStandaloneEvent({
       action: 'demo.data.reset',
@@ -252,7 +256,7 @@ async function main(): Promise<void> {
   if (createdUsers > 0 || caseFiles > 0) {
     await appendStandaloneEvent({ action: 'demo.data.seeded', details: { users: createdUsers, caseFiles } });
   }
-  console.log(JSON.stringify({ level: 'info', msg: 'demo data ready', createdUsers, caseFiles }));
+  console.log(JSON.stringify({ level: 'info', msg: 'demo data ready', createdUsers, caseFiles, filledCases }));
   await closeDb();
 }
 

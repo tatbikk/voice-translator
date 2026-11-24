@@ -26,7 +26,8 @@ export type ErrorCode =
   | 'CASE_NOT_FOUND'
   | 'ROLE_NOT_COMBINABLE'
   | 'EMAIL_TAKEN'
-  | 'UNAVAILABLE';
+  | 'UNAVAILABLE'
+  | 'ACTION_NOT_EXECUTABLE_HERE';
 
 export interface ResponseOptions {
   readonly cookies?: readonly string[];

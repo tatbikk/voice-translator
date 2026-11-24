@@ -75,6 +75,7 @@ const passingResource: Partial<Record<string, Resource>> = {
     role: 'LAWYER',
   },
   'case.view': counselledCase,
+  'case.document.read': { ...counselledCase, kind: 'case-document', visibility: 'CASE' },
   'demo.account.switch': { kind: 'demo-account', userId: OTHER_ID, isDemo: true },
 };
 
@@ -91,6 +92,7 @@ const EXPECTED: Record<(typeof ACTION_CODES)[number], readonly RoleCode[] | type
   'admin.accounts.create': ['SYSTEM_ADMIN'],
   'admin.accounts.reissue-activation': ['SYSTEM_ADMIN'],
   'case.view': ['LAWYER'],
+  'case.document.read': ['LAWYER'],
   'events.chain-status.view': ['SYSTEM_ADMIN'],
   'environment.view': ALL,
   'demo.accounts.list': ALL,

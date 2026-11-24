@@ -26,6 +26,7 @@ switch (process.env.APP_MODE) {
   case 'production':
     run([prismaCli, 'migrate', 'deploy']);
     run([join(webRoot, 'dist-server', 'db-roles.mjs')]);
+    run([join(webRoot, 'dist-server', 'load-rules.mjs')]);
     break;
   case 'demo':
     run([join(webRoot, 'dist-server', 'seed.mjs')]);

@@ -27,6 +27,13 @@ const schema = z
     SEED_DEMO_PASSWORD: z.string().optional(),
     SESSION_IDLE_MINUTES: z.string().regex(/^\d{1,3}$/).optional(),
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+    S3_ENDPOINT: z.url().optional(),
+    S3_REGION: z.string().max(64).optional(),
+    S3_BUCKET: z.string().max(128).optional(),
+    S3_ACCESS_KEY_ID: z.string().max(256).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().max(256).optional(),
+    DOCUMENT_STORE_DIR: z.string().max(512).optional(),
+    PDF_BROWSER_PATH: z.string().max(512).optional(),
   })
   .superRefine((env, ctx) => {
     const url = new URL(env.APP_URL);
@@ -58,6 +65,12 @@ export interface AppEnv {
   readonly seedPasswordSet: boolean;
   readonly idleMinutes: number;
   readonly logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /** the document bucket (S3-compatible), when configured */
+  readonly s3: { endpoint: string; region: string; bucket: string; accessKeyId: string; secretAccessKey: string } | null;
+  /** a local directory for documents (development and tests only) */
+  readonly documentStoreDir: string | null;
+  /** the headless browser that renders documents to PDF */
+  readonly pdfBrowserPath: string | null;
 }
 
 export class ConfigurationError extends Error {
@@ -91,6 +104,18 @@ export function getEnv(): AppEnv {
     seedPasswordSet: (env.SEED_DEMO_PASSWORD ?? '') !== '',
     idleMinutes: clampIdleMinutes(env.SESSION_IDLE_MINUTES === undefined ? undefined : Number(env.SESSION_IDLE_MINUTES)),
     logLevel: env.LOG_LEVEL ?? 'info',
+    s3:
+      env.S3_ENDPOINT && env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY
+        ? {
+            endpoint: env.S3_ENDPOINT,
+            region: env.S3_REGION ?? 'auto',
+            bucket: env.S3_BUCKET,
+            accessKeyId: env.S3_ACCESS_KEY_ID,
+            secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+          }
+        : null,
+    documentStoreDir: env.DOCUMENT_STORE_DIR ?? null,
+    pdfBrowserPath: env.PDF_BROWSER_PATH ?? null,
   };
   return cached;
 }

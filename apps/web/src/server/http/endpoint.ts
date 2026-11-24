@@ -39,6 +39,8 @@ export type EndpointAccess =
       readonly orAction?: ActionCode;
     }
   | { readonly kind: 'action'; readonly action: ActionCode }
+  /** an action named by the request itself (a case file's action route): unknown names answer 404 */
+  | { readonly kind: 'named-action'; readonly prefix: 'case.' }
   | { readonly kind: 'demo'; readonly action: ActionCode };
 
 export interface EndpointContext<P, B> {
@@ -48,6 +50,10 @@ export interface EndpointContext<P, B> {
   readonly session: SessionContext | null;
   readonly subject: Subject;
   readonly clientIdHash: string;
+  /** the resource the action was authorized on, when the endpoint loads one */
+  readonly resource: Resource | undefined;
+  /** the action authorized, for named-action endpoints */
+  readonly action: string | null;
 }
 
 export interface EndpointDefinition<P, B> {
@@ -65,6 +71,8 @@ export interface EndpointDefinition<P, B> {
    */
   readonly resource?: (params: P, context: { session: SessionContext | null; rawBody: unknown }) => Promise<Resource | null>;
   readonly handler: (context: EndpointContext<P, B>) => Promise<Response>;
+  /** named-action endpoints: the action named by the parameters */
+  readonly actionFrom?: (params: P) => string;
   /** false for /healthz, which must answer 503 by itself when the database is down */
   readonly platformClock?: boolean;
 }
@@ -73,6 +81,9 @@ export interface EndpointHandler {
   (req: Request): Promise<Response>;
   readonly endpointId: string;
   readonly endpointMethod: 'GET' | 'POST';
+  /** the definition itself, which the registry must match (review A-17) */
+  readonly endpointPath: string;
+  readonly endpointAccess: EndpointAccess;
 }
 
 /** Path parameters are taken from the URL by position against the declared path. */
@@ -201,7 +212,9 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
         const activeOk = access.orAction !== undefined && session?.subject != null;
         if (!pendingOk && !activeOk) return await refuse('SESSION', 401, 'SESSION_REQUIRED');
       }
-      if (access.kind === 'action' && !session?.subject) return await refuse('SESSION', 401, 'SESSION_REQUIRED');
+      if ((access.kind === 'action' || access.kind === 'named-action') && !session?.subject) {
+        return await refuse('SESSION', 401, 'SESSION_REQUIRED');
+      }
 
       // 6. Rate limit.
       if (definition.rateLimit) {
@@ -229,19 +242,25 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
 
       // 8. Authorization, through the single core function.
       const subject: Subject = session?.subject ?? { kind: 'anonymous' };
-      const action =
+      const named = access.kind === 'named-action' ? (definition.actionFrom?.(params) ?? '') : null;
+      const action: string | null =
         access.kind === 'action' || access.kind === 'demo'
           ? access.action
-          : access.kind === 'pending-session' && access.orAction && session?.subject
-            ? access.orAction
-            : null;
+          : access.kind === 'named-action'
+            ? named !== null && named.startsWith(access.prefix)
+              ? named
+              : 'unknown'
+            : access.kind === 'pending-session' && access.orAction && session?.subject
+              ? access.orAction
+              : null;
+      let resource: Resource | undefined;
       if (action) {
-        const authContext = { mode: env.mode, demoToolsEnabled: env.demoToolsEnabled };
+        const authContext = { mode: env.mode, demoToolsEnabled: env.demoToolsEnabled, now: clock.now() };
         const refuseDecision = async (reason: string) => {
-          const notFound = reason === 'NOT_FOUND' || reason === 'MODE_NOT_PERMITTED';
+          // An unknown action is an unknown resource: the same 404, the same record.
+          const notFound = reason === 'NOT_FOUND' || reason === 'MODE_NOT_PERMITTED' || reason === 'UNKNOWN_ACTION';
           return await refuse('AUTHZ', notFound ? 404 : 403, notFound ? 'NOT_FOUND' : 'FORBIDDEN');
         };
-        let resource: Resource | undefined;
         if (definition.resource) {
           // Whoever may not hold the action at all is refused before the resource
           // is looked up: the answer is then the same for an existing and an
@@ -274,12 +293,17 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
       }
 
       // 11. Handler.
-      return await definition.handler({ req, params, body, session, subject, clientIdHash });
+      return await definition.handler({ req, params, body, session, subject, clientIdHash, resource, action });
     } catch (error) {
       const correlationId = randomUUID();
       log.error('endpoint failed', { endpoint: definition.id, correlationId, ...errorFields(error) });
       return fail(500, 'INTERNAL', { correlationId });
     }
   };
-  return Object.assign(handler, { endpointId: definition.id, endpointMethod: definition.method });
+  return Object.assign(handler, {
+    endpointId: definition.id,
+    endpointMethod: definition.method,
+    endpointPath: definition.path,
+    endpointAccess: definition.access,
+  });
 }

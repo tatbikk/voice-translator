@@ -31,6 +31,7 @@ export const PAGES: readonly PageMeta[] = [
   { id: 'notifications', path: '/notifications', guard: 'page', action: 'notifications.view-own', file: '(app)/notifications/page.tsx' },
   { id: 'account', path: '/account', guard: 'page', action: 'account.view-own', file: '(app)/account/page.tsx' },
   { id: 'reauth', path: '/reauth', guard: 'page', action: 'account.view-own', file: '(app)/reauth/page.tsx' },
+  { id: 'case', path: '/cases/:caseId', guard: 'page', action: 'case.view', file: '(app)/cases/[caseId]/page.tsx' },
   { id: 'admin.accounts', path: '/admin/accounts', guard: 'page', action: 'admin.accounts.list', file: '(app)/admin/accounts/page.tsx' },
   {
     id: 'admin.accounts.new',
