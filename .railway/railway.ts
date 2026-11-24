@@ -3,9 +3,13 @@
 // `railway config plan` / `railway config apply` (or the railway-config workflow).
 // See .railway/README.md for the first deployment.
 //
-// Secrets are never generated here (ctx.randomString() is predictable): the owner
-// sets them once on the web service, `preserve()` keeps them, and the worker and
-// the release step reference the web service's values, so that all hold the same keys.
+// Secrets are never generated here (ctx.randomString() is predictable). They are
+// project shared variables (SESSION_SECRET, SECRETS_MASTER_KEY, ACCESS_CODE,
+// APP_DB_PASSWORD), set once and referenced by every service, so that all hold the
+// same keys; SEED_DEMO_PASSWORD lives on the release service alone.
+//
+// Names follow the live project: the web service is "voice-translator" (it existed
+// before this file) and the database is "Postgres" (Railway's template).
 //
 // The owner's database connection and the demo password belong to the release
 // service alone, which runs once per deployment and exits: no running process
@@ -15,7 +19,7 @@
 import { bucket, defineRailway, github, postgres, preserve, project, ref, service } from 'railway/iac';
 
 export default defineRailway(() => {
-  const db = postgres('postgres');
+  const db = postgres('Postgres');
   const documents = bucket('documents', { region: 'ams' });
   const source = github('tatbikk/voice-translator', { branch: 'main', checkSuites: true });
   const build = { builder: 'DOCKERFILE', dockerfilePath: 'Dockerfile' } as const;
@@ -23,9 +27,15 @@ export default defineRailway(() => {
   // The runtime role owns nothing and may only read and append the event log.
   // The exact reference templating is confirmed by the first `railway config plan`.
   const runtimeDatabaseUrl =
-    'postgresql://mahkama_app:${{shared.APP_DB_PASSWORD}}@${{postgres.PGHOST}}:${{postgres.PGPORT}}/${{postgres.PGDATABASE}}';
+    'postgresql://mahkama_app:${{shared.APP_DB_PASSWORD}}@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}';
+  const appUrl = 'https://${{voice-translator.RAILWAY_PUBLIC_DOMAIN}}';
+  const sharedSecrets = {
+    SESSION_SECRET: '${{shared.SESSION_SECRET}}',
+    SECRETS_MASTER_KEY: '${{shared.SECRETS_MASTER_KEY}}',
+    ACCESS_CODE: '${{shared.ACCESS_CODE}}',
+  };
 
-  const web = service('web', {
+  const web = service('voice-translator', {
     source,
     build,
     // Retries cover the minutes the release step takes to migrate.
@@ -40,11 +50,10 @@ export default defineRailway(() => {
       AI_EXTERNAL_ALLOWED: 'false',
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
+      PORT: '3000',
       APP_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
       DATABASE_URL: runtimeDatabaseUrl,
-      SESSION_SECRET: preserve(),
-      SECRETS_MASTER_KEY: preserve(),
-      ACCESS_CODE: preserve(),
+      ...sharedSecrets,
       S3_BUCKET: ref(documents, 'BUCKET'),
       S3_ENDPOINT: ref(documents, 'ENDPOINT'),
       S3_REGION: ref(documents, 'REGION'),
@@ -65,11 +74,9 @@ export default defineRailway(() => {
       AI_EXTERNAL_ALLOWED: 'false',
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
-      APP_URL: 'https://${{web.RAILWAY_PUBLIC_DOMAIN}}',
+      APP_URL: appUrl,
       DATABASE_URL: runtimeDatabaseUrl,
-      SESSION_SECRET: web.env.SESSION_SECRET,
-      SECRETS_MASTER_KEY: web.env.SECRETS_MASTER_KEY,
-      ACCESS_CODE: web.env.ACCESS_CODE,
+      ...sharedSecrets,
     },
   });
 
@@ -87,13 +94,11 @@ export default defineRailway(() => {
       AI_EXTERNAL_ALLOWED: 'false',
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
-      APP_URL: 'https://${{web.RAILWAY_PUBLIC_DOMAIN}}',
+      APP_URL: appUrl,
       MIGRATION_DATABASE_URL: db.env.DATABASE_URL,
       DATABASE_URL: runtimeDatabaseUrl,
       APP_DB_PASSWORD: '${{shared.APP_DB_PASSWORD}}',
-      SESSION_SECRET: web.env.SESSION_SECRET,
-      SECRETS_MASTER_KEY: web.env.SECRETS_MASTER_KEY,
-      ACCESS_CODE: web.env.ACCESS_CODE,
+      ...sharedSecrets,
       SEED_DEMO_PASSWORD: preserve(),
     },
   });
