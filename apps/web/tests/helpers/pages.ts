@@ -1,4 +1,4 @@
-// The pages of Phase 0 and their guards, stated independently from the page
+// The pages of Phases 0 and 1 and their guards, stated independently from the page
 // registry (contract §7 table). The architecture tests compare PAGES with this
 // list; the end-to-end page matrix walks it.
 import { PAGE_TITLES } from './labels';
@@ -37,6 +37,8 @@ export const EXPECTED_PAGES: readonly ExpectedPage[] = [
   { path: '/dashboard', guards: ['page'], actions: ['dashboard.view'], title: PAGE_TITLES.dashboard, session: 'active' },
   { path: '/notifications', guards: ['page'], actions: ['notifications.view-own'], title: PAGE_TITLES.notifications, session: 'active' },
   { path: '/account', guards: ['page'], actions: ['account.view-own'], title: PAGE_TITLES.account, session: 'active' },
+  // Phase 1: the case page, for whoever the core relates to the file (study «العناصر المشتركة»).
+  { path: '/cases/:caseId', guards: ['page'], actions: ['case.view'], title: PAGE_TITLES.caseFile, session: 'active' },
   { path: '/reauth', guards: ['page'], actions: ['account.view-own'], title: PAGE_TITLES.reauth, session: 'active' },
   {
     path: '/admin/accounts',

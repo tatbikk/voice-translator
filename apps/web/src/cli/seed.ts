@@ -116,7 +116,7 @@ async function main(): Promise<void> {
     if (reset) {
       if (confirm !== database) fail('RESET_NEEDS_CONFIRM_WITH_DATABASE_NAME');
       if (migrated && events > 0) {
-        const head = await owner.query<{ seq: string; hash: string }>('SELECT "seq"::text AS seq, "hash" FROM "Event" ORDER BY "seq" DESC LIMIT 1');
+        const head = await owner.query<{ seq: string; hash: string }>('SELECT "seq"::text AS seq, "hash" FROM "Event" ORDER BY "Event"."seq" DESC LIMIT 1');
         if (head.rows[0]) previousHead = { seq: Number(head.rows[0].seq), hash: head.rows[0].hash };
         console.log(JSON.stringify({ level: 'info', msg: 'previous event chain head', ...previousHead }));
       }
@@ -130,7 +130,6 @@ async function main(): Promise<void> {
   // Schema and grants (both idempotent).
   run([prismaCli(), 'migrate', 'deploy']);
   run([join(webRoot, 'dist-server', 'db-roles.mjs')]);
-  run([join(webRoot, 'dist-server', 'load-rules.mjs')]);
 
   const stamper = new pg.Client({ connectionString: env.MIGRATION_DATABASE_URL });
   await stamper.connect();
@@ -143,6 +142,14 @@ async function main(): Promise<void> {
   }
 
   await clock.refresh();
+  // The reset is the first event of the new chain, before the rule tables are loaded.
+  if (previousHead) {
+    await appendStandaloneEvent({
+      action: 'demo.data.reset',
+      details: { previousHeadSeq: previousHead.seq, previousHeadHash: previousHead.hash },
+    });
+  }
+  run([join(webRoot, 'dist-server', 'load-rules.mjs')]);
   const db = getDb();
   const now = clock.now();
 
@@ -250,12 +257,6 @@ async function main(): Promise<void> {
 
   const filledCases = await seedCaseContent({ courtIds, panelIds, signingSecret: env.SEED_DEMO_PASSWORD });
 
-  if (previousHead) {
-    await appendStandaloneEvent({
-      action: 'demo.data.reset',
-      details: { previousHeadSeq: previousHead.seq, previousHeadHash: previousHead.hash },
-    });
-  }
   if (createdUsers > 0 || caseFiles > 0) {
     await appendStandaloneEvent({ action: 'demo.data.seeded', details: { users: createdUsers, caseFiles } });
   }

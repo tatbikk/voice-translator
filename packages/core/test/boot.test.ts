@@ -13,6 +13,7 @@ const cleanDb = {
 };
 
 const production: BootInput = {
+  documentStore: 's3',
   mode: 'production',
   demoToolsRaw: 'false',
   demoRoutesBuilt: false,
@@ -33,6 +34,7 @@ const production: BootInput = {
 
 const demo: BootInput = {
   ...production,
+  documentStore: 'disk',
   mode: 'demo',
   demoToolsRaw: 'true',
   demoRoutesBuilt: true,
@@ -163,5 +165,12 @@ describe('build facts, checked by every process (review A-15)', () => {
   it('demo mode accepts any build', () => {
     expect(evaluateBuild({ mode: 'demo', demoRoutesBuilt: true, buildInfoPresent: false })).toEqual([]);
     expect(evaluateBoot({ ...demo, buildInfoPresent: false }).ok).toBe(true);
+  });
+
+  it('refuses to start without a document store, and in production with a local directory (Phase 1)', () => {
+    expect(violations({ ...demo, documentStore: null })).toContain('DOCUMENT_STORE_MISSING');
+    expect(violations({ ...production, documentStore: null })).toContain('DOCUMENT_STORE_MISSING');
+    expect(violations({ ...production, documentStore: 'disk' })).toContain('DOCUMENT_STORE_NOT_DURABLE');
+    expect(violations(demo)).not.toContain('DOCUMENT_STORE_NOT_DURABLE');
   });
 });

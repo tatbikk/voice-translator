@@ -1,5 +1,5 @@
 {
-  "screens.case": "صفحة الملف",
+  "screens.cases-:caseId": "صفحة الملف",
   "case.header.nationalRef": "المعرف الوطني الموحد",
   "case.header.number": "رقم الملف",
   "case.header.court": "المحكمة",

@@ -31,10 +31,10 @@ export interface HolidayRuleSet {
 }
 
 const SOURCE_FILES: Readonly<Record<RuleKind, readonly { version: string; validFrom: string; validTo: string | null }[]>> = {
-  TIME_LIMITS: timeLimitsData as unknown as TimeLimitRuleSet[],
-  FEES: feesData as unknown as FeeRuleSet[],
-  HOLIDAYS: holidaysData as unknown as HolidayRuleSet[],
-  INTEREST: interestData as unknown as InterestRuleSet[],
+  TIME_LIMITS: timeLimitsData,
+  FEES: feesData,
+  HOLIDAYS: holidaysData,
+  INTEREST: interestData,
 };
 
 const canonical = (value: unknown) => JSON.stringify(value);

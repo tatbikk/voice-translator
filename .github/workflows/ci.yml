@@ -66,6 +66,8 @@ jobs:
         run: bash .github/scripts/ci-database.sh mahkama_test http://localhost:3100
       # The generated Prisma client is not in the repository.
       - run: npm run generate
+      # The headless browser that prints the generated documents (Phase 1).
+      - run: node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium
       - run: npm run test:int
 
   e2e:
@@ -126,6 +128,8 @@ jobs:
           # The release step alone holds the owner's connection and the seed
           # password; the web container gets the runtime configuration only.
           env | grep -E '^(APP_MODE|DEMO_TOOLS|AI_EXTERNAL_ALLOWED|APP_URL|DATABASE_URL|SESSION_SECRET|SECRETS_MASTER_KEY|ACCESS_CODE)=' > "$RUNNER_TEMP/runtime.env"
+          # Inside the container the documents go to a directory the process may write.
+          echo "DOCUMENT_STORE_DIR=/tmp/documents" >> "$RUNNER_TEMP/runtime.env"
           env | grep -E '^(MIGRATION_DATABASE_URL|APP_DB_PASSWORD|SEED_DEMO_PASSWORD)=' > "$RUNNER_TEMP/owner.env"
           docker run --rm --network host --env-file "$RUNNER_TEMP/runtime.env" --env-file "$RUNNER_TEMP/owner.env" mahkama:ci node dist-server/release.mjs
           docker run -d --name web --network host --env-file "$RUNNER_TEMP/runtime.env" mahkama:ci

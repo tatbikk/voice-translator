@@ -11,6 +11,7 @@
 //   rule 9  no fetch, node:http(s), node:net, undici in src/server outside src/server/outbound
 //   rule 10 no style= attribute, <script> or dangerouslySetInnerHTML in JSX
 //   rule 11 no process.env read and no connection opened at module top level in src/server
+//   rule 1  no decision by role outside the core: no role compared with a role code (review A-04)
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SRC_ROOT } from '../helpers/env';
@@ -65,14 +66,23 @@ describe('architecture rules of contract §2', () => {
     expect(hits).toEqual([]);
   });
 
-  it('rule 4: systemNow() is used only from src/server/auth, src/server/security, src/server/jobs/queue.ts, src/server/log.ts', () => {
+  it('rule 4: systemNow() is used only from src/server/auth, src/server/security, src/server/signature/service.ts, src/server/jobs/queue.ts, src/server/log.ts', () => {
     const allowed = (rel: string) =>
       rel.startsWith('server/auth/') ||
       rel.startsWith('server/security/') ||
+      // the signing secret locks on real time, like the password (decision 39)
+      rel === 'server/signature/service.ts' ||
       rel === 'server/jobs/queue.ts' ||
       rel === 'server/log.ts' ||
       rel === 'server/clock.ts';
     const hits = all.filter((f) => !allowed(f.rel)).flatMap((f) => findAll(f, 'bare', /\bsystemNow\b/g));
+    expect(hits).toEqual([]);
+  });
+
+  it('rule 1: no role is compared with a role code outside the core (review A-04)', () => {
+    const ROLE_DECISION =
+      /\brole\s*(?:===|!==|==|!=)\s*['"`][A-Z_]+['"`]|['"`][A-Z_]+['"`]\s*(?:===|!==|==|!=)\s*[\w.?]*\brole\b|\.includes\(\s*[\w.?]*\.role\s*\)|case\s+['"`](?:SYSTEM_ADMIN|LAWYER|LITIGANT|EXPERT|BAILIFF|[A-Z]+_(?:CLERK|JUDGE|PRESIDENT|RAPPORTEUR))['"`]\s*:/g;
+    const hits = all.flatMap((f) => findAll(f, 'code', ROLE_DECISION));
     expect(hits).toEqual([]);
   });
 

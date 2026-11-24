@@ -192,6 +192,11 @@ export async function expectDashboard(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/dashboard(\?|$)/);
   await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.dashboard);
   for (const box of DASHBOARD.boxes) await expect(page.getByRole('heading', { name: box })).toBeVisible();
+}
+
+/** The dashboard of a user the core relates to no file: nothing awaits them. */
+export async function expectEmptyDashboard(page: Page): Promise<void> {
+  await expectDashboard(page);
   await expect(page.getByText(DASHBOARD.emptyAwaiting)).toBeVisible();
 }
 

@@ -82,6 +82,11 @@ async function main(): Promise<void> {
     await client.query(`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM ${ident}`);
     await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ident}`);
     await client.query(`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON "Event" FROM ${ident}`);
+    // Phase 1: the rule tables are loaded by the owner only (release step), the
+    // signatures are append-only and a document is never deleted (memo, rows 9 and 14).
+    await client.query(`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "RuleSet", "RuleChange" FROM ${ident}`);
+    await client.query(`REVOKE UPDATE, DELETE, TRUNCATE ON "Signature" FROM ${ident}`);
+    await client.query(`REVOKE DELETE, TRUNCATE ON "Document" FROM ${ident}`);
     await client.query(`REVOKE ALL ON "_prisma_migrations" FROM ${ident}`);
     // Read only: the boot check compares the applied migrations with the code.
     await client.query(`GRANT SELECT ON "_prisma_migrations" TO ${ident}`);

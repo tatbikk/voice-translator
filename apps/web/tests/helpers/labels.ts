@@ -30,6 +30,7 @@ export const PAGE_TITLES = {
   adminAccounts: 'الحسابات', // contract §7
   adminAccountsNew: 'إنشاء حساب', // contract §7
   demoOutbox: 'صندوق الرسائل الصادرة', // contract §7, prompt
+  caseFile: 'صفحة الملف', // study «العناصر المشتركة» (Phase 1)
 } as const;
 
 export const WORDMARK = 'منصة المحكمة الرقمية'; // prompt rule 10, contract §7
@@ -38,6 +39,15 @@ export const WORDMARK = 'منصة المحكمة الرقمية'; // prompt rule
 export const DASHBOARD = {
   boxes: ['ينتظر إجراء مني', 'آجال تقترب', 'جديد منذ آخر دخول'] as const, // study, contract §7
   emptyAwaiting: 'لا يوجد إجراء في انتظاركم.', // contract §7 (prompt: «لا يوجد إجراء في انتظاركم»)
+} as const;
+
+/** The case page (study «العناصر المشتركة», interface book). */
+export const CASE_PAGE = {
+  tabs: ['الخط الزمني', 'الوثائق', 'الأطراف', 'الطلبات', 'التبليغات', 'الآجال', 'الأداءات', 'المقررات'] as const, // study, the eight tabs
+  actionsTitle: 'الإجراءات المتاحة', // build prompt, «الإجراءات المتاحة»
+  dispatch: 'تنفيذ', // study, «واجهة كتابة الضبط» (envelopes ready)
+  challengeDeadline: 'أجل طلب تجريح الخبير', // case.deadlines.rule.EXPERT_CHALLENGE
+  download: 'تحميل',
 } as const;
 
 /** Top bar (contract §7). */

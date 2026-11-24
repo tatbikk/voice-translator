@@ -32,4 +32,6 @@ PGHOST=localhost PGUSER=postgres PGPASSWORD=postgres OWNER_PASSWORD="$owner_pass
   echo "SECRETS_MASTER_KEY=${master_key}"
   echo "ACCESS_CODE=${access_code}"
   echo "SEED_DEMO_PASSWORD=${seed_password}"
+  # Phase 1: a local document store for the tests (production refuses it at boot).
+  echo "DOCUMENT_STORE_DIR=${RUNNER_TEMP:-/tmp}/documents-${database}"
 } >> "$GITHUB_ENV"

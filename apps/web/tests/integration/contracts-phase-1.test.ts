@@ -20,7 +20,7 @@ function memoryStore(): DocumentStore {
     kind: 'memory',
     async put(key, bytes) {
       await Promise.resolve();
-      if (!/^[a-z0-9/-]{8,200}$/.test(key)) throw new Error('invalid key');
+      if (!/^[a-z0-9/-]{8,200}$/.test(key) || key.startsWith('/') || key.includes('..')) throw new Error('invalid key');
       blobs.set(key, new Uint8Array(bytes));
     },
     async get(key) {

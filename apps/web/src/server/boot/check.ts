@@ -7,6 +7,7 @@ import { clock } from '../clock';
 import { getDb } from '../db';
 import { appendStandaloneEvent } from '../events/append';
 import { replaceableComponents } from '../components/registry';
+import { documentStoreConfigured } from '../documents/store';
 import { buildFacts } from './build-info';
 import { log, errorFields } from '../log';
 
@@ -101,6 +102,7 @@ export async function evaluateBootFacts(): Promise<BootResult> {
     seedPasswordSet: env.seedPasswordSet,
     ownerDatabaseUrlPresent: (process.env.MIGRATION_DATABASE_URL ?? '') !== '',
     components: components.map((c) => ({ id: c.id, implementation: c.implementation })),
+    documentStore: documentStoreConfigured(),
     db: await databaseFacts(),
   });
 }

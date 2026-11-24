@@ -17,6 +17,7 @@ import {
 } from '@mahkama/core';
 import { clock } from '@/server/clock';
 import { getDb } from '@/server/db';
+import { asJson } from '@/server/json';
 import { appendStandaloneEvent } from '@/server/events/append';
 import { storeDocument } from '@/server/documents/service';
 import { DocumentGenerationError, generatePdf, type GenerateInput, type TemplateName } from '@/server/documents/generate';
@@ -205,7 +206,7 @@ async function timeLimit(caseFileId: string, code: string, partyId: string, trig
       lastDay: result.lastDay,
       electronic,
       status: result.endsAt.getTime() > now.getTime() ? 'RUNNING' : 'ELAPSED',
-      computation: { steps: result.steps, articles: result.articles, ruleVersion: rules.version } as unknown as object,
+      computation: { steps: result.steps, articles: result.articles, ruleVersion: rules.version },
     },
   });
 }
@@ -221,7 +222,7 @@ async function courtFee(caseFileId: string, content: DemoCaseContent, payerParty
   if (!ruleSet) throw new Error('fee rule table not loaded');
   const operationRef = `DEMO-PAY-${String(content.number)}`;
   await getDb().feeAssessment.create({
-    data: { caseFileId, filing, ruleSetId: ruleSet.id, totalCents: BigInt(assessment.totalCents), breakdown: assessment as unknown as object, assessedAt: at },
+    data: { caseFileId, filing, ruleSetId: ruleSet.id, totalCents: BigInt(assessment.totalCents), breakdown: asJson(assessment), assessedAt: at },
   });
   await getDb().payment.create({
     data: {

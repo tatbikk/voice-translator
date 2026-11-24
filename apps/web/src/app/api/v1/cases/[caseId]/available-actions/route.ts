@@ -18,11 +18,11 @@ export const GET = defineEndpoint({
   access: { kind: 'action', action: 'case.view' },
   params: z.strictObject({ caseId: z.uuid() }),
   resource: (params) => caseResource(params.caseId, clock.now()),
-  handler: async ({ req, subject, resource }) => {
-    if (!resource) return notFound();
+  handler: ({ req, subject, resource }) => {
+    if (!resource) return Promise.resolve(notFound());
     const env = getEnv();
     const t = translator(resolveLocale(readCookie(req, COOKIES.locale)));
     const actions = actionViews(t, subject, resource, { mode: env.mode, demoToolsEnabled: env.demoToolsEnabled, now: clock.now() });
-    return ok({ actions });
+    return Promise.resolve(ok({ actions }));
   },
 });

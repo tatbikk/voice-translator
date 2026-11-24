@@ -26,7 +26,9 @@ export type BootViolation =
   | 'DATABASE_NOT_STAMPED_PRODUCTION'
   | 'DEMO_ROWS_PRESENT'
   | 'CLOCK_OFFSET_NONZERO'
-  | 'APP_URL_NOT_HTTPS';
+  | 'APP_URL_NOT_HTTPS'
+  | 'DOCUMENT_STORE_MISSING'
+  | 'DOCUMENT_STORE_NOT_DURABLE';
 
 export type BootWarning = 'DATABASE_NOT_STAMPED' | 'NO_DATABASE_FACTS';
 
@@ -64,6 +66,11 @@ export interface BootInput {
    */
   readonly ownerDatabaseUrlPresent: boolean;
   readonly components: readonly { readonly id: string; readonly implementation: ComponentImplementation }[];
+  /**
+   * Where the documents of the files are kept (Phase 1): an object store, or a
+   * local directory, which a redeployment may lose and which production refuses.
+   */
+  readonly documentStore: 's3' | 'disk' | null;
   /** null when the process has no database (should not happen for web and worker) */
   readonly db: BootDatabaseFacts | null;
 }
@@ -112,6 +119,7 @@ export function evaluateBoot(input: BootInput): BootResult {
   if (input.secretsEqual) add('SECRETS_EQUAL');
   if (input.components.some((c) => c.implementation === 'test')) add('TEST_COMPONENT');
   if (input.ownerDatabaseUrlPresent) add('OWNER_DATABASE_URL_PRESENT');
+  if (input.documentStore === null) add('DOCUMENT_STORE_MISSING');
 
   const db = input.db;
   if (db === null) {
@@ -137,6 +145,7 @@ export function evaluateBoot(input: BootInput): BootResult {
   } else {
     if (input.components.some((c) => c.implementation === 'simulated')) add('SIMULATED_COMPONENT');
     if (input.demoToolsRaw === 'true') add('DEMO_TOOLS_ENABLED');
+    if (input.documentStore === 'disk') add('DOCUMENT_STORE_NOT_DURABLE');
     for (const v of evaluateBuild(input)) add(v);
     if (input.seedPasswordSet) add('SEED_PASSWORD_SET');
     if (!isHttps(input.appUrl)) add('APP_URL_NOT_HTTPS');

@@ -34,6 +34,13 @@ COPY --from=build /app/apps/web/prisma ./apps/web/prisma
 COPY --from=build /app/apps/web/public ./apps/web/public
 COPY --from=build /app/apps/web/.next ./apps/web/.next
 COPY --from=build /app/apps/web/dist-server ./apps/web/dist-server
+# Phase 1: the headless browser that prints the generated documents to PDF
+# (server/documents/generate.ts), with its system libraries, at the version the
+# pinned playwright-core expects. It runs offline, scripts disabled, every
+# request refused (docs/decisions.md).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN node node_modules/playwright-core/cli.js install --with-deps --only-shell chromium \
+ && rm -rf /var/lib/apt/lists/*
 # Files are owned by root and read-only for the process, which runs unprivileged.
 USER node
 WORKDIR /app/apps/web

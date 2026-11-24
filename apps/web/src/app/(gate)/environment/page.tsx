@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { authorize } from '@mahkama/core';
+import { clock } from '@/server/clock';
 import { translator } from '@/i18n/translate';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
@@ -16,7 +18,13 @@ export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens
 // only in the demo environment.
 export default async function EnvironmentPage() {
   const context = await requireGate('environment');
-  if (context.mode !== 'demo') notFound();
+  // The page exists only where the core grants environment.view (demo mode, review A-04).
+  const decision = authorize(context.subject, 'environment.view', undefined, {
+    mode: context.mode,
+    demoToolsEnabled: context.demoToolsEnabled,
+    now: clock.now(),
+  });
+  if (!decision.allowed) notFound();
   const t = translator(context.locale);
   const components = replaceableComponents();
   const status = await chainStatus();

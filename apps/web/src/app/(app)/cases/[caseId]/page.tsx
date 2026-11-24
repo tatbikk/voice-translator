@@ -54,7 +54,7 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
 
   return (
     <Frame context={context}>
-      <PageHeader title={t('screens.case')} kicker={t(`case.kind.${h.kind}`)}>
+      <PageHeader title={t('screens.cases-:caseId')} kicker={t(`case.kind.${h.kind}`)}>
         <dl className="mt-4 grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
           <Fact label={t('case.header.number')}>
             <CaseNumber value={h.number} labelTemplate={numberLabel} />

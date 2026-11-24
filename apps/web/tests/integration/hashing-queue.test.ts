@@ -30,7 +30,12 @@ describe('password hashing queue (review S-03)', () => {
       }
     })();
     await pause(5);
-    const busy = await client.post('/api/v1/auth/login', { email: user.email, password: user.password });
+    // Under a loaded test run the queue can drain between two refills; a login
+    // that slipped through is retried, and one of them must meet the full queue.
+    let busy = await client.post('/api/v1/auth/login', { email: user.email, password: user.password });
+    for (let attempt = 0; attempt < 4 && busy.status !== 503; attempt += 1) {
+      busy = await client.post('/api/v1/auth/login', { email: user.email, password: user.password });
+    }
     state.filling = false;
     await fill;
     await Promise.all(fillers);

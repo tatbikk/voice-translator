@@ -1,4 +1,5 @@
-import { roleLabelKey, type RoleCode } from '@mahkama/core';
+import { authorize, roleLabelKey, type RoleCode } from '@mahkama/core';
+import { clock } from '@/server/clock';
 import { translator } from '@/i18n/translate';
 import type { GateContext } from '@/server/permissions/guard';
 import { demoAccounts } from '../server/services';
@@ -15,6 +16,13 @@ import { DemoSwitcher } from './DemoSwitcher';
  */
 export async function DemoBar({ context }: { context: GateContext }) {
   const t = translator(context.locale);
+  // The list of demo accounts is shown only where the core grants it (review A-04).
+  const decision = authorize(context.subject, 'demo.accounts.list', undefined, {
+    mode: context.mode,
+    demoToolsEnabled: context.demoToolsEnabled,
+    now: clock.now(),
+  });
+  if (!decision.allowed) return null;
   const accounts = await demoAccounts();
   const options = accounts.map((a) => ({
     value: a.roleAssignmentId,

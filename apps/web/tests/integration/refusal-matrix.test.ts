@@ -10,6 +10,9 @@
 // The set of endpoints usable without a session must equal an explicit
 // allow-list, and every non-GET endpoint must append an event on success
 // (an endpoint without a success fixture fails the test).
+// Phase 1 adds the endpoints of a case file: the matrix file belongs to the
+// court of the test users, has no counsel, no panel and no rapporteur, so that
+// only the court's own staff are related to it (interface book).
 import { randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ROLE_CODES, moroccoCalendarDate, type RoleCode } from '@mahkama/core';
@@ -29,6 +32,7 @@ import {
 } from '../helpers/factories';
 import { Client, describeResponse, loadEndpoints, routePattern, type ApiResponse, type EndpointEntry } from '../helpers/http';
 import { useFreshDatabase } from '../helpers/reset';
+import { storeDocument } from '@/server/documents/service';
 
 const ENDPOINTS: readonly EndpointEntry[] = await loadEndpoints();
 const keyOf = (e: EndpointEntry) => `${e.method} ${routePattern(e.module)}`;
@@ -75,6 +79,9 @@ const SESSION: Expectation = { status: 401, code: 'SESSION_REQUIRED', step: 'SES
 const FORBIDDEN: Expectation = { status: 403, code: 'FORBIDDEN', step: 'AUTHZ' };
 const REAUTH: Expectation = { status: 403, code: 'REAUTH_REQUIRED', step: 'REAUTH' };
 const UNKNOWN_PATH: Expectation = { status: 404, code: 'NOT_FOUND' };
+/** a resource the subject is not related to: the same answer as an unknown one */
+const UNRELATED: Expectation = { status: 404, code: 'NOT_FOUND' };
+const NOT_PERMITTED: Expectation = { status: 403, code: 'FORBIDDEN', step: 'AUTHZ' };
 const HEALTHY: Expectation = { status: 200, code: null };
 
 const none = (s: Subject) => s.is.kind === 'no-access';
@@ -89,6 +96,23 @@ const anyActive = (s: Subject): Expectation => (none(s) ? GATE : active(s) ? USA
 const adminOnly = (s: Subject): Expectation => (none(s) ? GATE : !active(s) ? SESSION : admin(s) ? USABLE : FORBIDDEN);
 /** administrator only, after a recent re-authentication (the matrix sessions have none) */
 const adminWithReauth = (s: Subject): Expectation => (none(s) ? GATE : !active(s) ? SESSION : admin(s) ? REAUTH : FORBIDDEN);
+
+/** The staff of the file's court, related to every file of that court (interface book). */
+const COURT_STAFF: readonly RoleCode[] = [
+  'COURT_PRESIDENT',
+  'ENFORCEMENT_JUDGE',
+  'CLERK_REGISTRATION',
+  'CLERK_CASHIER',
+  'CLERK_NOTIFICATION',
+  'CLERK_HEARING',
+  'CLERK_COPIES_ENFORCEMENT',
+  'CHIEF_CLERK',
+];
+const staff = (s: Subject) => s.is.kind === 'active' && s.is.roleCount === 1 && COURT_STAFF.includes(s.is.role);
+/** reading the file: its court's staff; anyone else meets a file that does not exist */
+const caseRead = (s: Subject): Expectation => (none(s) ? GATE : !active(s) ? SESSION : staff(s) ? USABLE : UNRELATED);
+/** stamping a file already in preparation: refused to its staff, unknown to the others */
+const caseStamp = (s: Subject): Expectation => (none(s) ? GATE : !active(s) ? SESSION : staff(s) ? NOT_PERMITTED : UNRELATED);
 
 const EXPECTED: Readonly<Record<string, (s: Subject) => Expectation>> = {
   'GET /healthz': () => HEALTHY,
@@ -114,6 +138,10 @@ const EXPECTED: Readonly<Record<string, (s: Subject) => Expectation>> = {
   'POST /api/v1/admin/accounts/:id/activation': adminWithReauth,
   'GET /api/v1/public/case-status': gateLevel,
   'GET /api/v1/public/hearings': gateLevel,
+  'GET /api/v1/cases/:caseId/available-actions': caseRead,
+  'POST /api/v1/cases/:caseId/actions/:action': caseStamp,
+  'GET /api/v1/cases/:caseId/documents/:documentId/file': caseRead,
+  'GET /api/v1/cases/:caseId/documents/:documentId/signatures': caseRead,
   'GET /api/demo/outbox': gateLevel,
   'GET /api/demo/accounts': gateLevel,
   'POST /api/demo/switch-account': gateLevel,
@@ -161,6 +189,10 @@ const EXPECTED_ACCESS: Readonly<Record<string, { kinds: readonly string[]; actio
   'POST /api/v1/admin/accounts/:id/activation': { kinds: ['action'], action: 'admin.accounts.reissue-activation' },
   'GET /api/v1/public/case-status': { kinds: ['gate'] },
   'GET /api/v1/public/hearings': { kinds: ['gate'] },
+  'GET /api/v1/cases/:caseId/available-actions': { kinds: ['action'], action: 'case.view' },
+  'POST /api/v1/cases/:caseId/actions/:action': { kinds: ['named-action'] },
+  'GET /api/v1/cases/:caseId/documents/:documentId/file': { kinds: ['action'], action: 'case.document.read' },
+  'GET /api/v1/cases/:caseId/documents/:documentId/signatures': { kinds: ['action'], action: 'case.document.read' },
   'GET /api/demo/outbox': { kinds: ['demo'], action: 'demo.outbox.view' },
   'GET /api/demo/accounts': { kinds: ['demo'], action: 'demo.accounts.list' },
   'POST /api/demo/switch-account': { kinds: ['demo'], action: 'demo.account.switch' },
@@ -188,6 +220,7 @@ interface Fixtures {
   readonly demoTarget: TestUser;
   readonly someoneElse: TestUser;
   readonly someoneElsesNotification: string;
+  readonly documentId: string;
 }
 
 let fixtures!: Fixtures;
@@ -240,6 +273,12 @@ const PROBES: Readonly<Record<string, Probe>> = {
     }),
   'GET /api/v1/public/hearings': ({ client }) =>
     client.get('/api/v1/public/hearings', { query: { courtId: fixtures.caseFile.courtId, date: fixtures.hearingDate } }),
+  'GET /api/v1/cases/:caseId/available-actions': ({ client }) => client.get(`/api/v1/cases/${fixtures.caseFile.id}/available-actions`),
+  'POST /api/v1/cases/:caseId/actions/:action': ({ client }) => client.post(`/api/v1/cases/${fixtures.caseFile.id}/actions/case.registration.stamp`, {}),
+  'GET /api/v1/cases/:caseId/documents/:documentId/file': ({ client }) =>
+    client.get(`/api/v1/cases/${fixtures.caseFile.id}/documents/${fixtures.documentId}/file`),
+  'GET /api/v1/cases/:caseId/documents/:documentId/signatures': ({ client }) =>
+    client.get(`/api/v1/cases/${fixtures.caseFile.id}/documents/${fixtures.documentId}/signatures`),
   'GET /api/demo/outbox': ({ client }) => client.get('/api/demo/outbox'),
   'GET /api/demo/accounts': ({ client }) => client.get('/api/demo/accounts'),
   'POST /api/demo/switch-account': ({ client }) =>
@@ -339,7 +378,20 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
     const demoTarget = await createUser({ roles: ['LITIGANT'], isDemo: true });
     const someoneElse = await createUser({ roles: ['EXPERT'] });
     const someoneElsesNotification = (await ownNotification(someoneElse)) ?? '';
+    const document = await storeDocument({
+      caseFileId: caseFile.id,
+      bytes: new TextEncoder().encode('%PDF-1.7\n% matrix exhibit\n'),
+      mediaType: 'application/pdf',
+      docType: 'EXHIBIT',
+      visibility: 'CASE',
+      channel: 'ELECTRONIC',
+      declaredNature: 'ORIGINAL',
+      generated: false,
+      depositedByUserId: null,
+      depositedByPartyId: null,
+    });
     fixtures = {
+      documentId: document.id,
       caseFile,
       hearingDate: moroccoCalendarDate(startsAt),
       unactivated,
@@ -379,8 +431,13 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
       }
     });
 
-    it('reaches no case-file action in Phase 0 (memo row 9)', () => {
-      for (const endpoint of ENDPOINTS) expect(endpoint.access.action ?? '').not.toMatch(/^case\./);
+    it('reaches only the reading of a case file, and the action endpoint that executes nothing (Phase 1, memo row 9)', () => {
+      const reads = ['case.view', 'case.document.read'];
+      for (const endpoint of ENDPOINTS) {
+        const action = endpoint.access.action ?? '';
+        if (action.startsWith('case.')) expect(reads, endpoint.id).toContain(action);
+      }
+      expect(ENDPOINTS.filter((e) => e.access.kind === 'named-action').map((e) => e.id)).toEqual(['cases.action']);
     });
 
     it('declares the demo endpoints as demo-only, behind a demo action', () => {
@@ -462,6 +519,8 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
     /** Endpoints with no success path, and why. */
     const NO_SUCCESS_PATH: Readonly<Record<string, string>> = {
       'POST /api/*': 'answers 404 NOT_FOUND to every request (unknown path)',
+      'POST /api/v1/cases/:caseId/actions/:action':
+        'Phase 1 executes no procedural action: an authorized request is answered 409 ACTION_NOT_EXECUTABLE_HERE (case-access.test.ts)',
     };
 
     /** Each fixture prepares the state, then returns the successful request. */

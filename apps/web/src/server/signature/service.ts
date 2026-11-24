@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { SECURITY_POLICY, openCircle, signCircle, type RoleCode, type SignatureCircleState } from '@mahkama/core';
 import { clock } from '../clock';
 import { getDb } from '../db';
+import { asJson } from '../json';
 import { documentBytes } from '../documents/service';
 import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
 import { activeLock, attemptsFor, DEFAULT_BUCKET, markAttemptSucceeded, reserveAttempt } from '../auth/attempts';
@@ -70,7 +71,7 @@ export async function openSignatureCircle(input: {
   const id = randomUUID();
   await eventTransaction(async (tx) => {
     await tx.signatureCircle.create({
-      data: { id, documentId: doc.id, purpose: input.purpose, signers: signers as unknown as object, documentSha256: doc.sha256, openedAt: clock.now() },
+      data: { id, documentId: doc.id, purpose: input.purpose, signers: asJson(signers), documentSha256: doc.sha256, openedAt: clock.now() },
     });
     await appendEvent(tx, {
       action: 'signature.circle.opened',

@@ -11,6 +11,8 @@ const real = ENDPOINTS.filter((e) => !e.demoBuildOnly && !e.path.endsWith('*'));
 describe('the endpoint registry matches the endpoint definitions', () => {
   for (const entry of real) {
     it(`${entry.method} ${entry.path}`, async () => {
+      // The path comes from the registry, a file of the repository, never from input.
+      // eslint-disable-next-line no-unsanitized/method
       const module = (await import(/* @vite-ignore */ entry.module.replace('@/', '../../src/'))) as Record<string, EndpointHandler | undefined>;
       const handler = module[entry.method];
       expect(handler, `${entry.module} exports ${entry.method}`).toBeDefined();

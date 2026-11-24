@@ -35,6 +35,16 @@ export default defineRailway(() => {
     ACCESS_CODE: '${{shared.ACCESS_CODE}}',
   };
 
+  // The documents of the files (Phase 1): every process that stores or reads
+  // one (web, worker, and the release step that seeds the demo files).
+  const documentStore = {
+    S3_BUCKET: ref(documents, 'BUCKET'),
+    S3_ENDPOINT: ref(documents, 'ENDPOINT'),
+    S3_REGION: ref(documents, 'REGION'),
+    S3_ACCESS_KEY_ID: ref(documents, 'ACCESS_KEY_ID'),
+    S3_SECRET_ACCESS_KEY: ref(documents, 'SECRET_ACCESS_KEY'),
+  };
+
   const web = service('voice-translator', {
     source,
     build,
@@ -54,11 +64,7 @@ export default defineRailway(() => {
       APP_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
       DATABASE_URL: runtimeDatabaseUrl,
       ...sharedSecrets,
-      S3_BUCKET: ref(documents, 'BUCKET'),
-      S3_ENDPOINT: ref(documents, 'ENDPOINT'),
-      S3_REGION: ref(documents, 'REGION'),
-      S3_ACCESS_KEY_ID: ref(documents, 'ACCESS_KEY_ID'),
-      S3_SECRET_ACCESS_KEY: ref(documents, 'SECRET_ACCESS_KEY'),
+      ...documentStore,
     },
   });
 
@@ -77,6 +83,7 @@ export default defineRailway(() => {
       APP_URL: appUrl,
       DATABASE_URL: runtimeDatabaseUrl,
       ...sharedSecrets,
+      ...documentStore,
     },
   });
 
@@ -99,6 +106,7 @@ export default defineRailway(() => {
       DATABASE_URL: runtimeDatabaseUrl,
       APP_DB_PASSWORD: '${{shared.APP_DB_PASSWORD}}',
       ...sharedSecrets,
+      ...documentStore,
       SEED_DEMO_PASSWORD: preserve(),
     },
   });
