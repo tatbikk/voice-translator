@@ -7,7 +7,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 //   - passes the requested path to the page guards (x-mr-path).
 // It imports no server module and never touches the database.
 
-function contentSecurityPolicy(nonce: string, dev: boolean, https: boolean): string {
+function contentSecurityPolicy(nonce: string, dev: boolean): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ''}`,
@@ -19,18 +19,13 @@ function contentSecurityPolicy(nonce: string, dev: boolean, https: boolean): str
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    // Only over HTTPS (always the case in production, checked at boot).
-    ...(https && !dev ? ['upgrade-insecure-requests'] : []),
+    ...(dev ? [] : ['upgrade-insecure-requests']),
   ].join('; ');
 }
 
 export function proxy(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
-  const csp = contentSecurityPolicy(
-    nonce,
-    process.env.NODE_ENV === 'development',
-    (process.env.APP_URL ?? '').startsWith('https://'),
-  );
+  const csp = contentSecurityPolicy(nonce, process.env.NODE_ENV === 'development');
   const headers = new Headers(request.headers);
   headers.set('x-nonce', nonce);
   headers.set('content-security-policy', csp);

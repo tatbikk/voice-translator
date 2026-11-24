@@ -39,9 +39,9 @@
   "shell.language.zgh": "ⵜⴰⵎⴰⵣⵉⵖⵜ",
   "shell.reading.label": "أداة تيسير القراءة",
   "shell.reading.size": "حجم الخط",
-  "shell.reading.size0": "حجم عادي",
-  "shell.reading.size1": "حجم كبير",
-  "shell.reading.size2": "حجم أكبر",
+  "shell.reading.size0": "خط عادي",
+  "shell.reading.size1": "خط كبير",
+  "shell.reading.size2": "خط أكبر",
   "shell.reading.contrastOn": "تفعيل التباين المرتفع",
   "shell.reading.contrastOff": "إيقاف التباين المرتفع",
   "shell.account.menu": "الحساب الشخصي",
@@ -76,5 +76,6 @@
   "terms.panel": "الهيئة",
   "terms.hearing": "الجلسة",
   "common.deadline.elapsedOn": "انصرم بتاريخ {date}",
-  "terms.caseSerial": "الرقم"
+  "terms.caseSerial": "الرقم",
+  "common.documentTitle": "{screen} | منصة المحكمة الرقمية"
 }

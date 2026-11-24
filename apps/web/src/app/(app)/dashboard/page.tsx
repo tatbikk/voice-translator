@@ -8,6 +8,10 @@ import { Frame } from '@/components/shell/Frames';
 import { notificationText } from '@/components/shell/notification-text';
 import { dashboardFor } from '@/server/dashboard/service';
 import { requirePage } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.dashboard');
 
 // «لوحة البداية»: what is expected of the user before the list of files, in
 // three boxes common to every role (study, «العناصر المشتركة»).

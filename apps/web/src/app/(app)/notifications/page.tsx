@@ -8,6 +8,10 @@ import { Frame } from '@/components/shell/Frames';
 import { notificationText } from '@/components/shell/notification-text';
 import { listNotifications } from '@/server/notifications/service';
 import { requirePage } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.notifications');
 
 export default async function NotificationsPage() {
   const context = await requirePage('notifications', 'notifications.view-own');

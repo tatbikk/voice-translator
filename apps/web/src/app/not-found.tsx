@@ -1,11 +1,12 @@
-import { headers } from 'next/headers';
-import { resolveLocale } from '@/i18n/locales';
 import { translator } from '@/i18n/translate';
-import { COOKIES, parseCookieHeader } from '@/server/http/cookies';
+import { requireGate } from '@/server/permissions/guard';
 
+// Unknown address, or a page the user may not know about (the page guards answer
+// "not found"). Before the visitor passphrase it leads to the passphrase like
+// every other page, so that the answer reveals nothing about which addresses exist.
 export default async function NotFound() {
-  const locale = resolveLocale(parseCookieHeader((await headers()).get('cookie')).get(COOKIES.locale));
-  const t = translator(locale);
+  const context = await requireGate('not-found');
+  const t = translator(context.locale);
   return (
     <main id="main" className="mx-auto max-w-xl px-4 py-16">
       <h1 className="text-2xl">{t('errors.page.notFound.title')}</h1>

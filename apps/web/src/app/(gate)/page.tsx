@@ -4,6 +4,10 @@ import { ButtonLink } from '@/components/ui/Button';
 import { Notice } from '@/components/ui/Notice';
 import { Frame } from '@/components/shell/Frames';
 import { requireGate } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.home');
 
 // «صفحة الاستقبال»: presents the platform and its spaces. In the demo
 // environment it states once, formally, that this is a proposed platform and

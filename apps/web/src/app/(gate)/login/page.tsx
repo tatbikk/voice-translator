@@ -6,6 +6,10 @@ import { Notice } from '@/components/ui/Notice';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
 import { requireGate } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.login');
 
 // «الدخول»: e-mail and password, then the confirmation code.
 export default async function LoginPage() {

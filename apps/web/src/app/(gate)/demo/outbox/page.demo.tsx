@@ -4,6 +4,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
 import { requireDemo } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.demo-outbox');
 
 // «صندوق الرسائل الصادرة» (demo tool). Built only with DEMO_BUILD=true.
 export default async function OutboxPage() {

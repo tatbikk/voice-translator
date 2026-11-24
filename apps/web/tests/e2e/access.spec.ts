@@ -18,7 +18,7 @@ test.describe('visitor passphrase', () => {
     await expect(page).toHaveTitle(new RegExp(PAGE_TITLES.access));
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.access);
     await expect(page.locator('h1')).toHaveCount(1);
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+    await expect(page.locator('html')).toHaveAttribute('lang', /^ar(-MA)?$/);
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   });
 

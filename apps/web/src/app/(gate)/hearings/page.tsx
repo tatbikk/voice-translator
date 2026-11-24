@@ -9,6 +9,10 @@ import { Frame } from '@/components/shell/Frames';
 import { clock } from '@/server/clock';
 import { requireGate } from '@/server/permissions/guard';
 import { hearingsOn, publicCourts, type HearingRow } from '@/server/public/service';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.hearings');
 
 type Params = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');

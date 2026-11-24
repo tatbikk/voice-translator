@@ -9,6 +9,10 @@ import { legalBasisText } from '@/components/shell/legal-basis-text';
 import { listCourts } from '@/server/accounts/service';
 import { recentlyReauthenticated } from '@/server/auth/sessions';
 import { requirePage } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.admin-accounts-new');
 
 // «إنشاء حساب» (system administrator): any role, on a documented request,
 // after re-authentication, with the three-line confirmation window.

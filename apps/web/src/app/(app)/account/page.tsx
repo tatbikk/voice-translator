@@ -6,6 +6,10 @@ import { Tabs } from '@/components/ui/Tabs';
 import { Frame } from '@/components/shell/Frames';
 import { rolesOf } from '@/server/accounts/roles';
 import { requirePage } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.account');
 
 const VERIFICATION_KEY = {
   VERIFIED_SIMULATED: 'identity.verifiedSimulated',

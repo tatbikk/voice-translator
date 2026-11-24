@@ -4,6 +4,10 @@ import { ConfirmForm } from '@/components/forms/ConfirmForm';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
 import { requirePending } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.login-confirm');
 
 // «وسيلة التأكيد الثانية»: the six-digit code sent to the account's phone (in
 // the demo environment: to the outbox).

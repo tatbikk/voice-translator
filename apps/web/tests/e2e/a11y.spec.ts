@@ -20,7 +20,7 @@ async function check(page: Page, path: string | null, where: string): Promise<vo
   if (path) await page.goto(path);
   await page.waitForLoadState('load');
   await expect(page.locator('h1'), `one <h1> on ${where}`).toHaveCount(1);
-  await expect(page.locator('html')).toHaveAttribute('lang', /^(ar|fr|zgh)$/);
+  await expect(page.locator('html')).toHaveAttribute('lang', /^(ar|fr|zgh)(-[A-Za-z]{2,4})?$/);
   await expect(page.locator('html')).toHaveAttribute('dir', /^(rtl|ltr)$/);
   await expectAccessible(page, where);
 }

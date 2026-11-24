@@ -5,6 +5,10 @@ import { Frame } from '@/components/shell/Frames';
 import { replaceableComponents } from '@/server/components/registry';
 import { requireGate } from '@/server/permissions/guard';
 import { chainStatus } from '@/server/events/status';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.environment');
 
 // «مكونات بيئة العرض»: opened from the quiet indicator of the top bar; exists
 // only in the demo environment.

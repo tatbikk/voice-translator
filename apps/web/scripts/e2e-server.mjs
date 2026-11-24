@@ -53,7 +53,7 @@ step(process.execPath, [join(webRoot, 'dist-server', 'seed.mjs'), '--reset', `--
 
 // The web process never receives the owner's connection or the seed password.
 const runtimeEnv = { ...env };
-for (const name of ['MIGRATION_DATABASE_URL', 'APP_DB_PASSWORD', 'SEED_DEMO_PASSWORD']) delete runtimeEnv[name];
+for (const name of ['MIGRATION_DATABASE_URL', 'APP_DB_PASSWORD', 'SEED_DEMO_PASSWORD']) Reflect.deleteProperty(runtimeEnv, name);
 const next = join(dirname(createRequire(import.meta.url).resolve('next/package.json')), 'dist', 'bin', 'next');
 const server = spawn(process.execPath, [next, 'start', '-p', '3100'], { cwd: webRoot, stdio: 'inherit', env: runtimeEnv });
 const stop = (signal) => {

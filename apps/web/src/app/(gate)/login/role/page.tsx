@@ -6,6 +6,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
 import { requirePending } from '@/server/permissions/guard';
 import { rolesOf } from '@/server/accounts/roles';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.login-role');
 
 // «اختيار الصفة»: at login for a user holding several roles, or later to switch.
 export default async function RolePage() {

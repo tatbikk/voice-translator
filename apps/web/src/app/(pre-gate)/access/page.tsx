@@ -8,6 +8,10 @@ import { AccessForm } from '@/components/forms/AccessForm';
 import { getEnv } from '@/server/config/env';
 import { gateRequired, verifyAccessCookieValue } from '@/server/auth/access-gate';
 import { COOKIES, parseCookieHeader } from '@/server/http/cookies';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.access');
 
 // «كلمة عبور الزوار»: the only page shown before the visitor gate. It renders
 // no demo tool and no platform data.

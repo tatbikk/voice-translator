@@ -21,7 +21,7 @@ export async function DemoBar({ context }: { context: GateContext }) {
   return (
     <>
       <div aria-hidden="true" className="h-24 no-print" />
-      <aside
+      <section
         aria-label={t('demo.tools')}
         className="no-print fixed inset-x-0 bottom-0 z-30 border-t-2 border-dashed border-line-strong bg-canvas"
       >
@@ -38,7 +38,7 @@ export async function DemoBar({ context }: { context: GateContext }) {
             {t('demo.outbox.open')}
           </a>
         </div>
-      </aside>
+      </section>
     </>
   );
 }

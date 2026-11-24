@@ -4,6 +4,10 @@ import { ActivateForm } from '@/components/forms/ActivateForm';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
 import { requireGate } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.activate');
 
 // «تفعيل الحساب»: the person sets the password of an account created for them.
 export default async function ActivatePage() {

@@ -37,12 +37,12 @@ test.describe('language and reading ease', () => {
     await useOwnAddress(context);
     await passGateUi(page, '/');
     const banner = page.getByRole('banner');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+    await expect(page.locator('html')).toHaveAttribute('lang', /^ar(-MA)?$/);
     await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
     const arabic = await banner.innerText();
 
     await choose(page, TOP_BAR.language, LANGUAGES.fr);
-    await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+    await expect(page.locator('html')).toHaveAttribute('lang', /^fr(-MA)?$/);
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
     const french = await banner.innerText();
     expect(french).not.toBe(arabic);
@@ -50,12 +50,12 @@ test.describe('language and reading ease', () => {
     await expect(page.getByText(PARTIAL_TRANSLATION_NOTICE.fr).first()).toBeVisible();
 
     await choose(page, LANGUAGE_CONTROL, LANGUAGES.zgh);
-    await expect(page.locator('html')).toHaveAttribute('lang', 'zgh');
+    await expect(page.locator('html')).toHaveAttribute('lang', /^zgh(-Tfng)?$/);
     await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
     expect(await banner.innerText()).toMatch(/\p{Script=Tifinagh}/u);
 
     await choose(page, LANGUAGE_CONTROL, LANGUAGES.ar);
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+    await expect(page.locator('html')).toHaveAttribute('lang', /^ar(-MA)?$/);
     expect(await banner.innerText()).toBe(arabic);
   });
 

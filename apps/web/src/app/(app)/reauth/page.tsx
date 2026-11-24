@@ -6,6 +6,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Frame } from '@/components/shell/Frames';
 import { getEnv } from '@/server/config/env';
 import { requirePage } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.reauth');
 
 // «إعادة التحقق من الهوية» before a sensitive action.
 export default async function ReauthPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

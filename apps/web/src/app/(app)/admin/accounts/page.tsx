@@ -9,6 +9,10 @@ import { Frame } from '@/components/shell/Frames';
 import { legalBasisText } from '@/components/shell/legal-basis-text';
 import { listAccounts } from '@/server/accounts/service';
 import { requirePage } from '@/server/permissions/guard';
+import type { Metadata } from 'next';
+import { screenMetadata } from '@/server/page-metadata';
+
+export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.admin-accounts');
 
 // «الحسابات» (system administrator).
 export default async function AccountsPage() {

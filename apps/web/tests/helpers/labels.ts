@@ -77,7 +77,8 @@ export const FORMS = {
   },
   confirm: {
     code: /رمز التأكيد|الرمز/, // prompt «رمز من ستة أرقام»
-    submit: /تأكيد/, // proposed
+    // exact: the page also has «إعادة إرسال رمز التأكيد»
+    submit: /^تأكيد الدخول$|^تأكيد$/,
   },
   role: {
     submit: /متابعة|اختيار|تأكيد/, // proposed (when the role is chosen by a radio button)
