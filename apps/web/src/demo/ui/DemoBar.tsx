@@ -8,6 +8,10 @@ import { DemoSwitcher } from './DemoSwitcher';
  * The demo tools' bottom bar: visually apart from the platform (its own strip,
  * neutral background, its own landmark), never mixed with the platform's
  * interface. Phase 0 tools: the account switcher and the outbox.
+ *
+ * Fixed to the bottom of the window on large screens only. On a phone it wraps
+ * to several rows and would cover a third of the screen and the end of every
+ * page, so it closes the page there instead.
  */
 export async function DemoBar({ context }: { context: GateContext }) {
   const t = translator(context.locale);
@@ -20,10 +24,10 @@ export async function DemoBar({ context }: { context: GateContext }) {
   }));
   return (
     <>
-      <div aria-hidden="true" className="h-24 no-print" />
+      <div aria-hidden="true" className="no-print hidden h-24 lg:block" />
       <section
         aria-label={t('demo.tools')}
-        className="no-print fixed inset-x-0 bottom-0 z-30 border-t-2 border-dashed border-line-strong bg-canvas"
+        className="no-print border-t-2 border-dashed border-line-strong bg-canvas lg:fixed lg:inset-x-0 lg:bottom-0 lg:z-30"
       >
         <div className="mx-auto flex max-w-6xl flex-wrap items-end gap-4 px-4 py-3">
           <p className="text-sm font-semibold text-text-muted">{t('demo.tools')}</p>
@@ -33,6 +37,7 @@ export async function DemoBar({ context }: { context: GateContext }) {
             submitLabel={t('demo.switch')}
             errorText={t('errors.NOT_FOUND')}
             options={options}
+            current={context.session?.roleAssignment?.id ?? null}
           />
           <a href="/demo/outbox" className="min-h-11 py-2">
             {t('demo.outbox.open')}

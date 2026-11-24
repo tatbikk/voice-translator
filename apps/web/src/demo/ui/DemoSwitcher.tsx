@@ -10,15 +10,20 @@ export function DemoSwitcher({
   submitLabel,
   errorText,
   options,
+  current,
 }: {
   label: string;
   chooseLabel: string;
   submitLabel: string;
   errorText: string;
   options: readonly { value: string; label: string }[];
+  /** role assignment of the current session: the switcher shows where the visitor is */
+  current: string | null;
 }) {
   const id = useId();
-  const [selected, setSelected] = useState(options[0]?.value ?? '');
+  const [selected, setSelected] = useState(
+    current !== null && options.some((option) => option.value === current) ? current : (options[0]?.value ?? ''),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -42,7 +47,7 @@ export function DemoSwitcher({
           id={id}
           value={selected}
           onChange={(event) => { setSelected(event.target.value); }}
-          className="min-h-11 max-w-[80vw] border border-line-strong bg-paper px-2"
+          className="min-h-11 max-w-[80vw] border border-line-strong bg-paper px-2 lg:max-w-md"
           aria-describedby={`${id}-hint`}
         >
           {options.map((option) => (
