@@ -461,7 +461,7 @@ export const SITUATIONS: Readonly<Record<string, CaseSnapshot>> = {
       { code: 'APPEAL', partyId: PARTY_J, endsInDays: 20 },
     ],
   }),
-  P01: { ...snapshot({ status: 'IN_PREPARATION', facts: ['HEARING_SET', 'REFERRED_TO_PROSECUTION'], ...defenseServed }) },
+  P01: snapshot({ status: 'IN_PREPARATION', facts: ['HEARING_SET', 'ELECTRONIC_DOCUMENT', 'REFERRED_TO_PROSECUTION'], ...defenseServed }),
 };
 
 const ENVELOPE = uuid(401);

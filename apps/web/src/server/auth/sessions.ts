@@ -178,6 +178,7 @@ export async function resolveSession(req: Request): Promise<SessionContext | nul
           role: roleAssignment.role,
           roleAssignmentId: roleAssignment.id,
           courtId: roleAssignment.courtId,
+          panelId: roleAssignment.panelId,
           organizationId: roleAssignment.organizationId,
           isDemoAccount: user.isDemo,
           roleCount,

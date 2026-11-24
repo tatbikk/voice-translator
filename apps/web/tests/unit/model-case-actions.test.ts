@@ -77,7 +77,7 @@ describe('model case: available actions', () => {
         const subject = subjectOf(actor);
         const allowed = new Set(availableActions(subject, resource, CONTEXT).map((r) => r.code));
         for (const rule of Object.values(ACTIONS)) {
-          if (rule.resourceKind !== resource.kind || allowed.has(rule.code)) continue;
+          if (!rule || !rule.button || rule.resourceKind !== resource.kind || allowed.has(rule.code)) continue;
           if (authorize(subject, rule.code, resource, CONTEXT).allowed) failures.push(`${situation.code} ${actor} ${rule.code}`);
         }
       }

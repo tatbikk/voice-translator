@@ -7,16 +7,16 @@ import {
   authorize,
   availableActions,
   resolveLegalBasis,
-  type ActionCode,
   type AuthorizationContext,
   type Resource,
   type RoleCode,
   type Subject,
 } from '../src/index';
 
-const demo: AuthorizationContext = { mode: 'demo', demoToolsEnabled: true };
-const demoNoTools: AuthorizationContext = { mode: 'demo', demoToolsEnabled: false };
-const production: AuthorizationContext = { mode: 'production', demoToolsEnabled: false };
+const NOW = new Date('2027-03-15T09:30:00Z');
+const demo: AuthorizationContext = { mode: 'demo', demoToolsEnabled: true, now: NOW };
+const demoNoTools: AuthorizationContext = { mode: 'demo', demoToolsEnabled: false, now: NOW };
+const production: AuthorizationContext = { mode: 'production', demoToolsEnabled: false, now: NOW };
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_ID = '22222222-2222-4222-8222-222222222222';
@@ -28,6 +28,7 @@ function userSubject(role: RoleCode, roleCount = 1): Subject {
     role,
     roleAssignmentId: '33333333-3333-4333-8333-333333333333',
     courtId: null,
+    panelId: null,
     organizationId: null,
     isDemoAccount: true,
     roleCount,
@@ -39,7 +40,30 @@ const anonymous: Subject = { kind: 'anonymous' };
 
 // The resource each action is checked against, chosen so that every
 // resource-level condition passes: the matrix below then isolates the role rule.
-const passingResource: Partial<Record<ActionCode, Resource>> = {
+// A file the subject counsels in, and the snapshot of a file in preparation.
+const counselledCase: Resource = {
+  kind: 'case',
+  snapshot: {
+    caseFileId: OTHER_ID,
+    kind: 'FIRST_INSTANCE',
+    status: 'IN_PREPARATION',
+    courtId: OTHER_ID,
+    panelId: null,
+    administrativeCourt: false,
+    rapporteurUserId: null,
+    expertUserId: null,
+    facts: [],
+    parties: [{ partyId: OTHER_ID, side: 'PLAINTIFF', counselUserIds: [USER_ID], litigantUserId: null, organizationId: null, facts: [] }],
+    deadlines: [],
+    nextSignerUserIds: [],
+    minutesNextSignerUserIds: [],
+    garnisheeOrganizationIds: [],
+    summonsCodeHolderUserIds: [],
+    cassationAccreditedUserIds: [],
+  },
+};
+
+const passingResource: Partial<Record<string, Resource>> = {
   'notifications.mark-read-own': { kind: 'notification', ownerUserId: USER_ID },
   'admin.accounts.create': { kind: 'account-draft', role: 'LAWYER' },
   'admin.accounts.reissue-activation': {
@@ -50,14 +74,14 @@ const passingResource: Partial<Record<ActionCode, Resource>> = {
     disabled: false,
     role: 'LAWYER',
   },
-  'case.content.view': { kind: 'case', caseFileId: OTHER_ID, relatedUserIds: [USER_ID] },
+  'case.view': counselledCase,
   'demo.account.switch': { kind: 'demo-account', userId: OTHER_ID, isDemo: true },
 };
 
 // Independent statement of who may do what in Phase 0 (contract §4.2). It is
 // written out here on purpose, not derived from ACTIONS.
 const ALL = 'ALL' as const;
-const EXPECTED: Record<ActionCode, readonly RoleCode[] | typeof ALL> = {
+const EXPECTED: Record<(typeof ACTION_CODES)[number], readonly RoleCode[] | typeof ALL> = {
   'dashboard.view': ALL,
   'notifications.view-own': ALL,
   'notifications.mark-read-own': ALL,
@@ -66,7 +90,9 @@ const EXPECTED: Record<ActionCode, readonly RoleCode[] | typeof ALL> = {
   'admin.accounts.list': ['SYSTEM_ADMIN'],
   'admin.accounts.create': ['SYSTEM_ADMIN'],
   'admin.accounts.reissue-activation': ['SYSTEM_ADMIN'],
-  'case.content.view': [],
+  'case.view': ['LAWYER'],
+  'events.chain-status.view': ['SYSTEM_ADMIN'],
+  'environment.view': ALL,
   'demo.accounts.list': ALL,
   'demo.account.switch': ALL,
   'demo.outbox.view': ALL,
@@ -191,13 +217,13 @@ describe('demo tools', () => {
 });
 
 describe('permanent invariants (kept in every phase)', () => {
-  const caseActions = ACTION_CODES.filter((a) => a.startsWith('case.'));
+  const caseActions = Object.keys(ACTIONS).filter((a) => a.startsWith('case.'));
 
   it('the system administrator and the rules validator never read case content', () => {
     expect(caseActions.length).toBeGreaterThan(0);
     for (const role of ['SYSTEM_ADMIN', 'RULES_LEGAL_VALIDATOR'] as const) {
       for (const action of caseActions) {
-        const resource: Resource = { kind: 'case', caseFileId: OTHER_ID, relatedUserIds: [USER_ID] };
+        const resource = counselledCase;
         expect(authorize(userSubject(role), action, resource, demo).allowed).toBe(false);
       }
     }
@@ -219,8 +245,9 @@ describe('permanent invariants (kept in every phase)', () => {
   });
 
   it('every action declares its level, its three confirmation lines and a legal basis', () => {
-    for (const action of ACTION_CODES) {
+    for (const action of Object.keys(ACTIONS)) {
       const rule = ACTIONS[action];
+      if (!rule) throw new Error(action);
       expect(['HUMAN_DECISION', 'SCRIPT', 'AI_ASSIST']).toContain(rule.level);
       expect(rule.labelKey).toBe(`actions.${action}.label`);
       expect(rule.effectKey).toBe(`actions.${action}.effect`);

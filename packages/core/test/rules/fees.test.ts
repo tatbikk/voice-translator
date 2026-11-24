@@ -16,10 +16,13 @@ const FILINGS = { مقال: 'APPLICATION', 'طلب مقابل': 'COUNTER_CLAIM',
 function parseClaims(cell: string) {
   return cell.split('؛').map((part) => {
     const text = part.trim();
-    const match = /^(.*?)\s*(\d+)?$/.exec(text);
-    const nature = NATURES[(match?.[1] ?? text).trim()];
+    const words = text.split(' ');
+    const last = words.at(-1) ?? '';
+    const amount = /^\d+$/.test(last) ? Number(last) : null;
+    const name = (amount === null ? words : words.slice(0, -1)).join(' ');
+    const nature = NATURES[name];
     if (!nature) throw new Error(`unknown claim nature: ${text}`);
-    return { nature, amountCents: match?.[2] ? Number(match[2]) * 100 : null };
+    return { nature, amountCents: amount === null ? null : amount * 100 };
   });
 }
 

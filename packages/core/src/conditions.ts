@@ -10,7 +10,7 @@ export type ConditionCode =
   | 'TARGET_IS_DEMO_ACCOUNT'
   | 'TARGET_NOT_ACTIVATED'
   | 'TARGET_NOT_DISABLED'
-  | 'SUBJECT_RELATED_TO_CASE';
+  | 'DEMO_MODE';
 
 export type ConditionFailure = 'NOT_FOUND' | 'CONDITION_NOT_MET' | 'MODE_NOT_PERMITTED';
 
@@ -46,11 +46,9 @@ export const CONDITIONS: Readonly<Record<ConditionCode, ConditionDefinition>> = 
     onFail: 'CONDITION_NOT_MET',
     test: (_subject, resource) => resource?.kind === 'account' && !resource.disabled,
   },
-  SUBJECT_RELATED_TO_CASE: {
-    // Phase 0 has no relation between users and case files yet: always false.
-    // Phase 1 replaces this by the real relation (party, counsel, assigned judge…).
-    onFail: 'NOT_FOUND',
-    test: (subject, resource) =>
-      subject.kind === 'user' && resource?.kind === 'case' && resource.relatedUserIds.includes(subject.userId),
+  DEMO_MODE: {
+    // The page «مكونات بيئة العرض» exists in the demo environment only.
+    onFail: 'MODE_NOT_PERMITTED',
+    test: (_subject, _resource, context) => context.mode === 'demo',
   },
 };

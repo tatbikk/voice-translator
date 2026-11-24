@@ -11,7 +11,7 @@ export function tablesOf(file: string): Map<string, string[][]> {
   const tables = new Map<string, string[][]>();
   let section = '';
   for (const line of readFileSync(join(CORE, 'rules-tests', file), 'utf8').split('\n')) {
-    if (line.startsWith('## ')) section = line.slice(3).trim();
+    if (/^#{1,3} /.test(line)) section = line.replace(/^#+ /, '').trim();
     if (!line.startsWith('|') || line.startsWith('| ---')) continue;
     const cells = line.replace(/^\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
     const rows = tables.get(section) ?? [];
@@ -29,6 +29,7 @@ export function rows(file: string, section: string): string[][] {
   return found;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- the caller names the shape of the rule file
 export function readRules<T>(name: string): T {
   return JSON.parse(readFileSync(join(RULES_DIR, name), 'utf8')) as T;
 }

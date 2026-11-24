@@ -1,0 +1,34 @@
+[
+  {
+    "version": "2026-08-23.1",
+    "validFrom": "2026-08-23",
+    "validTo": null,
+    "source": "المادة 603 من القانون رقم 58.25 تحيل على «النصوص القانونية الجاري بها العمل». القائمة أدناه قائمة العطل الرسمية المعتادة بالمغرب، وتواريخ العطل الدينية تقديرية إلى أن تعلنها السلطة المختصة (docs/open-questions.md)",
+    "holidays": [
+      { "date": "2026-08-14", "name": "ذكرى استرجاع إقليم وادي الذهب", "uncertain": false },
+      { "date": "2026-08-20", "name": "ذكرى ثورة الملك والشعب", "uncertain": false },
+      { "date": "2026-08-21", "name": "عيد الشباب", "uncertain": false },
+      { "date": "2026-08-26", "name": "ذكرى المولد النبوي", "uncertain": true },
+      { "date": "2026-08-27", "name": "ذكرى المولد النبوي", "uncertain": true },
+      { "date": "2026-11-06", "name": "ذكرى المسيرة الخضراء", "uncertain": false },
+      { "date": "2026-11-18", "name": "عيد الاستقلال", "uncertain": false },
+      { "date": "2027-01-01", "name": "فاتح السنة الميلادية", "uncertain": false },
+      { "date": "2027-01-11", "name": "ذكرى تقديم وثيقة الاستقلال", "uncertain": false },
+      { "date": "2027-01-14", "name": "رأس السنة الأمازيغية", "uncertain": false },
+      { "date": "2027-03-10", "name": "عيد الفطر", "uncertain": true },
+      { "date": "2027-03-11", "name": "عيد الفطر", "uncertain": true },
+      { "date": "2027-05-01", "name": "عيد الشغل", "uncertain": false },
+      { "date": "2027-05-17", "name": "عيد الأضحى", "uncertain": true },
+      { "date": "2027-05-18", "name": "عيد الأضحى", "uncertain": true },
+      { "date": "2027-06-07", "name": "فاتح محرم", "uncertain": true },
+      { "date": "2027-07-30", "name": "عيد العرش", "uncertain": false },
+      { "date": "2027-08-14", "name": "ذكرى استرجاع إقليم وادي الذهب", "uncertain": false },
+      { "date": "2027-08-16", "name": "ذكرى المولد النبوي", "uncertain": true },
+      { "date": "2027-08-17", "name": "ذكرى المولد النبوي", "uncertain": true },
+      { "date": "2027-08-20", "name": "ذكرى ثورة الملك والشعب", "uncertain": false },
+      { "date": "2027-08-21", "name": "عيد الشباب", "uncertain": false },
+      { "date": "2027-11-06", "name": "ذكرى المسيرة الخضراء", "uncertain": false },
+      { "date": "2027-11-18", "name": "عيد الاستقلال", "uncertain": false }
+    ]
+  }
+]

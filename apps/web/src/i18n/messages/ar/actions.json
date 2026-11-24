@@ -29,9 +29,6 @@
   "actions.admin.accounts.reissue-activation.label": "إعادة إرسال رابط التفعيل",
   "actions.admin.accounts.reissue-activation.effect": "يرسل رابط تفعيل جديد صالح لأربع وعشرين ساعة، ويبطل الرابط السابق.",
   "actions.admin.accounts.reissue-activation.notified": "صاحب الحساب.",
-  "actions.case.content.view.label": "الاطلاع على الملف",
-  "actions.case.content.view.effect": "يعرض مضمون الملف لمن له صفة فيه.",
-  "actions.case.content.view.notified": "لا أحد.",
   "actions.demo.accounts.list.label": "الاطلاع على حسابات العرض",
   "actions.demo.accounts.list.effect": "تعرض حسابات العرض بصفاتها.",
   "actions.demo.accounts.list.notified": "لا أحد.",
@@ -43,5 +40,8 @@
   "actions.demo.outbox.view.notified": "لا أحد.",
   "actions.basis.articleSeparator": " و",
   "actions.basis.articles.two": "المادتان {articles} من القانون رقم 58.25",
-  "actions.basis.articles.many": "المواد {articles} من القانون رقم 58.25"
+  "actions.basis.articles.many": "المواد {articles} من القانون رقم 58.25",
+  "actions.case.view.label": "الاطلاع على الملف",
+  "actions.events.chain-status.view.label": "حالة سلسلة سجل الأحداث",
+  "actions.environment.view.label": "مكونات بيئة العرض"
 }

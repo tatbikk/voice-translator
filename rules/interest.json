@@ -1,0 +1,9 @@
+[
+  {
+    "version": "2026-08-23.1",
+    "validFrom": "2026-08-23",
+    "validTo": null,
+    "source": "لا يحدد القانون رقم 58.25 ولا الدراسة سعر الفائدة القانونية؛ قيمة مؤقتة تضبطها الإدارة (docs/open-questions.md)",
+    "rate": { "value": 300, "uncertain": true, "articles": [] }
+  }
+]

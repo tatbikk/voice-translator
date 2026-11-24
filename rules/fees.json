@@ -1,0 +1,19 @@
+[
+  {
+    "version": "2026-08-23.1",
+    "validFrom": "2026-08-23",
+    "validTo": null,
+    "source": "الدراسة، «المرحلة الأولى»: تعريفة الفصل 24 من الملحق المتعلق بالمصاريف القضائية، ورسم المرافعة في الفصل 65؛ و«المرحلة العاشرة» لزيادة رسم الاستئناف. المادة 619 من القانون رقم 58.25 تحيل على القانون المتعلق بالرسوم والمصاريف القضائية",
+    "schedule": {
+      "bands": [
+        { "upToCents": 500000, "rateBasisPoints": 400, "surchargeCents": 0, "uncertain": false },
+        { "upToCents": 2000000, "rateBasisPoints": 250, "surchargeCents": 0, "uncertain": false },
+        { "upToCents": null, "rateBasisPoints": 100, "surchargeCents": 30000, "uncertain": true }
+      ],
+      "minimumBase": { "value": 100000, "uncertain": true, "articles": [619] },
+      "pleadingFee": { "value": 1000, "uncertain": false, "articles": [619] },
+      "outsideBase": ["LEGAL_INTEREST", "PROVISIONAL_ENFORCEMENT", "COSTS"],
+      "appealSurcharge": { "value": 1000, "uncertain": true, "articles": [619] }
+    }
+  }
+]

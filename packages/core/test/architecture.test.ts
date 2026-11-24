@@ -1,6 +1,6 @@
 // The core knows neither the web nor the database (contract §2 rule 1).
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const srcDir = join(import.meta.dirname, '..', 'src');
@@ -25,7 +25,8 @@ describe('core package boundaries', () => {
       const text = readFileSync(file, 'utf8');
       for (const match of text.matchAll(IMPORT)) {
         const specifier = match[1] ?? match[2] ?? match[3] ?? '';
-        const allowed = specifier === 'node:crypto' || specifier === 'zod' || specifier.startsWith('./');
+        const ownModule = specifier.startsWith('.') && resolve(dirname(file), specifier).startsWith(srcDir);
+        const allowed = specifier === 'node:crypto' || specifier === 'zod' || ownModule;
         expect(allowed, `${file}: ${specifier}`).toBe(true);
       }
     });

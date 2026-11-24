@@ -4,6 +4,9 @@
 // the rest of the code: who may act, under which condition, at which level, on
 // which legal basis, and what the confirmation window says.
 import type { ConditionCode } from './conditions';
+import type { Holder } from './procedure/conditions';
+import { PROCEDURE_ACTIONS, type ProcedureAction } from './procedure/transitions';
+import { ruleInForce } from './rules/in-force';
 import { lawArticles, PLATFORM_ADMINISTRATION, type LegalBasis } from './legal-basis';
 import { ROLES, type RoleCode } from './roles';
 import type { Resource, ResourceKind } from './subject';
@@ -20,13 +23,18 @@ export const ACTION_CODES = [
   'admin.accounts.list',
   'admin.accounts.create',
   'admin.accounts.reissue-activation',
-  'case.content.view',
+  'case.view',
+  'events.chain-status.view',
+  'environment.view',
   'demo.accounts.list',
   'demo.account.switch',
   'demo.outbox.view',
 ] as const;
 
-export type ActionCode = (typeof ACTION_CODES)[number];
+type BaseActionCode = (typeof ACTION_CODES)[number];
+
+/** Every action: the platform actions above and the procedure's (procedure/transitions.ts). */
+export type ActionCode = BaseActionCode | `case.${string}` | `envelope.${string}` | `filing.${string}` | `litigant.${string}`;
 
 /** Who may hold the action, before conditions are evaluated. */
 export type ActionHolders =
@@ -43,13 +51,19 @@ export interface ActionRule {
   readonly labelKey: string;
   readonly effectKey: string;
   readonly notifiedKey: string;
-  readonly legalBasis: LegalBasis | ((resource: Resource | undefined) => LegalBasis);
+  readonly legalBasis: LegalBasis | ((resource: Resource | undefined, onDay?: string) => LegalBasis);
   /** true for every state-changing action shown as a button: it opens the confirmation window */
   readonly confirm: boolean;
   readonly holders: ActionHolders;
   readonly requires: readonly ConditionCode[];
   /** the kind of resource the action applies to, or null for actions without resource */
   readonly resourceKind: ResourceKind | null;
+  /** false for an access that is not a button of the action bar (opening the case page) */
+  readonly button: boolean;
+  /** the procedural transition, for the actions of the procedure */
+  readonly procedure?: ProcedureAction;
+  /** for access actions to a case: who may hold them, and in which relation with the file */
+  readonly caseHolders?: readonly Holder[];
 }
 
 /**
@@ -57,20 +71,50 @@ export interface ActionRule {
  * internal users of the information system (art. 624), professional accounts
  * (art. 625), public-law persons (art. 626), private-law persons (art. 627).
  */
-export function accountCreationBasis(resource: Resource | undefined): LegalBasis {
+export const ACCOUNT_CREATION_BASIS = [
+  {
+    version: '2026-08-23.1',
+    /** entry into force of Law 58.25: six months after its publication on 23 February 2026 (art. 643) */
+    validFrom: '2026-08-23',
+    validTo: null,
+    articles: { INTERNAL: [624], PROFESSIONAL: [625], PUBLIC_PERSON: [626], PRIVATE_PERSON: [627] },
+  },
+] as const satisfies readonly {
+  version: string;
+  validFrom: string;
+  validTo: string | null;
+  articles: Readonly<Record<string, readonly number[]>>;
+}[];
+
+export function accountCreationBasis(resource: Resource | undefined, onDay?: string): LegalBasis {
   const role = resource?.kind === 'account-draft' || resource?.kind === 'account' ? resource.role : null;
   if (!role) return PLATFORM_ADMINISTRATION;
-  switch (ROLES[role].accountBasis) {
-    case 'INTERNAL':
-      return lawArticles(624);
-    case 'PROFESSIONAL':
-      return lawArticles(625);
-    case 'PUBLIC_PERSON':
-      return lawArticles(626);
-    case 'PRIVATE_PERSON':
-      return lawArticles(627);
-  }
+  // The table in force on the day of the act; before the law's entry into
+  // force, the first table (accounts are created to prepare it).
+  const table = (onDay ? ruleInForce(ACCOUNT_CREATION_BASIS, onDay) : null) ?? ACCOUNT_CREATION_BASIS[0];
+  return lawArticles(...table.articles[ROLES[role].accountBasis]);
 }
+
+const JUDGES = ['JUDGE_RAPPORTEUR', 'JUDGE_IN_CHARGE', 'COUNSELLOR_RAPPORTEUR'] as const;
+const CLERKS = [
+  'CLERK_REGISTRATION',
+  'CLERK_CASHIER',
+  'CLERK_NOTIFICATION',
+  'CLERK_HEARING',
+  'CLERK_COPIES_ENFORCEMENT',
+  'CHIEF_CLERK',
+] as const;
+
+/** Who may open a case file (interface book): each role in its relation with the file. */
+export const CASE_VIEW_HOLDERS: readonly Holder[] = [
+  { roles: ['LAWYER'], relations: ['COUNSEL'] },
+  { roles: JUDGES, relations: ['RAPPORTEUR'] },
+  { roles: [...JUDGES, 'PANEL_PRESIDENT', 'PANEL_MEMBER'], relations: ['PANEL'] },
+  { roles: ['COURT_PRESIDENT', 'ENFORCEMENT_JUDGE', ...CLERKS], relations: ['COURT_STAFF'] },
+  { roles: ['PUBLIC_PROSECUTOR'], relations: ['PROSECUTION'] },
+  { roles: ['LITIGANT'], relations: ['LITIGANT'] },
+  { roles: ['PUBLIC_ADMIN_SUPERVISOR', 'PUBLIC_ADMIN_LITIGATION', 'STATE_JUDICIAL_AGENT'], relations: ['ADMIN_PARTY'] },
+];
 
 const keys = (code: ActionCode) => ({
   labelKey: `actions.${code}.label`,
@@ -80,10 +124,10 @@ const keys = (code: ActionCode) => ({
 
 const rule = (
   code: ActionCode,
-  definition: Omit<ActionRule, 'code' | 'labelKey' | 'effectKey' | 'notifiedKey'>,
-): ActionRule => ({ code, ...keys(code), ...definition });
+  definition: Omit<ActionRule, 'code' | 'labelKey' | 'effectKey' | 'notifiedKey' | 'button'> & { button?: boolean },
+): ActionRule => ({ code, ...keys(code), button: true, ...definition });
 
-export const ACTIONS: Readonly<Record<ActionCode, ActionRule>> = {
+const BASE_ACTIONS: Readonly<Record<BaseActionCode, ActionRule>> = {
   'dashboard.view': rule('dashboard.view', {
     level: 'SCRIPT',
     legalBasis: PLATFORM_ADMINISTRATION,
@@ -148,14 +192,35 @@ export const ACTIONS: Readonly<Record<ActionCode, ActionRule>> = {
     requires: ['TARGET_NOT_ACTIVATED', 'TARGET_NOT_DISABLED'],
     resourceKind: 'account',
   }),
-  'case.content.view': rule('case.content.view', {
-    // Nobody yet: the relation between users and case files arrives in Phase 1.
+  'case.view': rule('case.view', {
+    // The case page: whoever has a relation with the file (interface book,
+    // «العناصر المشتركة»), never the system administration (rule 8 of the prompt).
+    level: 'SCRIPT',
+    legalBasis: lawArticles(624, 630),
+    confirm: false,
+    button: false,
+    holders: CASE_VIEW_HOLDERS.flatMap((h) => h.roles),
+    caseHolders: CASE_VIEW_HOLDERS,
+    requires: [],
+    resourceKind: 'case',
+  }),
+  'events.chain-status.view': rule('events.chain-status.view', {
     level: 'SCRIPT',
     legalBasis: PLATFORM_ADMINISTRATION,
     confirm: false,
-    holders: [],
-    requires: ['SUBJECT_RELATED_TO_CASE'],
-    resourceKind: 'case',
+    button: false,
+    holders: ['SYSTEM_ADMIN'],
+    requires: [],
+    resourceKind: null,
+  }),
+  'environment.view': rule('environment.view', {
+    level: 'SCRIPT',
+    legalBasis: PLATFORM_ADMINISTRATION,
+    confirm: false,
+    button: false,
+    holders: 'ANY_VISITOR',
+    requires: ['DEMO_MODE'],
+    resourceKind: null,
   }),
   'demo.accounts.list': rule('demo.accounts.list', {
     level: 'SCRIPT',
@@ -183,10 +248,32 @@ export const ACTIONS: Readonly<Record<ActionCode, ActionRule>> = {
   }),
 };
 
-export function isActionCode(value: unknown): value is ActionCode {
-  return typeof value === 'string' && (ACTION_CODES as readonly string[]).includes(value);
+function procedureRule(action: ProcedureAction): ActionRule {
+  const code = action.code as ActionCode;
+  return {
+    code,
+    ...keys(code),
+    level: action.level,
+    legalBasis: lawArticles(...action.articles),
+    confirm: action.changesState,
+    button: true,
+    holders: [...new Set(action.holders.flatMap((h) => h.roles))],
+    requires: [],
+    resourceKind: action.resource,
+    procedure: action,
+  };
 }
 
-export function resolveLegalBasis(rule: ActionRule, resource?: Resource): LegalBasis {
-  return typeof rule.legalBasis === 'function' ? rule.legalBasis(resource) : rule.legalBasis;
+/** The whole action table: platform actions, then the procedure's. */
+export const ACTIONS: Readonly<Record<BaseActionCode, ActionRule>> & Readonly<Partial<Record<string, ActionRule>>> = Object.freeze({
+  ...BASE_ACTIONS,
+  ...Object.fromEntries(PROCEDURE_ACTIONS.map((a) => [a.code, procedureRule(a)])),
+});
+
+export function isActionCode(value: unknown): value is ActionCode {
+  return typeof value === 'string' && Object.hasOwn(ACTIONS, value);
+}
+
+export function resolveLegalBasis(rule: ActionRule, resource?: Resource, onDay?: string): LegalBasis {
+  return typeof rule.legalBasis === 'function' ? rule.legalBasis(resource, onDay) : rule.legalBasis;
 }
