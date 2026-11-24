@@ -1,12 +1,26 @@
 // Bundles the worker and the command-line tools into dist-server/*.mjs.
-// ESM output (the generated Prisma client uses import.meta.url), every package
-// kept external (pg uses dynamic require; @node-rs/argon2 is a native addon),
-// and "server-only" replaced by a shim because these entry points run in plain
+// ESM output (the generated Prisma client uses import.meta.url), installed
+// packages kept external (pg uses dynamic require; @node-rs/argon2 is a native
+// addon), the workspace core bundled, and "server-only" replaced by a shim because these entry points run in plain
 // Node, not inside Next.js.
 import { build } from 'esbuild';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+
+// Every installed package stays external, except the workspace core package,
+// which is TypeScript source and must be bundled.
+const manifests = ['../package.json', '../../../package.json'].map((p) =>
+  JSON.parse(readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8')),
+);
+const external = [
+  ...new Set(
+    manifests.flatMap((m) => [...Object.keys(m.dependencies ?? {}), ...Object.keys(m.devDependencies ?? {})]),
+  ),
+]
+  .filter((name) => name !== '@mahkama/core')
+  .flatMap((name) => [name, `${name}/*`]);
 
 const entryPoints = {
   worker: 'src/worker/main.ts',
@@ -14,6 +28,7 @@ const entryPoints = {
   'verify-events': 'src/cli/verify-events.ts',
   'boot-check': 'src/cli/boot-check.ts',
   'db-roles': 'src/cli/db-roles.ts',
+  release: 'src/cli/release.ts',
 };
 
 await build({
@@ -25,7 +40,7 @@ await build({
   format: 'esm',
   platform: 'node',
   target: 'node22',
-  packages: 'external',
+  external,
   alias: {
     'server-only': './src/server/shims/server-only.ts',
     '@': './src',

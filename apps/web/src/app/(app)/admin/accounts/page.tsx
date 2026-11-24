@@ -1,0 +1,107 @@
+import { ACTIONS, resolveLegalBasis, roleLabelKey } from '@mahkama/core';
+import { dictionary } from '@/i18n/dictionary';
+import { translator } from '@/i18n/translate';
+import { ReissueActivationButton } from '@/components/forms/ReissueActivationButton';
+import { ButtonLink } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Frame } from '@/components/shell/Frames';
+import { legalBasisText } from '@/components/shell/legal-basis-text';
+import { listAccounts } from '@/server/accounts/service';
+import { requirePage } from '@/server/permissions/guard';
+
+// «الحسابات» (system administrator).
+export default async function AccountsPage() {
+  const context = await requirePage('admin.accounts', 'admin.accounts.list');
+  const t = translator(context.locale);
+  const accounts = await listAccounts();
+  const rule = ACTIONS['admin.accounts.reissue-activation'];
+  const messages = dictionary(context.locale, ['errors.']);
+  return (
+    <Frame context={context}>
+      <PageHeader title={t('screens.admin-accounts')} intro={t('admin.accounts.intro')}>
+        <p className="mt-4">
+          <ButtonLink href="/admin/accounts/new" variant="primary">
+            {t('admin.accounts.newLink')}
+          </ButtonLink>
+        </p>
+      </PageHeader>
+      {accounts.length === 0 ? (
+        <EmptyState text={t('admin.accounts.empty')} />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse border border-line bg-paper">
+            <caption className="sr-only">{t('screens.admin-accounts')}</caption>
+            <thead>
+              <tr className="border-b border-line bg-ink-50">
+                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.name')}</th>
+                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.email')}</th>
+                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.roles')}</th>
+                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((a) => {
+                const firstRole = (a.roles[0]?.role ?? null);
+                const basis = legalBasisText(
+                  t,
+                  resolveLegalBasis(rule, { kind: 'account', userId: a.id, isDemo: a.isDemo, activated: a.activated, role: firstRole }),
+                );
+                return (
+                  <tr key={a.id} className="border-b border-line align-top">
+                    <td className="px-4 py-3">
+                      {a.fullName}
+                      {a.isDemo ? <span className="ms-2 text-sm text-text-muted">{t('admin.accounts.demo')}</span> : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <bdi dir="ltr">{a.email}</bdi>
+                    </td>
+                    <td className="px-4 py-3">
+                      <ul>
+                        {a.roles.map((r, i) => (
+                          <li key={`${r.role}-${String(i)}`}>
+                            {r.courtName
+                              ? t('admin.accounts.roleWithCourt', { role: t(roleLabelKey(r.role, r.courtDegree)), court: r.courtName })
+                              : t(roleLabelKey(r.role, r.courtDegree))}
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="px-4 py-3">
+                      {a.disabled
+                        ? t('admin.accounts.status.disabled')
+                        : a.activated
+                          ? t('admin.accounts.status.active')
+                          : t('admin.accounts.status.pending')}
+                      {!a.activated && !a.disabled ? (
+                        <div className="mt-2">
+                          <ReissueActivationButton
+                            userId={a.id}
+                            label={t(rule.labelKey)}
+                            doneText={t('admin.accounts.reissued')}
+                            messages={messages}
+                            lines={{
+                              title: t('actions.confirm.title'),
+                              effectLabel: t('actions.confirm.effect'),
+                              effect: t(rule.effectKey),
+                              notifiedLabel: t('actions.confirm.notified'),
+                              notified: t(rule.notifiedKey),
+                              basisLabel: t('actions.confirm.legalBasis'),
+                              basis,
+                              confirm: t('common.confirm'),
+                              cancel: t('common.cancel'),
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Frame>
+  );
+}

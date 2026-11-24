@@ -1,0 +1,21 @@
+{
+  "demo.tools": "أدوات العرض",
+  "demo.accountSwitcher": "مبدل الحسابات",
+  "demo.demoAccounts": "حسابات العرض",
+  "demo.chooseAccount": "حساب من حسابات العرض",
+  "demo.switch": "الانتقال إلى الحساب",
+  "demo.accountOption": "{role}، {name}",
+  "demo.accountOptionCourt": "{role}، {name}، {court}",
+  "screens.demo-outbox": "صندوق الرسائل الصادرة",
+  "demo.outbox.intro": "لا يرسل شيء إلى خارج المنصة في بيئة العرض. تعرض هنا الرسائل النصية والبريد الإلكتروني بمرسلها ومتلقيها ونصها وساعتها. والرسالة إخبار وليست تبليغا.",
+  "demo.outbox.scope": "تعرض رسائل حسابات العرض لكل زائر، ولا تعرض رسائل غيرها إلا لجلسة العمل التي طلبتها.",
+  "demo.outbox.columns.channel": "القناة",
+  "demo.outbox.columns.sender": "المرسل",
+  "demo.outbox.columns.recipient": "المتلقي",
+  "demo.outbox.columns.body": "النص",
+  "demo.outbox.columns.time": "الساعة",
+  "demo.outbox.channel.SMS": "رسالة نصية",
+  "demo.outbox.channel.EMAIL": "بريد إلكتروني",
+  "demo.outbox.empty": "لا توجد رسائل.",
+  "demo.outbox.open": "صندوق الرسائل الصادرة"
+}

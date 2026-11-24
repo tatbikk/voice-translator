@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { alias } from './vitest.shared';
+import { alias } from './vitest.shared.ts';
 
 // Unit tests: no database, no network.
 export default defineConfig({

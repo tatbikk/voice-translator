@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+
+/*
+  Visual identity of «منصة المحكمة الرقمية»: restrained, institutional.
+  One calm ink-blue family with neutrals; red only for an elapsed time limit and
+  orange only for an approaching one; naskh for headings and documents, a plain
+  sans for the interface; wide whitespace and hairline separators. No gradient,
+  no decorative image, no coloured icon. Logical properties only (RTL first).
+*/
+
+@theme {
+  --color-ink-950: #0f1f2b;
+  --color-ink-900: #16293a;
+  --color-ink-800: #1f3a4d;
+  --color-ink-700: #2b4d64;
+  --color-ink-600: #3d6481;
+  --color-ink-100: #e6edf2;
+  --color-ink-50: #f3f6f8;
+
+  --color-paper: #ffffff;
+  --color-canvas: #f7f7f5;
+  --color-line: #d9dcdf;
+  --color-line-strong: #a9afb5;
+  --color-text: #1d2429;
+  --color-text-muted: #4f5a63;
+
+  --color-elapsed: #a4161a;
+  --color-elapsed-bg: #fbeceb;
+  --color-approaching: #9a4a00;
+  --color-approaching-bg: #fdf1e4;
+  --color-success: #1e5e3b;
+  --color-focus: #1f6fb2;
+
+  --font-sans: 'IBM Plex Sans Arabic', 'Noto Sans Tifinagh', system-ui, sans-serif;
+  --font-naskh: 'Noto Naskh Arabic Variable', 'Noto Naskh Arabic', 'IBM Plex Sans Arabic', serif;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-canvas);
+    font-size: 100%;
+    line-height: 1.7;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Reading-ease tool: three text sizes and a high-contrast mode. */
+  html[data-text-size='1'] {
+    font-size: 112.5%;
+  }
+  html[data-text-size='2'] {
+    font-size: 125%;
+  }
+  html[data-contrast='1'] {
+    --color-canvas: #ffffff;
+    --color-text: #000000;
+    --color-text-muted: #1d2429;
+    --color-line: #5f666c;
+    --color-line-strong: #1d2429;
+    --color-ink-800: #0f1f2b;
+  }
+
+  html[lang='zgh-Tfng'] {
+    font-family: 'Noto Sans Tifinagh', var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-naskh);
+    color: var(--color-ink-900);
+    line-height: 1.5;
+    font-weight: 700;
+  }
+
+  a {
+    color: var(--color-ink-700);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+  }
+}
+
+@layer components {
+  .ltr-run {
+    direction: ltr;
+    unicode-bidi: isolate;
+    display: inline-block;
+  }
+}

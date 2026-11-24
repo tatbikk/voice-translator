@@ -35,6 +35,7 @@ export const SECURITY_POLICY = {
     authenticatedPerSession: { max: 60, windowMs: MINUTE },
   },
   demoEndpoints: { perClient: { max: 60, windowMs: MINUTE } },
+  preferencesPerClient: { max: 30, windowMs: 15 * MINUTE },
   body: { maxBytes: 16 * 1024 },
   fields: { passwordMin: 12, passwordMax: 128, email: 254, name: 120, phone: 32, requestReferenceMin: 8, requestReferenceMax: 64 },
   argon2: { concurrency: 4, memoryCost: 19456, timeCost: 2, parallelism: 1, outputLen: 32 },

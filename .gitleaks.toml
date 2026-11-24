@@ -1,0 +1,13 @@
+# gitleaks configuration: the default rules, with an allow-list limited to files
+# that cannot hold a secret of this project.
+title = "mahkama"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reference PDF of the Official Gazette and lockfile integrity hashes"
+paths = [
+  '''^docs/sources/.*\.pdf$''',
+  '''^package-lock\.json$''',
+]

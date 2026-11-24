@@ -1,0 +1,8 @@
+{
+  "components.messaging.name": "الرسائل النصية والبريد الإلكتروني",
+  "components.messaging.description": "تسلم الرسائل إلى «صندوق الرسائل الصادرة» بدل إرسالها إلى خارج المنصة. والرسالة إخبار وليست تبليغا.",
+  "components.messaging.replacement": "مزود رسائل نصية وخادم بريد.",
+  "components.identity.name": "التحقق من الصفة المهنية",
+  "components.identity.description": "يظهر التحقق في الحساب بعبارة «تم التحقق (محاكاة)».",
+  "components.identity.replacement": "منظومة التعريف الرقمي وسجلات الهيئات المهنية."
+}

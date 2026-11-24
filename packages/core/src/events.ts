@@ -91,6 +91,14 @@ export const EVENT_TYPES = {
   },
   'admin.account.activation-reissued': { outcome: 'DONE', details: detailsOf({ userId: id }) },
   'notification.read': { outcome: 'DONE', details: detailsOf({ notificationId: id }) },
+  'preferences.updated': {
+    outcome: 'DONE',
+    details: detailsOf({
+      locale: z.enum(['ar', 'fr', 'zgh']).nullable(),
+      readingSize: z.number().int().min(0).max(2).nullable(),
+      readingContrast: z.number().int().min(0).max(1).nullable(),
+    }),
+  },
   'demo.account.switched': { outcome: 'DONE', details: detailsOf({ fromUserId: id.nullable(), toUserId: id }) },
   'demo.outbox.viewed': { outcome: 'DONE', details: detailsOf({ count }) },
   'demo.data.seeded': { outcome: 'DONE', details: detailsOf({ users: count, caseFiles: count }) },

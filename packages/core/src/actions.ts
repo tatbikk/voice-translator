@@ -21,6 +21,7 @@ export const ACTION_CODES = [
   'admin.accounts.create',
   'admin.accounts.reissue-activation',
   'case.content.view',
+  'demo.accounts.list',
   'demo.account.switch',
   'demo.outbox.view',
 ] as const;
@@ -155,6 +156,14 @@ export const ACTIONS: Readonly<Record<ActionCode, ActionRule>> = {
     holders: [],
     requires: ['SUBJECT_RELATED_TO_CASE'],
     resourceKind: 'case',
+  }),
+  'demo.accounts.list': rule('demo.accounts.list', {
+    level: 'SCRIPT',
+    legalBasis: PLATFORM_ADMINISTRATION,
+    confirm: false,
+    holders: 'ANY_VISITOR',
+    requires: ['DEMO_TOOLS_ENABLED'],
+    resourceKind: null,
   }),
   'demo.account.switch': rule('demo.account.switch', {
     level: 'SCRIPT',

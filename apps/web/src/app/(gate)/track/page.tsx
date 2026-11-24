@@ -1,0 +1,90 @@
+import { formatMoroccoDate, formatMoroccoTime, parseCaseNumberParts } from '@mahkama/core';
+import { translator } from '@/i18n/translate';
+import { Button } from '@/components/ui/Button';
+import { Field, SelectInput, TextInput } from '@/components/ui/Field';
+import { Notice } from '@/components/ui/Notice';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Frame } from '@/components/shell/Frames';
+import { requireGate } from '@/server/permissions/guard';
+import { caseStatus, publicCourts } from '@/server/public/service';
+
+type Params = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
+
+// «تتبع الملف»: by court, number, code and year; answers with the procedural
+// state and the next hearing only. A plain GET form: it works without script.
+export default async function TrackPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const context = await requireGate('track');
+  const t = translator(context.locale);
+  const params = await searchParams;
+  const courts = await publicCourts();
+  const query = { courtId: one(params.courtId), number: one(params.number), code: one(params.code), year: one(params.year) };
+  const submitted = query.courtId !== '' || query.number !== '';
+
+  let outcome: { kind: 'none' } | { kind: 'error'; text: string } | { kind: 'found'; status: string; next: Date | null } = { kind: 'none' };
+  if (submitted) {
+    const number = parseCaseNumberParts(query.number, query.code, query.year);
+    const court = courts.find((c) => c.id === query.courtId);
+    if (!number || !court) {
+      outcome = { kind: 'error', text: t('errors.INVALID_INPUT') };
+    } else {
+      const result = await caseStatus(context.clientIdHash, court.id, number);
+      if (result.kind === 'throttled') outcome = { kind: 'error', text: t('errors.TOO_MANY_REQUESTS') };
+      else if (result.kind === 'not-found') outcome = { kind: 'error', text: t('errors.CASE_NOT_FOUND') };
+      else outcome = { kind: 'found', status: t(`states.${result.value.status}`), next: result.value.nextHearingAt };
+    }
+  }
+
+  return (
+    <Frame context={context}>
+      <PageHeader title={t('screens.track')} intro={t('track.intro')} />
+      <form method="get" action="/track" className="max-w-2xl">
+        <Field id="courtId" label={t('terms.court')}>
+          <SelectInput id="courtId" defaultValue={query.courtId} required>
+            <option value="" disabled>
+              {t('terms.court')}
+            </option>
+            {courts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <p className="mb-3 text-sm text-text-muted">{t('track.hint')}</p>
+        <div className="grid grid-cols-3 gap-3" dir="ltr">
+          <Field id="number" label={t('terms.caseNumber')}>
+            <TextInput id="number" inputMode="numeric" defaultValue={query.number} maxLength={6} required />
+          </Field>
+          <Field id="code" label={t('terms.caseCode')}>
+            <TextInput id="code" inputMode="numeric" defaultValue={query.code} maxLength={4} required />
+          </Field>
+          <Field id="year" label={t('terms.caseYear')}>
+            <TextInput id="year" inputMode="numeric" defaultValue={query.year} maxLength={4} required />
+          </Field>
+        </div>
+        <Button type="submit">{t('track.submit')}</Button>
+      </form>
+      <div className="mt-8 max-w-2xl" aria-live="polite">
+        {outcome.kind === 'error' ? <Notice tone="warning">{outcome.text}</Notice> : null}
+        {outcome.kind === 'found' ? (
+          <section aria-labelledby="track-result" className="border border-line bg-paper px-5 py-4">
+            <h2 id="track-result" className="text-lg">
+              {t('track.result.title')}
+            </h2>
+            <dl className="mt-3 grid gap-2 sm:grid-cols-[12rem_1fr]">
+              <dt className="font-semibold">{t('track.result.status')}</dt>
+              <dd>{outcome.status}</dd>
+              <dt className="font-semibold">{t('track.result.nextHearing')}</dt>
+              <dd>
+                {outcome.next
+                  ? t('common.dateTime', { date: formatMoroccoDate(outcome.next), time: formatMoroccoTime(outcome.next) })
+                  : t('track.result.noHearing')}
+              </dd>
+            </dl>
+          </section>
+        ) : null}
+      </div>
+    </Frame>
+  );
+}

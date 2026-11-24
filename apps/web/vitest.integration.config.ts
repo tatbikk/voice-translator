@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { alias } from './vitest.shared';
+import { alias } from './vitest.shared.ts';
 
 // Integration tests against the PostgreSQL test database (mahkama_test).
 // The global setup recreates the schema; tests share one database, so files run

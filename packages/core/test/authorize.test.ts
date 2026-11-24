@@ -66,6 +66,7 @@ const EXPECTED: Record<ActionCode, readonly RoleCode[] | typeof ALL> = {
   'admin.accounts.create': ['SYSTEM_ADMIN'],
   'admin.accounts.reissue-activation': ['SYSTEM_ADMIN'],
   'case.content.view': [],
+  'demo.accounts.list': ALL,
   'demo.account.switch': ALL,
   'demo.outbox.view': ALL,
 };
@@ -156,7 +157,7 @@ describe('resource conditions', () => {
 
 describe('demo tools', () => {
   it('do not exist in production mode, whoever asks', () => {
-    for (const action of ['demo.account.switch', 'demo.outbox.view'] as const) {
+    for (const action of ['demo.accounts.list', 'demo.account.switch', 'demo.outbox.view'] as const) {
       for (const subject of [anonymous, userSubject('SYSTEM_ADMIN')]) {
         expect(authorize(subject, action, passingResource[action], production)).toEqual({
           allowed: false,

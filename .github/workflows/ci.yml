@@ -1,0 +1,148 @@
+# Continuous integration of «منصة المحكمة الرقمية» (contract §12).
+# Actions are pinned by commit SHA (the tag is in the comment).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  check:
+    name: Lint, types, unit and architecture tests, builds, audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # The build must succeed with an empty environment: no secret is read at build time.
+      - name: Build without demo routes (DEMO_BUILD=false) and check the route manifest
+        run: env -i PATH="$PATH" HOME="$HOME" NEXT_TELEMETRY_DISABLED=1 npm run build -w @mahkama/web
+      - run: npm run check
+      - name: Build with demo routes (DEMO_BUILD=true)
+        run: env -i PATH="$PATH" HOME="$HOME" NEXT_TELEMETRY_DISABLED=1 DEMO_BUILD=true npm run build -w @mahkama/web
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+  integration:
+    name: Integration tests (PostgreSQL 18)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          # Throwaway superuser of a disposable CI container, not a secret.
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Owner role, databases and per-run secrets
+        run: bash .github/scripts/ci-database.sh mahkama_test http://localhost:3100
+      - run: npm run test:int
+
+  e2e:
+    name: End-to-end tests (Playwright, desktop and phone)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - name: Owner role, databases and per-run secrets
+        run: bash .github/scripts/ci-database.sh mahkama_e2e http://localhost:3100
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7
+
+  image:
+    name: Container image and health check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the demo image
+        run: docker build --build-arg DEMO_BUILD=true -t mahkama:ci .
+      - name: Owner role, databases and per-run secrets
+        run: bash .github/scripts/ci-database.sh mahkama_dev http://localhost:3000
+      - name: Release step, then /healthz
+        run: |
+          env | grep -E '^(APP_MODE|DEMO_TOOLS|AI_EXTERNAL_ALLOWED|APP_URL|DATABASE_URL|MIGRATION_DATABASE_URL|APP_DB_PASSWORD|SESSION_SECRET|SECRETS_MASTER_KEY|ACCESS_CODE|SEED_DEMO_PASSWORD)=' > "$RUNNER_TEMP/app.env"
+          docker run --rm --network host --env-file "$RUNNER_TEMP/app.env" mahkama:ci node dist-server/release.mjs
+          docker run -d --name web --network host --env-file "$RUNNER_TEMP/app.env" mahkama:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/healthz; then exit 0; fi
+            sleep 2
+          done
+          docker logs web
+          exit 1
+
+  security:
+    name: Semgrep and secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Semgrep
+        run: |
+          python3 -m pip install --user semgrep==1.185.0
+          ~/.local/bin/semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/secrets --config p/javascript
+      - name: gitleaks (full history)
+        run: bash .github/scripts/gitleaks.sh

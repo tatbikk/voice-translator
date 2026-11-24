@@ -1,0 +1,35 @@
+# Daily security checks on the default branch (contract §12): dependency audit,
+# Semgrep and a full-history secret scan, so that a new advisory or rule is seen
+# even on days without a commit.
+name: Scheduled security checks
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+      - name: Semgrep
+        run: |
+          python3 -m pip install --user semgrep==1.185.0
+          ~/.local/bin/semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/secrets --config p/javascript
+      - name: gitleaks (full history)
+        run: bash .github/scripts/gitleaks.sh

@@ -29,7 +29,8 @@ export type Resource =
       readonly activated: boolean;
       readonly role: RoleCode | null;
     }
-  | { readonly kind: 'account-draft'; readonly role: RoleCode }
+  /** the role is null when the request names no known role (the body is validated after authorization) */
+  | { readonly kind: 'account-draft'; readonly role: RoleCode | null }
   | { readonly kind: 'demo-account'; readonly userId: string; readonly isDemo: boolean }
   | { readonly kind: 'case'; readonly caseFileId: string; readonly relatedUserIds: readonly string[] };
 

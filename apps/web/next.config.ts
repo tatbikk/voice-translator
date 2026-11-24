@@ -24,8 +24,8 @@ const nextConfig: NextConfig = {
     DEMO_ROUTES_BUILT: demoBuild ? 'true' : 'false',
   },
   serverExternalPackages: ['@node-rs/argon2', 'pg'],
-  async headers() {
-    return [{ source: '/:path*', headers: staticSecurityHeaders }];
+  headers() {
+    return Promise.resolve([{ source: '/:path*', headers: staticSecurityHeaders }]);
   },
 };
 

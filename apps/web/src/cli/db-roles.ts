@@ -23,6 +23,13 @@ function fail(code: string): never {
   process.exit(1);
 }
 
+/** The single row a query must return. */
+function only<T>(rows: readonly T[]): T {
+  const [row] = rows;
+  if (row === undefined || rows.length !== 1) throw new Error('expected exactly one row');
+  return row;
+}
+
 async function main(): Promise<void> {
   const parsed = schema.safeParse(process.env);
   if (!parsed.success) {
@@ -46,7 +53,7 @@ async function main(): Promise<void> {
         `SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION PASSWORD %L', $1::text, $2::text) AS sql`,
         [runtimeRole, env.APP_DB_PASSWORD],
       );
-      await client.query(create.rows[0]!.sql);
+      await client.query(only(create.rows).sql);
     } else {
       const alter = await client.query<{ sql: string }>(
         // Only a superuser may restate SUPERUSER/REPLICATION, even to "NO": the
@@ -54,10 +61,10 @@ async function main(): Promise<void> {
         `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', $1::text, $2::text) AS sql`,
         [runtimeRole, env.APP_DB_PASSWORD],
       );
-      await client.query(alter.rows[0]!.sql);
+      await client.query(only(alter.rows).sql);
     }
 
-    const db = (await client.query<{ d: string }>('SELECT quote_ident(current_database()) AS d')).rows[0]!.d;
+    const db = only((await client.query<{ d: string }>('SELECT quote_ident(current_database()) AS d')).rows).d;
 
     await client.query('BEGIN');
     await client.query(`GRANT CONNECT ON DATABASE ${db} TO ${ident}`);

@@ -1,0 +1,7 @@
+# Generated code, dependencies and reference material.
+node_modules/
+apps/web/src/generated/
+apps/web/.next/
+apps/web/dist-server/
+docs/sources/
+tools/law-extract/
