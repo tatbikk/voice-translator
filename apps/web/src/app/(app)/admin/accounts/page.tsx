@@ -11,6 +11,7 @@ import { listAccounts } from '@/server/accounts/service';
 import { requirePage } from '@/server/permissions/guard';
 import type { Metadata } from 'next';
 import { screenMetadata } from '@/server/page-metadata';
+import { TABLE } from '@/components/ui/table-style';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.admin-accounts');
 
@@ -33,15 +34,15 @@ export default async function AccountsPage() {
       {accounts.length === 0 ? (
         <EmptyState text={t('admin.accounts.empty')} />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-line bg-paper">
+        <div className={TABLE.wrap}>
+          <table className={TABLE.table}>
             <caption className="sr-only">{t('screens.admin-accounts')}</caption>
             <thead>
-              <tr className="border-b border-line bg-ink-50">
-                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.name')}</th>
-                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.email')}</th>
-                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.roles')}</th>
-                <th scope="col" className="px-4 py-2 text-start">{t('admin.accounts.columns.status')}</th>
+              <tr className={TABLE.headRow}>
+                <th scope="col" className={TABLE.th}>{t('admin.accounts.columns.name')}</th>
+                <th scope="col" className={TABLE.th}>{t('admin.accounts.columns.email')}</th>
+                <th scope="col" className={TABLE.th}>{t('admin.accounts.columns.roles')}</th>
+                <th scope="col" className={TABLE.th}>{t('admin.accounts.columns.status')}</th>
               </tr>
             </thead>
             <tbody>
@@ -61,15 +62,15 @@ export default async function AccountsPage() {
                   demoToolsEnabled: context.demoToolsEnabled,
                 }).allowed;
                 return (
-                  <tr key={a.id} className="border-b border-line align-top">
-                    <td className="px-4 py-3">
+                  <tr key={a.id} className={TABLE.row}>
+                    <td className={TABLE.td}>
                       {a.fullName}
                       {a.isDemo ? <span className="ms-2 text-sm text-text-muted">{t('admin.accounts.demo')}</span> : null}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className={TABLE.td}>
                       <bdi dir="ltr">{a.email}</bdi>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className={TABLE.td}>
                       <ul>
                         {a.roles.map((r, i) => (
                           <li key={`${r.role}-${String(i)}`}>
@@ -80,7 +81,7 @@ export default async function AccountsPage() {
                         ))}
                       </ul>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className={TABLE.td}>
                       {a.disabled
                         ? t('admin.accounts.status.disabled')
                         : a.activated

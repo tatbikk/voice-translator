@@ -15,7 +15,7 @@ export function Notice({ tone = 'info', children, live = false }: { tone?: Tone;
   return (
     <div
       role={tone === 'error' ? 'alert' : live ? 'status' : undefined}
-      className={cx('border-s-4 px-4 py-3 text-base', TONES[tone])}
+      className={cx('rounded-e-md border-s-4 px-4 py-3 text-base leading-relaxed', TONES[tone])}
     >
       {children}
     </div>

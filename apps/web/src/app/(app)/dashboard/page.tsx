@@ -24,9 +24,11 @@ export default async function DashboardPage() {
   const dateTime = (d: Date) => t('common.dateTime', { date: formatMoroccoDate(d), time: formatMoroccoTime(d) });
   return (
     <Frame context={context}>
-      <PageHeader title={t('screens.dashboard')}>
-        <p className="mt-2 text-text-muted">{t('dashboard.roleLine', { role: roleText, space: t(`spaces.${ROLES[subject.role].space}`) })}</p>
-        <p className="mt-1 text-sm text-text-muted">
+      <PageHeader
+        title={t('screens.dashboard')}
+        kicker={t('dashboard.roleLine', { role: roleText, space: t(`spaces.${ROLES[subject.role].space}`) })}
+      >
+        <p className="mt-2 text-sm text-text-muted">
           {data.previousLoginAt
             ? t('dashboard.previousLogin', { date: formatMoroccoDate(data.previousLoginAt), time: formatMoroccoTime(data.previousLoginAt) })
             : t('dashboard.firstLogin')}
@@ -65,6 +67,7 @@ export default async function DashboardPage() {
                   text={notificationText(t, n.templateKey, n.params)}
                   when={<time dateTime={n.createdAt.toISOString()}>{dateTime(n.createdAt)}</time>}
                   read={n.read}
+                  surface="canvas"
                   action={n.targetPath ? <a href={n.targetPath}>{t('notifications.open')}</a> : undefined}
                 />
               </li>

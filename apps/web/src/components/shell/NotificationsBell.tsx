@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiGet } from '@/components/client/api';
+import { NAV_ITEM } from './nav-style';
 
 /**
  * Link to the notifications with the unread count. It refreshes in the
@@ -19,9 +20,15 @@ export function NotificationsBell({ label, initialUnread, unreadTemplate }: { la
     return () => { window.clearInterval(timer); };
   }, []);
   return (
-    <a href="/notifications" className="inline-flex min-h-11 items-center gap-2 px-3 text-text no-underline">
+    <a href="/notifications" className={NAV_ITEM}>
       <span>{label}</span>
-      <span className="min-w-6 rounded-sm border border-line-strong px-1 text-center text-sm tabular-nums" aria-label={unreadTemplate.replace('{count}', String(unread))}>
+      <span
+        className={
+          'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums ' +
+          (unread > 0 ? 'bg-ink-800 text-white' : 'border border-line-strong text-text-muted')
+        }
+        aria-label={unreadTemplate.replace('{count}', String(unread))}
+      >
         {unread}
       </span>
     </a>

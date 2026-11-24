@@ -42,7 +42,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
   return (
     <Frame context={context}>
       <PageHeader title={t('screens.track')} intro={t('track.intro')} />
-      <form method="get" action="/track" className="max-w-2xl">
+      <form method="get" action="/track" className="card max-w-2xl px-5 py-6 sm:px-7">
         <Field id="courtId" label={t('terms.court')}>
           <SelectInput id="courtId" defaultValue={query.courtId} required>
             <option value="" disabled>
@@ -72,14 +72,14 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
       <div className="mt-8 max-w-2xl" aria-live="polite">
         {outcome.kind === 'error' ? <Notice tone="warning">{outcome.text}</Notice> : null}
         {outcome.kind === 'found' ? (
-          <section aria-labelledby="track-result" className="border border-line bg-paper px-5 py-4">
+          <section aria-labelledby="track-result" className="card border-s-4 border-s-ink-800 px-5 py-5 sm:px-7">
             <h2 id="track-result" className="text-lg">
               {t('track.result.title')}
             </h2>
-            <dl className="mt-3 grid gap-2 sm:grid-cols-[12rem_1fr]">
-              <dt className="font-semibold">{t('track.result.status')}</dt>
-              <dd>{outcome.status}</dd>
-              <dt className="font-semibold">{t('track.result.nextHearing')}</dt>
+            <dl className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-[12rem_1fr]">
+              <dt className="text-sm font-semibold text-text-muted">{t('track.result.status')}</dt>
+              <dd className="font-medium text-ink-900">{outcome.status}</dd>
+              <dt className="text-sm font-semibold text-text-muted">{t('track.result.nextHearing')}</dt>
               <dd>
                 {outcome.next
                   ? t('common.dateTime', { date: formatMoroccoDate(outcome.next), time: formatMoroccoTime(outcome.next) })

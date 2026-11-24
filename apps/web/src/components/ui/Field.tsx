@@ -2,8 +2,8 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react
 import { cx } from './cx';
 
 const CONTROL =
-  'block w-full min-h-11 rounded-sm border border-line-strong bg-paper px-3 py-2 text-base text-text ' +
-  'aria-[invalid=true]:border-elapsed';
+  'block w-full min-h-12 rounded border border-line-strong bg-paper px-3 py-2 text-base text-text transition-colors ' +
+  'hover:border-ink-700 focus:border-ink-800 aria-[invalid=true]:border-elapsed';
 
 export function Field({
   id,
@@ -20,7 +20,7 @@ export function Field({
 }) {
   return (
     <div className="mb-5">
-      <label htmlFor={id} className="mb-1 block font-medium">
+      <label htmlFor={id} className="mb-1.5 block font-medium text-ink-900">
         {label}
       </label>
       {hint ? (

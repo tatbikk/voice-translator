@@ -2,6 +2,7 @@
 
 import { DropdownMenu } from 'radix-ui';
 import type { ReactNode } from 'react';
+import { NAV_ITEM } from '@/components/shell/nav-style';
 
 export interface MenuEntry {
   readonly key: string;
@@ -29,7 +30,7 @@ export function Menu({
     <DropdownMenu.Root dir={dir}>
       <DropdownMenu.Trigger
         aria-label={label}
-        className="inline-flex min-h-11 items-center gap-2 rounded-sm border border-transparent px-3 hover:border-line-strong"
+        className={NAV_ITEM}
       >
         {trigger}
       </DropdownMenu.Trigger>
@@ -37,13 +38,13 @@ export function Menu({
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="z-50 min-w-56 border border-line-strong bg-paper py-1 shadow-md"
+          className="z-50 min-w-56 rounded-md border border-line bg-paper py-1 shadow-lg"
         >
-          {header ? <div className="border-b border-line px-4 py-2 text-sm text-text-muted">{header}</div> : null}
+          {header ? <div className="mb-1 border-b border-line px-4 py-2.5 text-sm text-text-muted">{header}</div> : null}
           {entries.map((entry) =>
             entry.href ? (
               <DropdownMenu.Item key={entry.key} asChild>
-                <a href={entry.href} className="block px-4 py-2 text-text no-underline outline-none data-[highlighted]:bg-ink-50">
+                <a href={entry.href} className="block px-4 py-2.5 text-text no-underline outline-none data-[highlighted]:bg-ink-50 data-[highlighted]:text-ink-900">
                   {entry.label}
                 </a>
               </DropdownMenu.Item>
@@ -52,7 +53,7 @@ export function Menu({
                 key={entry.key}
                 onSelect={entry.onSelect}
                 aria-current={entry.current ? 'true' : undefined}
-                className="cursor-pointer px-4 py-2 outline-none data-[highlighted]:bg-ink-50 aria-[current=true]:font-semibold"
+                className="cursor-pointer px-4 py-2.5 outline-none data-[highlighted]:bg-ink-50 data-[highlighted]:text-ink-900 aria-[current=true]:font-semibold aria-[current=true]:text-ink-900"
               >
                 {entry.label}
               </DropdownMenu.Item>

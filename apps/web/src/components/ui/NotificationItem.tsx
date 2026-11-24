@@ -18,6 +18,7 @@ export function NotificationItem({
   read,
   readLabel,
   action,
+  surface = 'paper',
 }: {
   kind: NotificationKind;
   kindLabel: string;
@@ -26,9 +27,13 @@ export function NotificationItem({
   read: boolean;
   readLabel?: string;
   action?: ReactNode;
+  /** the item stands out from what holds it: white on the canvas, tinted inside a white box */
+  surface?: 'paper' | 'canvas';
 }) {
   return (
-    <article className={cx('bg-paper px-4 py-3', KIND_STYLE[kind], !read && 'font-medium')}>
+    <article
+      className={cx('rounded-e-md px-4 py-3', surface === 'canvas' ? 'bg-canvas' : 'bg-paper', KIND_STYLE[kind], !read && 'font-medium')}
+    >
       <p className="text-sm text-text-muted">
         <span className="font-semibold text-ink-800">{kindLabel}</span>
         <span aria-hidden="true"> · </span>

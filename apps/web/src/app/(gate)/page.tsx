@@ -2,6 +2,7 @@ import { SPACES } from '@mahkama/core';
 import { translator } from '@/i18n/translate';
 import { ButtonLink } from '@/components/ui/Button';
 import { Notice } from '@/components/ui/Notice';
+import { ServiceCard } from '@/components/ui/ServiceCard';
 import { Frame } from '@/components/shell/Frames';
 import { requireGate } from '@/server/permissions/guard';
 import type { Metadata } from 'next';
@@ -15,49 +16,66 @@ export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens
 export default async function HomePage() {
   const context = await requireGate('home');
   const t = translator(context.locale);
+  const loggedIn = Boolean(context.session?.subject);
   return (
-    <Frame context={context}>
-      <h1 className="text-3xl">{t('common.platformName')}</h1>
-      <p className="mt-4 max-w-3xl text-lg leading-loose">{t('home.intro')}</p>
-      {context.mode === 'demo' ? (
-        <div className="mt-6 max-w-3xl">
-          <Notice>{t('home.demoNotice')}</Notice>
+    <Frame context={context} width="full">
+      {/* The opening sheet continues the letterhead: the name, what the platform is, and, in the demo, what it is not. */}
+      <section aria-labelledby="home-title" className="border-b border-line bg-paper">
+        <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
+          <h1 id="home-title" className="text-[2.25rem] leading-[1.35] sm:text-5xl sm:leading-[1.3]">
+            {t('common.platformName')}
+          </h1>
+          <div aria-hidden="true" className="mt-5 h-0.5 w-16 bg-ink-800" />
+          <p className="mt-6 max-w-3xl text-lg leading-[1.95] sm:text-xl sm:leading-[1.9]">{t('home.intro')}</p>
+          {context.mode === 'demo' ? (
+            <div className="mt-8 max-w-3xl">
+              <Notice>{t('home.demoNotice')}</Notice>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-      <div className="mt-10 grid gap-8 md:grid-cols-[2fr_1fr]">
-        <section aria-labelledby="spaces-title">
-          <h2 id="spaces-title" className="mb-4 text-xl">
+      </section>
+
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:py-14">
+        <div className="grid gap-x-6 gap-y-10 lg:grid-cols-3">
+          <section aria-labelledby="services-title" className="lg:col-span-2">
+            <h2 id="services-title" className="text-[1.375rem] sm:text-2xl">
+              {t('home.servicesTitle')}
+            </h2>
+            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
+              <li>
+                <ServiceCard href="/track" title={t('screens.track')} text={t('track.intro')} />
+              </li>
+              <li>
+                <ServiceCard href="/hearings" title={t('screens.hearings')} text={t('hearings.intro')} />
+              </li>
+            </ul>
+          </section>
+          <section aria-labelledby="login-title">
+            <h2 id="login-title" className="text-[1.375rem] sm:text-2xl">
+              {t('home.loginTitle')}
+            </h2>
+            <div className="card mt-5 p-6">
+              <p className="text-[0.9375rem] leading-relaxed text-text-muted">{t('home.loginText')}</p>
+              <ButtonLink href={loggedIn ? '/dashboard' : '/login'} variant="primary" className="mt-5 w-full">
+                {loggedIn ? t('screens.dashboard') : t('screens.login')}
+              </ButtonLink>
+            </div>
+          </section>
+        </div>
+
+        <section aria-labelledby="spaces-title" className="mt-14">
+          <h2 id="spaces-title" className="text-[1.375rem] sm:text-2xl">
             {t('home.spacesTitle')}
           </h2>
-          <ul className="divide-y divide-line border-y border-line">
+          <ul className="mt-5 grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
             {SPACES.map((space) => (
-              <li key={space} className="py-3">
-                <p className="font-semibold text-ink-800">{t(`spaces.${space}`)}</p>
-                <p className="text-text-muted">{t(`spaces.${space}.description`)}</p>
+              <li key={space} className="border-t border-line py-5">
+                <h3 className="text-lg">{t(`spaces.${space}`)}</h3>
+                <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-text-muted">{t(`spaces.${space}.description`)}</p>
               </li>
             ))}
           </ul>
         </section>
-        <div className="space-y-8">
-          <section aria-labelledby="services-title">
-            <h2 id="services-title" className="mb-4 text-xl">
-              {t('home.servicesTitle')}
-            </h2>
-            <p className="flex flex-col gap-3">
-              <ButtonLink href="/track">{t('screens.track')}</ButtonLink>
-              <ButtonLink href="/hearings">{t('screens.hearings')}</ButtonLink>
-            </p>
-          </section>
-          <section aria-labelledby="login-title">
-            <h2 id="login-title" className="mb-4 text-xl">
-              {t('home.loginTitle')}
-            </h2>
-            <p className="mb-4 text-text-muted">{t('home.loginText')}</p>
-            <ButtonLink href={context.session?.subject ? '/dashboard' : '/login'} variant="primary">
-              {context.session?.subject ? t('screens.dashboard') : t('screens.login')}
-            </ButtonLink>
-          </section>
-        </div>
       </div>
     </Frame>
   );

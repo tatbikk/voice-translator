@@ -7,6 +7,7 @@ import { requireGate } from '@/server/permissions/guard';
 import { chainStatus } from '@/server/events/status';
 import type { Metadata } from 'next';
 import { screenMetadata } from '@/server/page-metadata';
+import { TABLE } from '@/components/ui/table-style';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.environment');
 
@@ -21,31 +22,31 @@ export default async function EnvironmentPage() {
   return (
     <Frame context={context}>
       <PageHeader title={t('screens.environment')} intro={t('environment.intro')} />
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse border border-line bg-paper">
+      <div className={TABLE.wrap}>
+        <table className={TABLE.table}>
           <caption className="sr-only">{t('screens.environment')}</caption>
           <thead>
-            <tr className="border-b border-line bg-ink-50">
-              <th scope="col" className="px-4 py-2 text-start">{t('environment.columns.component')}</th>
-              <th scope="col" className="px-4 py-2 text-start">{t('environment.columns.current')}</th>
-              <th scope="col" className="px-4 py-2 text-start">{t('environment.columns.replacement')}</th>
+            <tr className={TABLE.headRow}>
+              <th scope="col" className={TABLE.th}>{t('environment.columns.component')}</th>
+              <th scope="col" className={TABLE.th}>{t('environment.columns.current')}</th>
+              <th scope="col" className={TABLE.th}>{t('environment.columns.replacement')}</th>
             </tr>
           </thead>
           <tbody>
             {components.map((c) => (
-              <tr key={c.id} className="border-b border-line align-top">
-                <th scope="row" className="px-4 py-3 text-start font-semibold">
+              <tr key={c.id} className={TABLE.row}>
+                <th scope="row" className={TABLE.rowHeader}>
                   {t(c.nameKey)}
                   <p className="mt-1 font-normal text-text-muted">{t(c.descriptionKey)}</p>
                 </th>
-                <td className="px-4 py-3">{t(`environment.implementation.${c.implementation}`)}</td>
-                <td className="px-4 py-3">{t(c.replacementKey)}</td>
+                <td className={TABLE.td}>{t(`environment.implementation.${c.implementation}`)}</td>
+                <td className={TABLE.td}>{t(c.replacementKey)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <section aria-labelledby="chain-title" className="mt-10">
+      <section aria-labelledby="chain-title" className="card mt-10 px-5 py-5 sm:px-7">
         <h2 id="chain-title" className="text-xl">
           {t('environment.chain.title')}
         </h2>

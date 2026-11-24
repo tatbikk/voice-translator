@@ -39,7 +39,7 @@ export default async function NewAccountPage() {
           </Notice>
         </div>
       )}
-      <div className="max-w-2xl">
+      <div className="card max-w-2xl px-5 py-6 sm:px-7">
         <CreateAccountForm
           roles={roles}
           courts={courts}

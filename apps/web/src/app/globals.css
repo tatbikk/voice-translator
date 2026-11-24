@@ -1,28 +1,31 @@
 @import 'tailwindcss';
 
 /*
-  Visual identity of «منصة المحكمة الرقمية»: restrained, institutional.
-  One calm ink-blue family with neutrals; red only for an elapsed time limit and
-  orange only for an approaching one; naskh for headings and documents, a plain
-  sans for the interface; wide whitespace and hairline separators. No gradient,
-  no decorative image, no coloured icon. Logical properties only (RTL first).
+  Visual identity of «منصة المحكمة الرقمية»: ink on paper (docs/design/visual-identity.md).
+  One calm institutional colour, ink, with warm paper neutrals; red only for an
+  elapsed time limit and orange only for an approaching one; naskh for the
+  wordmark, the headings and the documents, a plain sans for the interface;
+  wide whitespace and hairline separators; the letterhead closes on a thick and
+  a thin rule. No gradient, no decorative image, no coloured icon, no shadow but
+  on overlays. Logical properties only (RTL first).
 */
 
 @theme {
-  --color-ink-950: #0f1f2b;
-  --color-ink-900: #16293a;
-  --color-ink-800: #1f3a4d;
-  --color-ink-700: #2b4d64;
-  --color-ink-600: #3d6481;
-  --color-ink-100: #e6edf2;
-  --color-ink-50: #f3f6f8;
+  --color-ink-950: #0f2130;
+  --color-ink-900: #15293b;
+  --color-ink-800: #1c3a52;
+  --color-ink-700: #285072;
+  --color-ink-600: #3b6a8f;
+  --color-ink-300: #9db4c8;
+  --color-ink-100: #e4ecf3;
+  --color-ink-50: #f2f6f9;
 
   --color-paper: #ffffff;
-  --color-canvas: #f7f7f5;
-  --color-line: #d9dcdf;
-  --color-line-strong: #a9afb5;
-  --color-text: #1d2429;
-  --color-text-muted: #4f5a63;
+  --color-canvas: #f6f5f1;
+  --color-line: #e1ded6;
+  --color-line-strong: #8f8b81;
+  --color-text: #1d2125;
+  --color-text-muted: #545a60;
 
   --color-elapsed: #a4161a;
   --color-elapsed-bg: #fbeceb;
@@ -41,7 +44,7 @@
     color: var(--color-text);
     background: var(--color-canvas);
     font-size: 100%;
-    line-height: 1.7;
+    line-height: 1.75;
     -webkit-text-size-adjust: 100%;
   }
 
@@ -58,7 +61,8 @@
     --color-text-muted: #1d2429;
     --color-line: #5f666c;
     --color-line-strong: #1d2429;
-    --color-ink-800: #0f1f2b;
+    --color-ink-800: #0f2130;
+    --color-ink-700: #15293b;
   }
 
   html[lang='zgh-Tfng'] {
@@ -70,14 +74,23 @@
   h3 {
     font-family: var(--font-naskh);
     color: var(--color-ink-900);
-    line-height: 1.5;
+    line-height: 1.45;
     font-weight: 700;
   }
 
   a {
     color: var(--color-ink-700);
     text-decoration-thickness: 1px;
-    text-underline-offset: 0.2em;
+    text-underline-offset: 0.25em;
+  }
+
+  a:hover {
+    color: var(--color-ink-900);
+  }
+
+  ::selection {
+    background: var(--color-ink-100);
+    color: var(--color-ink-950);
   }
 
   :focus-visible {
@@ -106,5 +119,28 @@
     direction: ltr;
     unicode-bidi: isolate;
     display: inline-block;
+  }
+
+  /* The platform's signature: the letterhead closes on a thick rule, a gap and a
+     thin rule, in ink. The generated documents carry the same head. */
+  .rule-letterhead {
+    display: block;
+    height: 6px;
+    border-block-start: 3px solid var(--color-ink-800);
+    border-block-end: 1px solid var(--color-ink-800);
+  }
+
+  /* A white sheet on the paper canvas: hairline border, light rounding, no shadow. */
+  .card {
+    background: var(--color-paper);
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+  }
+
+  /* The short line above a title: the space, the role, the section. */
+  .kicker {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-ink-700);
   }
 }

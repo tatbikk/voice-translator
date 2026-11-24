@@ -11,6 +11,7 @@ import { requireGate } from '@/server/permissions/guard';
 import { hearingsOn, publicCourts, type HearingRow } from '@/server/public/service';
 import type { Metadata } from 'next';
 import { screenMetadata } from '@/server/page-metadata';
+import { TABLE } from '@/components/ui/table-style';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.hearings');
 
@@ -39,7 +40,7 @@ export default async function HearingsPage({ searchParams }: { searchParams: Pro
   return (
     <Frame context={context}>
       <PageHeader title={t('screens.hearings')} intro={t('hearings.intro')} />
-      <form method="get" action="/hearings" className="flex max-w-3xl flex-wrap items-end gap-4">
+      <form method="get" action="/hearings" className="card flex max-w-3xl flex-wrap items-end gap-x-4 px-5 pt-6 pb-1 sm:px-7">
         <div className="min-w-64 flex-1">
           <Field id="courtId" label={t('terms.court')}>
             <SelectInput id="courtId" defaultValue={courtId}>
@@ -64,26 +65,26 @@ export default async function HearingsPage({ searchParams }: { searchParams: Pro
         {error ? <Notice tone="warning">{error}</Notice> : null}
         {rows && rows.length === 0 ? <EmptyState text={t('hearings.empty')} /> : null}
         {rows && rows.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-line bg-paper text-start">
+          <div className={TABLE.wrap}>
+            <table className={TABLE.table}>
               <caption className="sr-only">{t('screens.hearings')}</caption>
               <thead>
-                <tr className="border-b border-line bg-ink-50">
-                  <th scope="col" className="px-4 py-2 text-start">{t('hearings.columns.time')}</th>
-                  <th scope="col" className="px-4 py-2 text-start">{t('hearings.columns.room')}</th>
-                  <th scope="col" className="px-4 py-2 text-start">{t('hearings.columns.panel')}</th>
-                  <th scope="col" className="px-4 py-2 text-start">{t('hearings.columns.cases')}</th>
+                <tr className={TABLE.headRow}>
+                  <th scope="col" className={TABLE.th}>{t('hearings.columns.time')}</th>
+                  <th scope="col" className={TABLE.th}>{t('hearings.columns.room')}</th>
+                  <th scope="col" className={TABLE.th}>{t('hearings.columns.panel')}</th>
+                  <th scope="col" className={TABLE.th}>{t('hearings.columns.cases')}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={`${row.startsAt.toISOString()}-${row.room}`} className="border-b border-line align-top">
-                    <td className="px-4 py-2">
+                  <tr key={`${row.startsAt.toISOString()}-${row.room}`} className={TABLE.row}>
+                    <td className={TABLE.td}>
                       {t('common.dateTime', { date: formatMoroccoDate(row.startsAt), time: formatMoroccoTime(row.startsAt) })}
                     </td>
-                    <td className="px-4 py-2">{row.room}</td>
-                    <td className="px-4 py-2">{row.panelName}</td>
-                    <td className="px-4 py-2">
+                    <td className={TABLE.td}>{row.room}</td>
+                    <td className={TABLE.td}>{row.panelName}</td>
+                    <td className={TABLE.td}>
                       <ul>
                         {row.caseNumbers.map((n) => (
                           <li key={n}>

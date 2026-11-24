@@ -29,14 +29,14 @@ export default async function AccountPage() {
   }).allowed;
 
   const identity = (
-    <dl className="grid max-w-2xl gap-3 sm:grid-cols-[12rem_1fr]">
-      <dt className="font-semibold">{t('account.name')}</dt>
+    <dl className="card grid max-w-2xl gap-x-6 gap-y-3 px-5 py-5 sm:grid-cols-[12rem_1fr] sm:px-7">
+      <dt className="text-sm font-semibold text-text-muted">{t('account.name')}</dt>
       <dd>{user.fullName}</dd>
-      <dt className="font-semibold">{t('account.email')}</dt>
+      <dt className="text-sm font-semibold text-text-muted">{t('account.email')}</dt>
       <dd>
         <bdi dir="ltr">{user.email}</bdi>
       </dd>
-      <dt className="font-semibold">{t('account.phone')}</dt>
+      <dt className="text-sm font-semibold text-text-muted">{t('account.phone')}</dt>
       <dd>
         <bdi dir="ltr">{user.phone}</bdi>
       </dd>
@@ -51,11 +51,11 @@ export default async function AccountPage() {
 
   const roleList = (
     <div>
-      <ul className="divide-y divide-line border border-line bg-paper">
+      <ul className="card divide-y divide-line">
         {roles.map((r) => (
           <li key={r.id} className="grid gap-1 px-5 py-4 sm:grid-cols-[1fr_auto] sm:items-center">
             <div>
-              <p className="font-semibold">
+              <p className="font-semibold text-ink-900">
                 {t(roleLabelKey(r.role as RoleCode, r.courtDegree))}
                 {r.id === roleAssignment?.id ? <span className="ms-3 text-sm font-normal text-text-muted">{t('account.currentRole')}</span> : null}
               </p>

@@ -25,7 +25,7 @@ export default async function OutboxPage() {
       ) : (
         <ul className="space-y-3">
           {items.map((m) => (
-            <li key={m.id} className="border border-line bg-paper px-4 py-3">
+            <li key={m.id} className="card px-5 py-4">
               <p className="text-sm text-text-muted">
                 <span className="font-semibold text-ink-800">{t(`demo.outbox.channel.${m.channel}`)}</span>
                 <span aria-hidden="true"> · </span>
