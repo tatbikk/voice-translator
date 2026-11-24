@@ -1,8 +1,10 @@
-// Release step, run before every deployment (Railway pre-deploy command) from the
-// web image. Production: migrations, then the runtime-role grants (which stamp an
-// empty database "production"). Demo: the demo-data command, which applies the
-// same migrations and grants itself, stamps the database "demo" and creates what
-// is missing; it refuses any database stamped "production". Never a reset.
+// Release step, run once at every deployment by the release service (built from
+// the same image), which then exits: the web service and the worker refuse to
+// boot until it has applied this version's migrations.
+// Production: migrations, then the runtime-role grants (which stamp an empty
+// database "production"). Demo: the demo-data command, which applies the same
+// migrations and grants itself, stamps the database "demo" and creates what is
+// missing; it refuses any database stamped "production". Never a reset.
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
