@@ -11,6 +11,9 @@ import { masterKey } from '../keys';
 // describe() returns its label and last four characters only.
 
 const KEY_VERSION = 1;
+const IV_BYTES = 12;
+// The tag length is fixed on both sides: a shortened tag must never be accepted.
+const TAG_BYTES = 16;
 
 function key(version: number): Buffer {
   if (version !== KEY_VERSION) throw new Error('unknown secret-store key version');
@@ -25,8 +28,8 @@ export interface SecretDescription {
 
 export async function putSecret(name: string, value: string, updatedByUserId: string | null): Promise<void> {
   if (!/^[a-z0-9][a-z0-9._-]{0,99}$/.test(name)) throw new Error('invalid secret name');
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key(KEY_VERSION), iv);
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv('aes-256-gcm', key(KEY_VERSION), iv, { authTagLength: TAG_BYTES });
   cipher.setAAD(Buffer.from(name, 'utf8'));
   const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -39,7 +42,8 @@ export async function putSecret(name: string, value: string, updatedByUserId: st
 export async function getSecretForUse(name: string): Promise<string | null> {
   const row = await getDb().secretSetting.findUnique({ where: { name } });
   if (!row) return null;
-  const decipher = createDecipheriv('aes-256-gcm', key(row.keyVersion), row.iv);
+  if (row.iv.length !== IV_BYTES || row.tag.length !== TAG_BYTES) throw new Error('malformed secret record');
+  const decipher = createDecipheriv('aes-256-gcm', key(row.keyVersion), row.iv, { authTagLength: TAG_BYTES });
   decipher.setAAD(Buffer.from(row.name, 'utf8'));
   decipher.setAuthTag(row.tag);
   return Buffer.concat([decipher.update(row.ciphertext), decipher.final()]).toString('utf8');
