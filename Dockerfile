@@ -14,11 +14,8 @@ ARG DEMO_BUILD=false
 COPY package.json package-lock.json .npmrc ./
 COPY packages/core/package.json packages/core/
 COPY apps/web/package.json apps/web/
-# The optional build secret "npm_ca" lets a local build behind a TLS-inspecting
-# proxy trust that proxy; Railway builds do not use it. Nothing secret enters a layer.
-RUN --mount=type=secret,id=npm_ca,required=false \
-    if [ -f /run/secrets/npm_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/npm_ca; fi; \
-    npm ci --no-audit --no-fund
+# Plain RUN only: Railway's builder accepts no mount other than type=cache.
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN DEMO_BUILD=${DEMO_BUILD} npm run build -w @mahkama/web \
  && rm -rf apps/web/.next/cache \
