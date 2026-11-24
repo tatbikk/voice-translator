@@ -12,6 +12,7 @@ import { hearingsOn, publicCourts, type HearingRow } from '@/server/public/servi
 import type { Metadata } from 'next';
 import { screenMetadata } from '@/server/page-metadata';
 import { TABLE } from '@/components/ui/table-style';
+import { TableFrame } from '@/components/ui/TableFrame';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.hearings');
 
@@ -65,8 +66,8 @@ export default async function HearingsPage({ searchParams }: { searchParams: Pro
         {error ? <Notice tone="warning">{error}</Notice> : null}
         {rows && rows.length === 0 ? <EmptyState text={t('hearings.empty')} /> : null}
         {rows && rows.length > 0 ? (
-          <div className={TABLE.wrap}>
-            <table className={TABLE.table}>
+          <TableFrame label={t('screens.hearings')}>
+            <table className={`${TABLE.table} min-w-[36rem]`}>
               <caption className="sr-only">{t('screens.hearings')}</caption>
               <thead>
                 <tr className={TABLE.headRow}>
@@ -99,7 +100,7 @@ export default async function HearingsPage({ searchParams }: { searchParams: Pro
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         ) : null}
       </div>
     </Frame>

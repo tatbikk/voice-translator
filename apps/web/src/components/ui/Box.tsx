@@ -24,7 +24,7 @@ export function Box({
         <span
           className={
             'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 font-sans text-sm font-semibold tabular-nums ' +
-            (count > 0 ? 'bg-ink-800 text-white' : 'bg-ink-50 text-ink-800')
+            (count > 0 ? 'bg-ink-800 text-white' : 'bg-ink-100 text-ink-800')
           }
         >
           {count}

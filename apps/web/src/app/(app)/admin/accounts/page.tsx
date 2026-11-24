@@ -12,6 +12,7 @@ import { requirePage } from '@/server/permissions/guard';
 import type { Metadata } from 'next';
 import { screenMetadata } from '@/server/page-metadata';
 import { TABLE } from '@/components/ui/table-style';
+import { TableFrame } from '@/components/ui/TableFrame';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.admin-accounts');
 
@@ -34,8 +35,8 @@ export default async function AccountsPage() {
       {accounts.length === 0 ? (
         <EmptyState text={t('admin.accounts.empty')} />
       ) : (
-        <div className={TABLE.wrap}>
-          <table className={TABLE.table}>
+        <TableFrame label={t('screens.admin-accounts')}>
+          <table className={`${TABLE.table} min-w-[48rem]`}>
             <caption className="sr-only">{t('screens.admin-accounts')}</caption>
             <thead>
               <tr className={TABLE.headRow}>
@@ -65,7 +66,7 @@ export default async function AccountsPage() {
                   <tr key={a.id} className={TABLE.row}>
                     <td className={TABLE.td}>
                       {a.fullName}
-                      {a.isDemo ? <span className="ms-2 text-sm text-text-muted">{t('admin.accounts.demo')}</span> : null}
+                      {a.isDemo ? <span className="mt-0.5 block whitespace-nowrap text-sm text-text-muted">{t('admin.accounts.demo')}</span> : null}
                     </td>
                     <td className={TABLE.td}>
                       <bdi dir="ltr">{a.email}</bdi>
@@ -114,7 +115,7 @@ export default async function AccountsPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </TableFrame>
       )}
     </Frame>
   );

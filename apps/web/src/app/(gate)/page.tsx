@@ -35,30 +35,32 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:py-14">
+      <div className="mx-auto max-w-6xl px-4 pt-12 pb-4 sm:pt-14">
         <div className="grid gap-x-6 gap-y-10 lg:grid-cols-3">
-          <section aria-labelledby="services-title" className="lg:col-span-2">
+          <section aria-labelledby="services-title" className="flex flex-col lg:col-span-2">
             <h2 id="services-title" className="text-[1.375rem] sm:text-2xl">
               {t('home.servicesTitle')}
             </h2>
-            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
+            <ul className="mt-5 grid flex-1 gap-4 sm:grid-cols-2">
               <li>
-                <ServiceCard href="/track" title={t('screens.track')} text={t('track.intro')} />
+                <ServiceCard href="/track" title={t('screens.track')} text={t('home.services.track')} />
               </li>
               <li>
-                <ServiceCard href="/hearings" title={t('screens.hearings')} text={t('hearings.intro')} />
+                <ServiceCard href="/hearings" title={t('screens.hearings')} text={t('home.services.hearings')} />
               </li>
             </ul>
           </section>
-          <section aria-labelledby="login-title">
+          <section aria-labelledby="login-title" className="flex flex-col">
             <h2 id="login-title" className="text-[1.375rem] sm:text-2xl">
               {t('home.loginTitle')}
             </h2>
-            <div className="card mt-5 p-6">
+            <div className="card mt-5 flex flex-1 flex-col p-6">
               <p className="text-[0.9375rem] leading-relaxed text-text-muted">{t('home.loginText')}</p>
-              <ButtonLink href={loggedIn ? '/dashboard' : '/login'} variant="primary" className="mt-5 w-full">
-                {loggedIn ? t('screens.dashboard') : t('screens.login')}
-              </ButtonLink>
+              <div className="mt-auto pt-5">
+                <ButtonLink href={loggedIn ? '/dashboard' : '/login'} variant="primary" className="w-full">
+                  {loggedIn ? t('screens.dashboard') : t('screens.login')}
+                </ButtonLink>
+              </div>
             </div>
           </section>
         </div>

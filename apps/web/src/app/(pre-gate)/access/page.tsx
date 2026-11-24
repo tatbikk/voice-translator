@@ -35,9 +35,9 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
         </div>
         <div aria-hidden="true" className="rule-letterhead" />
       </header>
-      <main id="main" className="mx-auto max-w-md px-4 py-12 sm:py-16">
-        <div className="card px-5 py-7 sm:px-8 sm:py-8">
-          <h1 className="text-2xl sm:text-[1.75rem]">{t('screens.access')}</h1>
+      <main id="main" className="mx-auto max-w-xl px-4 py-10 sm:py-14">
+        <div className="card px-5 py-6 sm:px-8 sm:py-8">
+          <h1 className="text-[1.75rem] sm:text-[2.125rem]">{t('screens.access')}</h1>
           <p className="mt-3 text-text-muted">{t('access.intro')}</p>
           <div className="mt-7">
             <AccessForm

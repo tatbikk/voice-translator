@@ -20,7 +20,7 @@ export function RoleChoice({
   return (
     <>
       <FormError text={form.error} />
-      <ul className="divide-y divide-line border border-line bg-paper">
+      <ul className="divide-y divide-line rounded-md border border-line bg-paper">
         {roles.map((role) => (
           <li key={role.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <span className="font-medium">{role.label}</span>

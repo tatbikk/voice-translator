@@ -56,16 +56,23 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
           </SelectInput>
         </Field>
         <p className="mb-3 text-sm text-text-muted">{t('track.hint')}</p>
+        {/* The number reads left to right (number, code, year); each label stays on the right. */}
         <div className="grid grid-cols-3 gap-3" dir="ltr">
-          <Field id="number" label={t('terms.caseSerial')}>
-            <TextInput id="number" inputMode="numeric" defaultValue={query.number} maxLength={6} required />
-          </Field>
-          <Field id="code" label={t('terms.caseCode')}>
-            <TextInput id="code" inputMode="numeric" defaultValue={query.code} maxLength={4} required />
-          </Field>
-          <Field id="year" label={t('terms.caseYear')}>
-            <TextInput id="year" inputMode="numeric" defaultValue={query.year} maxLength={4} required />
-          </Field>
+          <div dir="rtl">
+            <Field id="number" label={t('terms.caseSerial')}>
+              <TextInput id="number" dir="ltr" inputMode="numeric" defaultValue={query.number} maxLength={6} required />
+            </Field>
+          </div>
+          <div dir="rtl">
+            <Field id="code" label={t('terms.caseCode')}>
+              <TextInput id="code" dir="ltr" inputMode="numeric" defaultValue={query.code} maxLength={4} required />
+            </Field>
+          </div>
+          <div dir="rtl">
+            <Field id="year" label={t('terms.caseYear')}>
+              <TextInput id="year" dir="ltr" inputMode="numeric" defaultValue={query.year} maxLength={4} required />
+            </Field>
+          </div>
         </div>
         <Button type="submit">{t('track.submit')}</Button>
       </form>

@@ -3,6 +3,8 @@ import '@fontsource/ibm-plex-sans-arabic/arabic-400.css';
 import '@fontsource/ibm-plex-sans-arabic/arabic-500.css';
 import '@fontsource/ibm-plex-sans-arabic/arabic-600.css';
 import '@fontsource/ibm-plex-sans-arabic/latin-400.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-500.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-600.css';
 import '@fontsource/noto-sans-tifinagh/400.css';
 import './globals.css';
 import type { Metadata, Viewport } from 'next';

@@ -8,6 +8,7 @@ import { chainStatus } from '@/server/events/status';
 import type { Metadata } from 'next';
 import { screenMetadata } from '@/server/page-metadata';
 import { TABLE } from '@/components/ui/table-style';
+import { TableFrame } from '@/components/ui/TableFrame';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.environment');
 
@@ -22,7 +23,7 @@ export default async function EnvironmentPage() {
   return (
     <Frame context={context}>
       <PageHeader title={t('screens.environment')} intro={t('environment.intro')} />
-      <div className={TABLE.wrap}>
+      <TableFrame label={t('screens.environment')}>
         <table className={TABLE.table}>
           <caption className="sr-only">{t('screens.environment')}</caption>
           <thead>
@@ -45,9 +46,9 @@ export default async function EnvironmentPage() {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableFrame>
       <section aria-labelledby="chain-title" className="card mt-10 px-5 py-5 sm:px-7">
-        <h2 id="chain-title" className="text-xl">
+        <h2 id="chain-title" className="text-[1.375rem] sm:text-2xl">
           {t('environment.chain.title')}
         </h2>
         <p className="mt-2">{t(`environment.chain.${status}`)}</p>

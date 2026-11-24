@@ -22,6 +22,7 @@
   "common.caseNumberLabel": "الملف رقم {number}، رمز {code}، سنة {year}",
   "shell.logoSlot": "موضع الشعار الرسمي",
   "shell.nav.main": "القائمة الرئيسية",
+  "shell.nav.menu": "القائمة",
   "shell.nav.home": "صفحة الاستقبال",
   "shell.nav.track": "تتبع الملف",
   "shell.nav.hearings": "جدول الجلسات",

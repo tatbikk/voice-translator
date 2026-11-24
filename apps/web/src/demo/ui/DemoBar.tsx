@@ -27,7 +27,7 @@ export async function DemoBar({ context }: { context: GateContext }) {
       <div aria-hidden="true" className="no-print hidden h-24 lg:block" />
       <section
         aria-label={t('demo.tools')}
-        className="no-print border-t-2 border-dashed border-line-strong bg-canvas lg:fixed lg:inset-x-0 lg:bottom-0 lg:z-30"
+        className="no-print border-t-2 border-dashed border-line-strong bg-tool lg:fixed lg:inset-x-0 lg:bottom-0 lg:z-30"
       >
         <div className="mx-auto flex max-w-6xl flex-wrap items-end gap-4 px-4 py-3">
           <p className="text-sm font-semibold text-text-muted">{t('demo.tools')}</p>

@@ -12,6 +12,11 @@ export interface MenuEntry {
   readonly current?: boolean;
 }
 
+// The keyboard focus keeps the platform's focus ring, drawn inside the item.
+const ITEM =
+  'block px-4 py-2.5 text-text no-underline data-[highlighted]:bg-ink-100 data-[highlighted]:text-ink-900 ' +
+  'focus-visible:[outline-offset:-3px]';
+
 /** A small menu for the top bar (account, language, reading ease). */
 export function Menu({
   trigger,
@@ -19,19 +24,19 @@ export function Menu({
   entries,
   header,
   dir,
+  labelInTrigger = false,
 }: {
   trigger: ReactNode;
   label: string;
   entries: readonly MenuEntry[];
   header?: ReactNode;
   dir: 'rtl' | 'ltr';
+  /** the trigger already carries the label (visually hidden), so that its name contains its visible text */
+  labelInTrigger?: boolean;
 }) {
   return (
     <DropdownMenu.Root dir={dir}>
-      <DropdownMenu.Trigger
-        aria-label={label}
-        className={NAV_ITEM}
-      >
+      <DropdownMenu.Trigger aria-label={labelInTrigger ? undefined : label} className={NAV_ITEM}>
         {trigger}
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
@@ -44,7 +49,7 @@ export function Menu({
           {entries.map((entry) =>
             entry.href ? (
               <DropdownMenu.Item key={entry.key} asChild>
-                <a href={entry.href} className="block px-4 py-2.5 text-text no-underline outline-none data-[highlighted]:bg-ink-50 data-[highlighted]:text-ink-900">
+                <a href={entry.href} className={ITEM}>
                   {entry.label}
                 </a>
               </DropdownMenu.Item>
@@ -53,7 +58,7 @@ export function Menu({
                 key={entry.key}
                 onSelect={entry.onSelect}
                 aria-current={entry.current ? 'true' : undefined}
-                className="cursor-pointer px-4 py-2.5 outline-none data-[highlighted]:bg-ink-50 data-[highlighted]:text-ink-900 aria-[current=true]:font-semibold aria-[current=true]:text-ink-900"
+                className={`${ITEM} cursor-pointer aria-[current=true]:font-semibold aria-[current=true]:text-ink-900`}
               >
                 {entry.label}
               </DropdownMenu.Item>

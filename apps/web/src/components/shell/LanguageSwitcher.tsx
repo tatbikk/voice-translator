@@ -18,7 +18,13 @@ export function LanguageSwitcher({
     <Menu
       dir={dir}
       label={label}
-      trigger={<span>{options.find((o) => o.code === current)?.label ?? label}</span>}
+      labelInTrigger
+      trigger={
+        <>
+          <span className="sr-only">{label} </span>
+          <span>{options.find((o) => o.code === current)?.label ?? label}</span>
+        </>
+      }
       entries={options.map((option) => ({
         key: option.code,
         label: option.label,

@@ -47,7 +47,7 @@ export function DemoSwitcher({
           id={id}
           value={selected}
           onChange={(event) => { setSelected(event.target.value); }}
-          className="min-h-11 max-w-[80vw] border border-line-strong bg-paper px-2 lg:max-w-md"
+          className="min-h-11 max-w-[80vw] rounded border border-line-strong bg-paper px-2 lg:max-w-md"
           aria-describedby={`${id}-hint`}
         >
           {options.map((option) => (
