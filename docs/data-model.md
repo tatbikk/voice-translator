@@ -86,3 +86,72 @@
 - نزع كل صلاحية على المخطط من العموم، ومنح دور التطبيق حق الاستعمال دون حق الإنشاء.
 - `SELECT` و`INSERT` و`UPDATE` و`DELETE` على كل جدول إلا جدول الأحداث، و`SELECT` و`INSERT` وحدهما على جدول الأحداث، ونزع `UPDATE` و`DELETE` و`TRUNCATE` عليه صراحة من دور التطبيق ومن العموم.
 - لا يملك دور التطبيق أي جدول، فلا يستطيع تعطيل قيد ولا حذف جدول.
+
+## توسعة المرحلة 1
+
+تضاف هذه الجداول في هجرة مؤرخة واحدة لا تكسر النسخة السابقة: جداول جديدة، وأعمدة اختيارية في الجداول القائمة. وكل زمن قانوني فيها من ساعة المنصة. ودور التشغيل يقرأ جداول القواعد ولا يكتبها.
+
+### الملف وأطرافه وطلباته
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `CaseFile` (أعمدة مضافة) | الملف كاملا | `kind` (`FIRST_INSTANCE`، `APPEAL`، `ENFORCEMENT`)، `caseType` (رمز نوع القضية)، `subject` (موضوعها)، `panelId`، `rapporteurUserId`، `procedure` (`WRITTEN` كتابية، `ORAL` شفوية)، `parentCaseFileId` (ملف الدرجة الأدنى أو ملف الموضوع للتنفيذ)، `registeredAt`، `registrationStampedAt`، `referredToProsecutionAt`، `readyAt`، `pronouncementDate` |
+| `CaseParty` | الطرف | `caseFileId`، `side` (`PLAINTIFF`، `DEFENDANT`، `GUARANTOR`، `APPELLANT`، `RESPONDENT`، `ENFORCEMENT_CREDITOR`، `ENFORCEMENT_DEBTOR`، `GARNISHEE`)، `personKind` (`NATURAL`، `LEGAL`، `PUBLIC`)، `displayName`، `legalForm`، `legalRepresentative`، `idNumber` (البطاقة الوطنية أو السجل التجاري، مفترض في العرض)، `litigantUserId`، `organizationId`، `eServiceAcceptedAt`، `position` (ترتيب العرض) |
+| `PartyAddress` | عناوين الطرف ومصدر كل عنوان | `partyId`، `kind` (`DOMICILE`، `REGISTERED_OFFICE`، `ELECTED`، `ELECTRONIC`، `PHONE`)، `value`، `source` (`DECLARED` مصرح به، `COMMERCIAL_REGISTER` السجل التجاري م 613، `NATIONAL_ID_DATABASE` قاعدة البطاقة الوطنية م 86، `PLATFORM` المنصة م 626 و627)، `withinCourtDistrict`، `validFrom`، `supersededAt` |
+| `Representation` | نيابة المحامي عن الطرف | `partyId`، `lawyerUserId`، `startedAt`، `endedAt`، `accountServiceConsent` (موافقة المادة 633 وتاريخها) |
+| `Claim` | الطلبات مفصلة | `caseFileId`، `partyId` (صاحب الطلب)، `category` (`PRINCIPAL` أصلي، `COUNTER` مقابل، `INCIDENTAL` عارض)، `nature` (`DEBT`، `DAMAGES`، `LEGAL_INTEREST`، `PROVISIONAL_ENFORCEMENT`، `COSTS`، `OTHER`)، `amountCents` (محدد القيمة أو فارغ)، `basis`، `filedAt` |
+
+### الوثائق
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `Document` | الوثيقة المخزنة | `caseFileId`، `storageKey` (اسم مولد في الحاوية)، `sha256`، `byteSize`، `mediaType`، `docType` (مقال، مذكرة، مستند، أمر، حكم، محضر، وصل، شهادة تسليم، تقرير خبرة…)، `declaredNature` (`ORIGINAL`، `CERTIFIED_COPY`، `PHOTOCOPY`، م 631)، `channel` (`ELECTRONIC`، `PAPER`)، `paperOriginalLocation`، `depositedByUserId`، `depositedByPartyId`، `depositedAt`، `generated` (ولدته المنصة)، `withdrawnAt` (سحب بعد الجاهزية، م 106)، `visibility` (`CASE` لكل ذي علاقة، `PANEL` لأعضاء الهيئة قبل النطق، `JUDGE` للقاضي وحده) |
+
+لا تحذف وثيقة أبدا، والمسحوبة تبقى ظاهرة في خانتها. والنص المستخرج وفقراته المرقمة تضاف مع الإيداع في المرحلة 2.
+
+### المسطرة
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `TimeLimit` | الأجل | `caseFileId`، `ruleCode` (من جدول الآجال)، `ruleVersionId`، `partyId`، `startsAt` (الواقعة المنشئة)، `endsAt` (المحسوب)، `electronic`، `status` (`RUNNING`، `MET`، `ELAPSED`، `CLOSED`)، `effectOnExpiry`، `closedAt`، `computation` (تفصيل الاحتساب) |
+| `Envelope` | الطي والتبليغ | `caseFileId`، `partyId`، `purpose` (استدعاء، تبليغ حكم، تنفيذ…)، `channel` (`ELECTRONIC`، `BAILIFF`، `CLERK`، `ADMINISTRATIVE`، `REGISTERED_MAIL`، م 83)، `agentUserId`، `status` (`READY`، `DISPATCHED`، `IN_PROGRESS`، `SERVED`، `REFUSED`، `FAILED_UNKNOWN`، `FAILED_MOVED`)، `dispatchedAt`، `servedAt` (تاريخ التوصل الثابت)، `deemedServedAt` (اليوم العاشر بعد الرفض، م 85)، `documentId` |
+| `DeliveryCertificate` | شهادة التسليم ببيانات المادة 85 | `envelopeId`، `recipientName`، `recipientIdNumber`، `recipientCapacity` (من قائمة المادة 84)، `occurredAt` (وقت الإنجاز لا وقت الإرسال)، `signature` (`SIGNED`، `UNABLE`، `REFUSED`)، `outcome`، `recordedByUserId`، `source` (`FIELD_APP`، `PAPER`) |
+| `ReceiptNotice` | الإشعار بالتوصل في التبليغ الإلكتروني | `envelopeId`، `issuedAt` (م 629) |
+| `Hearing` (أعمدة مضافة) | الجلسة | `kind` (`ORDINARY`، `PRONOUNCEMENT`)، `heldAt` |
+| `HearingListing` | إدراج الملف في جلسة ونتيجته | `hearingId`، `caseFileId`، `outcome` (`ADJOURNED`، `RETURNED_TO_RAPPORTEUR`، `RESERVED`، `REOPENED`، `PRONOUNCED`)، `outcomeReason`، `minutesDocumentId` |
+| `Decision` | الأمر والمقرر والحكم | `caseFileId`، `kind` (`ORDER`، `GRACIOUS_ORDER`، `PRELIMINARY_JUDGMENT`، `JUDGMENT`، `APPELLATE_DECISION`، `EXECUTORY_COPY`)، `subjectCode`، `documentId`، `signatureCircleId`، `pronouncedAt`، `provisionalEnforcement`، `final` |
+| `Investigation` | إجراء التحقيق ومهمة الخبير | `caseFileId`، `kind` (`EXPERTISE`، …)، `orderDecisionId`، `expertUserId`، `mission`، `depositAmountCents`، `depositPartyId`، `depositedAt`، `acceptedAt`، `declinedAt`، `partiesSummonedAt`، `reportDocumentId`، `reportDepositedAt`، `returnedAt`، `feesOrderedCents`، `feesPaidAt` |
+| `Appeal` | الطعن وصلته بملف الدرجة الأعلى | `lowerCaseFileId`، `upperCaseFileId`، `kind` (`APPEAL`، `CASSATION`)، `appellantPartyId`، `filedAt` |
+
+### المال
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `FeeAssessment` | الرسم المحتسب وتفصيله | `caseFileId`، `claimIds`، `ruleVersionId`، `totalCents`، `breakdown` (أسطر الاحتساب وسند كل سطر)، `assessedAt` |
+| `Payment` | الأداء | `caseFileId`، `purpose` (`COURT_FEE`، `INVESTIGATION_DEPOSIT`، `COPY_FEE`، `ENFORCEMENT`)، `amountCents`، `payerUserId`، `payerPartyId`، `status` (`SUCCEEDED`، `FAILED`، `CANCELLED`)، `operationRef`، `receiptDocumentId`، `paidAt` (م 628) |
+| `TreasuryEntry` | قيود صندوق المحكمة | `caseFileId`، `paymentId`، `direction` (`IN`، `OUT`)، `amountCents`، `purpose`، `beneficiary`، `authorizedByDecisionId` (إذن القاضي، م 120)، `at` |
+
+### التنفيذ
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `EnforcementStep` | محاضر التنفيذ وتصريحاته | `caseFileId` (ملف التنفيذ)، `kind` (`DEMAND` تبليغ وإعذار م 486، `COLLECTION` قبض م 487، `EXECUTORY_SEIZURE` م 489، `GARNISHMENT` م 575 و576، `GARNISHMENT_NOTICE` م 578، `GARNISHEE_DECLARATION` م 579، `DISPUTE` م 580، `DIFFICULTY` م 491 و492، `SETTLEMENT` م 488، `RELEASE` رفع الحجز)، `outcome`، `amountCents`، `organizationId` (المحجوز لديه)، `documentId`، `occurredAt` |
+
+### القواعد
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `RuleSet` | نسخة مؤرخة من جدول قواعد | `kind` (`TIME_LIMITS`، `FEES`، `HOLIDAYS`، `INTEREST`، `DISTRIBUTION`، `ACCOUNT_BASIS`)، `version`، `validFrom`، `validTo`، `contentSha256`، `content` (القواعد نفسها بسند كل قاعدة)، `loadedAt`، `loadedBy` |
+| `RuleChange` | سجل تعديل القواعد بالتوقيع المزدوج (يستعمل من المرحلة 9) | `ruleSetId`، `enteredByUserId`، `validatedByUserId`، `enteredAt`، `validatedAt` |
+
+القاعدة السارية على إجراء هي التي يقع تاريخه بين `validFrom` و`validTo`. وكل قاعدة لا يحسمها نص تحمل علامة `uncertain`، فتظهر بجانبها «قيمة مؤقتة غير مؤكدة».
+
+### التوقيع
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `SigningCredential` | الرمز السري للتوقيع | `userId` (فريد)، `secretHash` (Argon2id)، `setAt` |
+| `SignatureCircle` | دائرة التوقيع على وثيقة | `documentId`، `purpose`، `signers` (الترتيب: الصفة والمستعمل)، `status` (`OPEN`، `COMPLETED`، `VOIDED`)، `voidReason`، `openedAt`، `completedAt` |
+| `Signature` | التوقيع | `circleId`، `position`، `signerUserId`، `signerRoleAssignmentId`، `signerRole`، `documentSha256` (البصمة لحظة التوقيع)، `signedAt` (ساعة المنصة)، `provider` (`SIMULATED`)، `providerRef` |
+
+وتحسب محاولات الرمز السري في `AuthAttempt` بصنف جديد `SIGNING_SECRET`، والقفل في `Lockout`.
