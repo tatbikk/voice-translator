@@ -7,8 +7,16 @@ import { createSession, revokeSession } from '@/server/auth/sessions';
 // Demo tools deliberately bypass controls: they are isolated here, reached only
 // through their own entry points, absent from non-demo builds, and every use is
 // written to the event log. This module refuses to load outside demo mode.
+
+/**
+ * scripts/check-build.mjs looks for this string in the server build: it must be
+ * there in a demo build and nowhere in any other (review A-15). Keep it a
+ * literal used at load, so that the bundler keeps it.
+ */
+export const DEMO_BUILD_MARKER = 'mahkama-src-demo-build-marker-7c41e0';
+
 if (getEnv().mode !== 'demo') {
-  throw new Error('the demo module cannot be loaded outside the demo environment');
+  throw new Error(`the demo module cannot be loaded outside the demo environment (${DEMO_BUILD_MARKER})`);
 }
 
 export interface OutboxItem {

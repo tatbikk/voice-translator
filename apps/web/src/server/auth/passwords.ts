@@ -13,21 +13,42 @@ const OPTIONS = {
   outputLen: SECURITY_POLICY.argon2.outputLen,
 } as const;
 
-// At most a few hashes at a time, so that login floods cannot exhaust memory.
+/**
+ * Thrown when the hashing queue is full (review S-03): the request is answered
+ * 503 instead of waiting in memory behind an unbounded queue.
+ */
+export class HashingBusyError extends Error {
+  constructor() {
+    super('password hashing queue is full');
+    this.name = 'HashingBusyError';
+  }
+}
+
+// At most a few hashes at a time, so that login floods cannot exhaust memory,
+// and at most a bounded number of calls waiting for a slot.
 let running = 0;
 const waiting: (() => void)[] = [];
 
 async function withSlot<T>(task: () => Promise<T>): Promise<T> {
   if (running >= SECURITY_POLICY.argon2.concurrency) {
+    if (waiting.length >= SECURITY_POLICY.argon2.maxWaiting) throw new HashingBusyError();
+    // The slot is handed over by the finishing task: running stays counted.
     await new Promise<void>((resolve) => waiting.push(resolve));
+  } else {
+    running += 1;
   }
-  running += 1;
   try {
     return await task();
   } finally {
-    running -= 1;
-    waiting.shift()?.();
+    const next = waiting.shift();
+    if (next) next();
+    else running -= 1;
   }
+}
+
+/** Test hook: the number of hashing calls running and waiting. */
+export function hashingLoad(): { running: number; waiting: number } {
+  return { running, waiting: waiting.length };
 }
 
 export function hashPassword(password: string): Promise<string> {
@@ -45,10 +66,11 @@ export async function verifyPassword(stored: string | null, password: string): P
   if (stored === null) {
     dummyHash ??= hash('dummy-password-for-timing-equalisation', OPTIONS);
     const dummy = await dummyHash;
-    await withSlot(() => verify(dummy, password)).catch(() => false);
+    await withSlot(() => verify(dummy, password).catch(() => false));
     return false;
   }
-  return withSlot(() => verify(stored, password)).catch(() => false);
+  // Only a malformed stored hash reads as a wrong password; a full queue is not one.
+  return withSlot(() => verify(stored, password).catch(() => false));
 }
 
 export function needsRehash(stored: string): boolean {

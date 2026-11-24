@@ -5,6 +5,7 @@ import {
   clampIdleMinutes,
   failuresSinceLastSuccess,
   issuanceAllowed,
+  lockNoticeAllowed,
   secondFactorRemaining,
   shouldLock,
   wouldExceed,
@@ -60,6 +61,16 @@ describe('second factor', () => {
   it('caps the number of codes issued: twenty per day', () => {
     const issued = Array.from({ length: 20 }, (_, i) => at(i * 20));
     expect(issuanceAllowed(issued, at(20 * 20 + 1))).toBe(false);
+  });
+});
+
+describe('lock notices (review S-08)', () => {
+  it('allows three notices per account in 24 hours, then none until the oldest leaves the window', () => {
+    const sent = [at(0), at(30), at(60)];
+    expect(lockNoticeAllowed(sent.slice(0, 2), at(61))).toBe(true);
+    expect(lockNoticeAllowed(sent, at(61))).toBe(false);
+    expect(lockNoticeAllowed(sent, at(24 * 60 - 1))).toBe(false);
+    expect(lockNoticeAllowed(sent, at(24 * 60 + 1))).toBe(true);
   });
 });
 

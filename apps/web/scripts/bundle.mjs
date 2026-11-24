@@ -1,10 +1,13 @@
-// Bundles the worker and the command-line tools into dist-server/*.mjs.
+// Bundles the worker and the command-line tools into dist-server/*.mjs, and
+// writes the build marker dist-server/build-info.json ({ "demoBuild": … },
+// from DEMO_BUILD, like next.config.ts), which every process reads at boot
+// (src/server/boot/build-info.ts, review A-15).
 // ESM output (the generated Prisma client uses import.meta.url), installed
 // packages kept external (pg uses dynamic require; @node-rs/argon2 is a native
 // addon), the workspace core bundled, and "server-only" replaced by a shim because these entry points run in plain
 // Node, not inside Next.js.
 import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -49,3 +52,7 @@ await build({
   logLevel: 'warning',
   legalComments: 'none',
 });
+
+const outdir = fileURLToPath(new URL('../dist-server/', import.meta.url));
+mkdirSync(outdir, { recursive: true });
+writeFileSync(`${outdir}build-info.json`, `${JSON.stringify({ demoBuild: process.env.DEMO_BUILD === 'true' })}\n`);

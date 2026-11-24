@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { enforceBuild } from '@/server/boot/build-info';
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -19,6 +20,10 @@ function run(args: string[]): void {
     process.exit(1);
   }
 }
+
+// The build marker first, like every process (review A-15): a demo image never
+// migrates a production database.
+enforceBuild('release');
 
 const prismaCli = join(dirname(createRequire(import.meta.url).resolve('prisma/package.json')), 'build', 'index.js');
 

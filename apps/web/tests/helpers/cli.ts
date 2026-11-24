@@ -42,7 +42,7 @@ export function runtimeOnly(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 /** `node dist-server/<name>.mjs …` from apps/web. */
 export function runBundled(
-  name: 'boot-check' | 'seed' | 'verify-events' | 'db-roles' | 'worker',
+  name: 'boot-check' | 'seed' | 'verify-events' | 'db-roles' | 'release' | 'worker',
   args: readonly string[] = [],
   env: NodeJS.ProcessEnv = process.env,
   timeoutMs = 120_000,

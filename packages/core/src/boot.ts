@@ -21,6 +21,7 @@ export type BootViolation =
   | 'SIMULATED_COMPONENT'
   | 'DEMO_TOOLS_ENABLED'
   | 'DEMO_ROUTES_BUILT'
+  | 'BUILD_INFO_MISSING'
   | 'SEED_PASSWORD_SET'
   | 'DATABASE_NOT_STAMPED_PRODUCTION'
   | 'DEMO_ROWS_PRESENT'
@@ -46,7 +47,10 @@ export interface BootInput {
   readonly mode: 'demo' | 'production';
   /** the raw variable, so that production refuses DEMO_TOOLS=true instead of ignoring it */
   readonly demoToolsRaw: 'true' | 'false';
+  /** the build marker (dist-server/build-info.json) or the web bundle says demo routes and tools were built */
   readonly demoRoutesBuilt: boolean;
+  /** the build marker was found and read: without it a process cannot tell what was built */
+  readonly buildInfoPresent: boolean;
   readonly accessCodeLength: number;
   readonly appUrl: string;
   readonly sessionSecretBytes: number;
@@ -78,6 +82,21 @@ function isHttps(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+export type BuildFacts = Pick<BootInput, 'mode' | 'demoRoutesBuilt' | 'buildInfoPresent'>;
+
+/**
+ * The part of the boot check every process runs, the command-line tools
+ * included (review A-15): a production process refuses a demo build, and a
+ * build it cannot identify.
+ */
+export function evaluateBuild(input: BuildFacts): BootViolation[] {
+  if (input.mode !== 'production') return [];
+  const violations: BootViolation[] = [];
+  if (!input.buildInfoPresent) violations.push('BUILD_INFO_MISSING');
+  if (input.demoRoutesBuilt) violations.push('DEMO_ROUTES_BUILT');
+  return violations;
 }
 
 export function evaluateBoot(input: BootInput): BootResult {
@@ -118,7 +137,7 @@ export function evaluateBoot(input: BootInput): BootResult {
   } else {
     if (input.components.some((c) => c.implementation === 'simulated')) add('SIMULATED_COMPONENT');
     if (input.demoToolsRaw === 'true') add('DEMO_TOOLS_ENABLED');
-    if (input.demoRoutesBuilt) add('DEMO_ROUTES_BUILT');
+    for (const v of evaluateBuild(input)) add(v);
     if (input.seedPasswordSet) add('SEED_PASSWORD_SET');
     if (!isHttps(input.appUrl)) add('APP_URL_NOT_HTTPS');
     if (db?.reachable) {

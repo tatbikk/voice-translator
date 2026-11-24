@@ -8,6 +8,12 @@ const DAY = 24 * HOUR;
 
 export const SECURITY_POLICY = {
   password: { maxFailures: 5, windowMs: 15 * MINUTE, lockMs: 15 * MINUTE },
+  /**
+   * Lock notices (a notification and a text message) sent to the account holder:
+   * at most this many per account in the last 24 hours of real time. Past it the
+   * lock still happens and is logged, but nobody is notified (review S-08).
+   */
+  lockNotices: { perDay: 3, windowMs: DAY },
   secondFactor: {
     codeDigits: 6,
     codeTtlMs: 5 * MINUTE,
@@ -40,7 +46,8 @@ export const SECURITY_POLICY = {
   preferencesPerClient: { max: 30, windowMs: 15 * MINUTE },
   body: { maxBytes: 16 * 1024 },
   fields: { passwordMin: 12, passwordMax: 128, email: 254, name: 120, phone: 32, requestReferenceMin: 8, requestReferenceMax: 64 },
-  argon2: { concurrency: 4, memoryCost: 19456, timeCost: 2, parallelism: 1, outputLen: 32 },
+  /** maxWaiting: hashing calls queued behind the running ones; past it the call fails (503, review S-03) */
+  argon2: { concurrency: 4, maxWaiting: 32, memoryCost: 19456, timeCost: 2, parallelism: 1, outputLen: 32 },
   session: { absoluteMs: 12 * HOUR, idleDefaultMinutes: 30, idleMinMinutes: 5, idleMaxMinutes: 60 },
   deviceCookie: { lifetimeMs: 180 * DAY },
   activation: { ttlMs: DAY },
@@ -109,6 +116,12 @@ export function wouldExceed(timestamps: readonly Date[], now: Date, rule: LimitR
 export function issuanceAllowed(issued: readonly Date[], now: Date): boolean {
   const p = SECURITY_POLICY.secondFactor;
   return countInWindow(issued, now, p.issueWindowMs) < p.issuePerWindow && countInWindow(issued, now, DAY) < p.issuePerDay;
+}
+
+/** Whether one more lock notice may be sent, given those sent to the account in the window. */
+export function lockNoticeAllowed(sent: readonly Date[], now: Date): boolean {
+  const p = SECURITY_POLICY.lockNotices;
+  return countInWindow(sent, now, p.windowMs) < p.perDay;
 }
 
 /** Remaining wrong codes before the account is locked. */

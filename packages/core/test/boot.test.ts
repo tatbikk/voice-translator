@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateBoot, type BootInput, type BootViolation } from '../src/index';
+import { evaluateBoot, evaluateBuild, type BootInput, type BootViolation } from '../src/index';
 
 const cleanDb = {
   reachable: true,
@@ -16,6 +16,7 @@ const production: BootInput = {
   mode: 'production',
   demoToolsRaw: 'false',
   demoRoutesBuilt: false,
+  buildInfoPresent: true,
   accessCodeLength: 0,
   appUrl: 'https://mahkama.example',
   sessionSecretBytes: 48,
@@ -59,6 +60,7 @@ describe('production mode', () => {
     ['a simulated component', { components: [{ id: 'messaging', implementation: 'simulated' }] }, 'SIMULATED_COMPONENT'],
     ['DEMO_TOOLS=true (refused, not ignored)', { demoToolsRaw: 'true' }, 'DEMO_TOOLS_ENABLED'],
     ['demo routes in the build', { demoRoutesBuilt: true }, 'DEMO_ROUTES_BUILT'],
+    ['no build marker (review A-15)', { buildInfoPresent: false }, 'BUILD_INFO_MISSING'],
     ['a seed password', { seedPasswordSet: true }, 'SEED_PASSWORD_SET'],
     ['an http URL', { appUrl: 'http://mahkama.example' }, 'APP_URL_NOT_HTTPS'],
     ['a database not stamped production', { db: { ...cleanDb, stamp: null } }, 'DATABASE_NOT_STAMPED_PRODUCTION'],
@@ -148,5 +150,18 @@ describe('demo mode', () => {
     const result = evaluateBoot({ ...demo, db: { ...demo.db!, stamp: null } });
     expect(result.ok).toBe(true);
     expect(result.warnings).toContain('DATABASE_NOT_STAMPED');
+  });
+});
+
+describe('build facts, checked by every process (review A-15)', () => {
+  it('production refuses a demo build and an unidentified build', () => {
+    expect(evaluateBuild({ mode: 'production', demoRoutesBuilt: false, buildInfoPresent: true })).toEqual([]);
+    expect(evaluateBuild({ mode: 'production', demoRoutesBuilt: true, buildInfoPresent: true })).toEqual(['DEMO_ROUTES_BUILT']);
+    expect(evaluateBuild({ mode: 'production', demoRoutesBuilt: false, buildInfoPresent: false })).toEqual(['BUILD_INFO_MISSING']);
+  });
+
+  it('demo mode accepts any build', () => {
+    expect(evaluateBuild({ mode: 'demo', demoRoutesBuilt: true, buildInfoPresent: false })).toEqual([]);
+    expect(evaluateBoot({ ...demo, buildInfoPresent: false }).ok).toBe(true);
   });
 });

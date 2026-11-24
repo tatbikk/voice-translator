@@ -3,6 +3,7 @@ import { verifyChain, type ChainedEventRecord, type ChainVerification, type Lega
 import type { Event } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getDb } from '../db';
+import { throwIfStopping, type StopCheck } from '../jobs/stop';
 import { log } from '../log';
 import { appendStandaloneEvent } from './append';
 import { chainKeyring } from './keyring';
@@ -51,6 +52,7 @@ async function verifyInPages(
   anchor: Anchor | undefined,
   mustContain: Anchor | null,
   pageSize: number,
+  stopping: StopCheck | undefined,
 ): Promise<ChainVerification> {
   let carry: ChainedEventRecord | null = null;
   let count = 0;
@@ -58,6 +60,8 @@ async function verifyInPages(
   let sawStoredHead = mustContain === null;
   let next = BigInt(fromSeq);
   for (;;) {
+    // A stop request ends the pass between pages, before anything is recorded (review A-11).
+    throwIfStopping(stopping);
     const page = (await getDb().event.findMany({ where: { seq: { gte: next } }, orderBy: { seq: 'asc' }, take: pageSize })).map(toRecord);
     if (page.length === 0) break;
     const rows = carry ? [carry, ...page] : page;
@@ -89,7 +93,9 @@ export interface VerificationReport {
   readonly mode: 'INCREMENTAL' | 'FULL';
 }
 
-export async function verifyEventChain(options: { full?: boolean; pageSize?: number } = {}): Promise<VerificationReport> {
+export async function verifyEventChain(
+  options: { full?: boolean; pageSize?: number; stopping?: StopCheck } = {},
+): Promise<VerificationReport> {
   const db = getDb();
   const state = await db.systemState.findUnique({ where: { id: 1 } });
   const due = !state?.lastFullVerifiedAt || clock.now().getTime() - state.lastFullVerifiedAt.getTime() > FULL_PASS_EVERY_MS;
@@ -102,7 +108,7 @@ export async function verifyEventChain(options: { full?: boolean; pageSize?: num
   // The full pass also checks the stored anchor: the anchored row must still exist unchanged.
   const storedHead =
     full && state?.chainHeadSeq != null && state.chainHeadHash ? { seq: Number(state.chainHeadSeq), hash: state.chainHeadHash } : null;
-  const result = await verifyInPages(anchor ? anchor.seq : 1, anchor, storedHead, options.pageSize ?? PAGE);
+  const result = await verifyInPages(anchor ? anchor.seq : 1, anchor, storedHead, options.pageSize ?? PAGE, options.stopping);
 
   const mode = full ? 'FULL' : 'INCREMENTAL';
   const now = clock.now();

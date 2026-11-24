@@ -7,6 +7,8 @@
 // rewrite the log, nor disable its triggers, nor drop the table.
 import { z } from 'zod';
 import pg from 'pg';
+import { enforceBuild } from '@/server/boot/build-info';
+import { SCRAM_PASSWORD, scramSha256Verifier } from './scram';
 
 const ROLE_NAME = /^[a-z_][a-z0-9_]{0,62}$/;
 
@@ -14,7 +16,7 @@ const schema = z.object({
   APP_MODE: z.enum(['demo', 'production']),
   MIGRATION_DATABASE_URL: z.string().min(1),
   DATABASE_URL: z.string().min(1),
-  APP_DB_PASSWORD: z.string().min(12).max(128),
+  APP_DB_PASSWORD: z.string().min(12).max(128).regex(SCRAM_PASSWORD),
 });
 
 function fail(code: string): never {
@@ -31,6 +33,8 @@ function only<T>(rows: readonly T[]): T {
 }
 
 async function main(): Promise<void> {
+  // The build marker first, like every process (review A-15).
+  enforceBuild('db-roles');
   const parsed = schema.safeParse(process.env);
   if (!parsed.success) {
     fail(`INVALID_ENV:${parsed.error.issues.map((i) => i.path.join('.')).join(',')}`);
@@ -40,6 +44,9 @@ async function main(): Promise<void> {
   const ownerRole = decodeURIComponent(new URL(env.MIGRATION_DATABASE_URL).username);
   if (!ROLE_NAME.test(runtimeRole)) fail('RUNTIME_ROLE_NAME_INVALID');
   if (runtimeRole === ownerRole) fail('RUNTIME_ROLE_IS_OWNER');
+
+  // Only the SCRAM-SHA-256 verifier is sent, never the password itself (review S-12).
+  const verifier = scramSha256Verifier(env.APP_DB_PASSWORD);
 
   const client = new pg.Client({ connectionString: env.MIGRATION_DATABASE_URL });
   await client.connect();
@@ -51,7 +58,7 @@ async function main(): Promise<void> {
     if (exists.rowCount === 0) {
       const create = await client.query<{ sql: string }>(
         `SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION PASSWORD %L', $1::text, $2::text) AS sql`,
-        [runtimeRole, env.APP_DB_PASSWORD],
+        [runtimeRole, verifier],
       );
       await client.query(only(create.rows).sql);
     } else {
@@ -59,7 +66,7 @@ async function main(): Promise<void> {
         // Only a superuser may restate SUPERUSER/REPLICATION, even to "NO": the
         // attributes are verified by the final check instead.
         `SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', $1::text, $2::text) AS sql`,
-        [runtimeRole, env.APP_DB_PASSWORD],
+        [runtimeRole, verifier],
       );
       await client.query(only(alter.rows).sql);
     }

@@ -6,6 +6,7 @@ import {
   formatMoroccoDate,
   formatMoroccoTime,
   issuanceAllowed,
+  lockNoticeAllowed,
 } from '@mahkama/core';
 import type { Prisma, User } from '@/generated/prisma/client';
 import { clock } from '../clock';
@@ -48,17 +49,38 @@ async function issuedRecently(idHash: string): Promise<Date[]> {
   return rows.map((r) => r.at);
 }
 
-async function notifyLock(user: User, until: Date): Promise<void> {
-  const params = { date: formatMoroccoDate(until), time: formatMoroccoTime(until) };
-  await getDb().$transaction((tx) =>
-    createNotification(tx, { userId: user.id, kind: 'INFORMATION', templateKey: 'notifications.accountLocked', params }),
-  );
+const LOCK_NOTICE_TEMPLATE = 'notifications.accountLocked';
+
+const lockNoticeParams = (until: Date) => ({ date: formatMoroccoDate(until), time: formatMoroccoTime(until) });
+
+/**
+ * Whether the account holder may still be told of a new lock (review S-08): the
+ * lock notices already sent are counted from the notifications themselves, in
+ * real time. A notification carries platform time, which is never behind real
+ * time; a date ahead of it is counted as now, so that advancing the demo clock
+ * can only keep a notice in the window, never drop it.
+ */
+async function lockNoticeDue(tx: Tx, userId: string): Promise<boolean> {
+  const now = clock.systemNow();
+  const rows = await tx.notification.findMany({
+    where: {
+      userId,
+      templateKey: LOCK_NOTICE_TEMPLATE,
+      createdAt: { gte: new Date(now.getTime() - SECURITY_POLICY.lockNotices.windowMs) },
+    },
+    select: { createdAt: true },
+  });
+  const sent = rows.map((r) => (r.createdAt.getTime() > now.getTime() ? now : r.createdAt));
+  return lockNoticeAllowed(sent, now);
+}
+
+async function sendLockMessage(user: User, until: Date): Promise<void> {
   await messaging().send({
     channel: 'SMS',
     recipientUserId: user.id,
     recipientAddress: user.phone,
     templateKey: 'messages.sms.accountLocked',
-    params,
+    params: lockNoticeParams(until),
     holdsSecret: false,
     visibleToSessionId: null,
   });
@@ -75,22 +97,28 @@ async function lockAccount(
   const outcome = await eventTransaction(async (tx) => {
     // Serialised by the event-log lock: a lock already started by a concurrent
     // request is reused, so that a burst creates one lock and one notification.
+    // The same lock serialises the count of the notices already sent.
     const existing = await tx.lockout.findFirst({
       where: { identifierHash: idHash, bucket: bucket.storage, until: { gt: clock.systemNow() } },
       orderBy: { until: 'desc' },
       select: { until: true },
     });
-    if (existing) return { until: existing.until, created: false };
+    if (existing) return { until: existing.until, notified: false };
     if (inTx) await inTx(tx);
     const lockedUntil = await startLock(idHash, bucket, cause, lockMs, tx);
+    // Past the daily cap of notices the lock still happens and is logged.
+    const notified = user ? await lockNoticeDue(tx, user.id) : false;
+    if (user && notified) {
+      await createNotification(tx, { userId: user.id, kind: 'INFORMATION', templateKey: LOCK_NOTICE_TEMPLATE, params: lockNoticeParams(lockedUntil) });
+    }
     await appendEvent(tx, {
       action: 'auth.account.locked',
-      details: { cause, bucket: bucket.kind, until: lockedUntil.toISOString() },
+      details: { cause, bucket: bucket.kind, until: lockedUntil.toISOString(), notified },
       actor: user ? { userId: user.id, roleAssignmentId: null, role: null, viaDemoSwitch: false } : null,
     });
-    return { until: lockedUntil, created: true };
+    return { until: lockedUntil, notified };
   });
-  if (user && outcome.created) await notifyLock(user, outcome.until);
+  if (user && outcome.notified) await sendLockMessage(user, outcome.until);
   return outcome.until;
 }
 

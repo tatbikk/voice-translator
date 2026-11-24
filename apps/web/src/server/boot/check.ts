@@ -7,12 +7,14 @@ import { clock } from '../clock';
 import { getDb } from '../db';
 import { appendStandaloneEvent } from '../events/append';
 import { replaceableComponents } from '../components/registry';
+import { buildFacts } from './build-info';
 import { log, errorFields } from '../log';
 
 // Gathers the facts the boot check needs (contract §4.4) and refuses to start
 // when one rule is broken: production mode with a simulated component, a demo
-// tool, demo routes, demo data or an advanced clock; any mode with weak secrets
-// or a database role able to rewrite the event log.
+// tool, demo routes, demo data, an advanced clock or an unidentified build; any
+// mode with weak secrets or a database role able to rewrite the event log. The
+// command-line tools run the build part of it (build-info.ts).
 
 /** The newest migration shipped with this version of the code, or null when none is found. */
 function newestShippedMigration(): string | null {
@@ -88,10 +90,9 @@ export async function evaluateBootFacts(): Promise<BootResult> {
   const env = getEnv();
   const components = replaceableComponents();
   return evaluateBoot({
-    mode: env.mode,
+    // mode, and the build marker with, in the web bundle, the flag inlined by next.config.ts (review A-15)
+    ...buildFacts(env.mode),
     demoToolsRaw: env.demoToolsRaw,
-    // Inlined at build time by next.config.ts; absent (false) in the worker bundle.
-    demoRoutesBuilt: process.env.DEMO_ROUTES_BUILT === 'true',
     accessCodeLength: env.accessCode?.length ?? 0,
     appUrl: env.appUrl,
     sessionSecretBytes: env.sessionSecret.length,

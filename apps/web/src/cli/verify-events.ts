@@ -1,7 +1,11 @@
 // Full verification of the event chain (npm run events:verify). Exit code 0
 // when the chain is intact, 1 when it is broken.
+import { enforceBuild } from '@/server/boot/build-info';
 import { closeDb } from '@/server/db';
 import { verifyEventChain } from '@/server/events/verify';
+
+// The build marker first, like every process (review A-15).
+enforceBuild('verify-events');
 
 const report = await verifyEventChain({ full: true });
 if (report.result.ok) {
