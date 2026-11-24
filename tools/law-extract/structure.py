@@ -3,10 +3,10 @@
 import re
 import unicodedata
 
+import blocks as B
 import lines as L
 
 DAHIR_PREFIX = "ظهير شريف رقم"
-SECTION_HEADER = "نصوص عامة"           # Gazette section title, not part of the text
 
 # printed division names, from the widest to the narrowest, and their level
 DIVISIONS = {"القسم": 2, "الباب": 3, "الفرع": 4, "الجزء": 5}
@@ -36,8 +36,9 @@ class Node:
     __slots__ = ("kind", "level", "text", "number", "block", "printed")
 
     def __init__(self, kind, text, block, level=None, number=None, printed=None):
-        self.kind = kind        # dahir-title, law-title, division, title,
-                                # subheading, heading, article, para
+        # kind: dahir-title, law-title, division, title, subheading, heading,
+        # article or para
+        self.kind = kind
         self.text = text
         self.block = block
         self.level = level
@@ -50,8 +51,8 @@ class LawStructure:
         self.nodes = []
         self.first_page = None
         self.last_page = None
-        self.notes = []
-        self.dropped = []
+        self.article_count = 0
+        self.dropped = []       # ornaments left out: (page, column, text)
 
 
 def build_structure(blocks, law_number):
@@ -63,15 +64,14 @@ def build_structure(blocks, law_number):
             break
     if law_title is None or not blocks[0].bold:
         raise L.ExtractionError("cannot locate the title of law %s" % law_number)
-    start, end = 0, len(blocks)
     law = LawStructure()
-    law.first_page = blocks[start].first.page
-    law.last_page = blocks[end - 1].last.page
+    law.first_page = blocks[0].first.page
+    law.last_page = blocks[-1].last.page
     nodes = law.nodes
 
     # ---- the promulgating Dahir --------------------------------------------
-    nodes.append(Node("dahir-title", blocks[start].text, blocks[start], level=2))
-    for b in blocks[start + 1:law_title]:
+    nodes.append(Node("dahir-title", blocks[0].text, blocks[0], level=2))
+    for b in blocks[1:law_title]:
         if ORNAMENT_RE.match(b.text):
             law.dropped.append((b.first.page, b.first.column, b.text))
             continue
@@ -81,12 +81,13 @@ def build_structure(blocks, law_number):
 
     # ---- the law ---------------------------------------------------------------
     nodes.append(Node("law-title", blocks[law_title].text, blocks[law_title], level=2))
-    counters = {name: 0 for name in DIVISIONS}
-    order = list(DIVISIONS)
+    names = list(DIVISIONS)
+    counters = {name: 0 for name in names}
     expect_title = None
     expected_article = 1
-    for b in blocks[law_title + 1:end]:
+    for b in blocks[law_title + 1:]:
         text = b.text
+        where = "p%d %s" % (b.first.page, b.first.column)
         if expect_title is not None:
             if not b.bold:
                 raise L.ExtractionError("division %r has no bold title: %r" % (expect_title, b))
@@ -96,63 +97,62 @@ def build_structure(blocks, law_number):
         if b.bold:
             if text in UNLABELLED_HEADINGS:
                 nodes.append(Node("heading", text, b, level=UNLABELLED_HEADINGS[text]))
-            elif _is_subheading(text):
+            elif B.ENUMERATOR.match(text):
                 nodes.append(Node("subheading", text, b, level=SUBHEADING_LEVEL))
             else:
                 raise L.ExtractionError("unclassified bold text: %r" % b)
             continue
-        if b.centred or text == FIRST_ARTICLE or ARTICLE_RE.match(text):
-            number = None
-            if text == FIRST_ARTICLE:
-                number = 1
-            else:
-                m = ARTICLE_RE.match(text)
-                if m:
-                    number = int(m.group(1))
-            if number is not None:
-                if not b.centred or len(b.lines) != 1:
-                    raise L.ExtractionError("article heading is not a centred line: %r" % b)
-                if number != expected_article:
-                    raise L.ExtractionError(
-                        "article %d found where article %d was expected (p%d %s)"
-                        % (number, expected_article, b.first.page, b.first.column))
-                expected_article += 1
-                printed = text if text != "المادة %d" % number else None
-                nodes.append(Node("article", "المادة %d" % number, b, level=6,
-                                  number=number, printed=printed))
-                continue
+        number = _article_number(text)
+        if number is not None:
+            if not b.centred or len(b.lines) != 1:
+                raise L.ExtractionError("article heading is not a centred line: %r" % b)
+            if number != expected_article:
+                raise L.ExtractionError("article %d found where article %d was expected (%s)"
+                                        % (number, expected_article, where))
+            expected_article += 1
+            printed = text if text != "المادة %d" % number else None
+            nodes.append(Node("article", "المادة %d" % number, b, level=6,
+                              number=number, printed=printed))
+            continue
+        if b.centred:
             m = LABEL_RE.match(text)
-            if m and m.group(2) in ORDINALS:
-                name, rank = m.group(1), ORDINALS[m.group(2)]
-                if rank != counters[name] + 1:
-                    raise L.ExtractionError(
-                        "%s %d follows %s %d (p%d %s)" % (
-                            name, rank, name, counters[name], b.first.page, b.first.column))
-                counters[name] = rank
-                for lower in order[order.index(name) + 1:]:
-                    counters[lower] = 0
-                nodes.append(Node("division", text, b, level=DIVISIONS[name], number=rank))
-                expect_title = text
-                continue
-            raise L.ExtractionError("unclassified centred line: %r" % b)
+            if not m or m.group(2) not in ORDINALS:
+                raise L.ExtractionError("unclassified centred line: %r" % b)
+            name, rank = m.group(1), ORDINALS[m.group(2)]
+            depth = names.index(name)
+            if rank != counters[name] + 1:
+                raise L.ExtractionError("%s %d follows %s %d (%s)"
+                                        % (name, rank, name, counters[name], where))
+            if depth > 0 and counters[names[depth - 1]] == 0:
+                raise L.ExtractionError("%s outside any %s (%s)"
+                                        % (name, names[depth - 1], where))
+            counters[name] = rank
+            for lower in names[depth + 1:]:
+                counters[lower] = 0
+            nodes.append(Node("division", text, b, level=DIVISIONS[name], number=rank))
+            expect_title = text
+            continue
         nodes.append(Node("para", text, b))
+    if expect_title is not None:
+        raise L.ExtractionError("division %r has no title" % expect_title)
     law.article_count = expected_article - 1
     return law
 
 
-def _is_subheading(text):
-    import blocks as B
-    return bool(B.ENUMERATOR.match(text))
+def _article_number(text):
+    if text == FIRST_ARTICLE:
+        return 1
+    m = ARTICLE_RE.match(text)
+    return int(m.group(1)) if m else None
 
 
 def render_markdown(law, title, provenance):
     out = ["# " + title, ""]
     for line in provenance:
-        out.append("> " + line if line else ">")
+        out.append("> " + line)
     out.append("")
     for node in law.nodes:
-        if node.kind in ("dahir-title", "law-title", "division", "heading",
-                         "subheading", "article"):
+        if node.level is not None:
             out.append("#" * node.level + " " + node.text)
         elif node.kind == "title":
             out.append("**" + node.text + "**")
@@ -161,6 +161,6 @@ def render_markdown(law, title, provenance):
         out.append("")
     while out and out[-1] == "":
         out.pop()
-    # canonical composition (NFC): only reorders the marks of the two letters
-    # that carry both a shadda and a vowel
+    # canonical composition (NFC): it only reorders the marks of the two
+    # letters that carry both a shadda and a vowel
     return unicodedata.normalize("NFC", "\n".join(out) + "\n")

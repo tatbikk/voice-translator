@@ -135,7 +135,7 @@ def run(markdown, law, article_count):
     # ---- signatures of reversed ligatures ("االستئناف", "املحكمة", "إال") -------
     naive = [t for t in counts
              if re.match(r"^[وفبلك]?اال", t) or re.match(r"^[وفبل]?امل", t)
-             or t in ("ال", "وال", "فال", "إال", "أال", "خالل", "ثالثني")]
+             or t in ("ال", "وال", "فال", "إال", "أال", "خالل", "ثالثين")]
     if naive:
         _fail("words that look like reversed ligatures: %r" % sorted(naive)[:20])
     report.append("reversed-ligature signatures (اال…، امل…، إال، خالل): none")

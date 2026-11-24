@@ -10,7 +10,8 @@ a list item. Line grouping relies on the printed layout only:
   indent) and is not centred;
 * consecutive bold lines of the same size form one title.
 
-Every decision taken at the top of a column is recorded for review.
+Anything unusual at the top of a column is noted for review, and the review
+report lists every paragraph that runs from one column into the next.
 """
 
 import re
@@ -29,8 +30,7 @@ ENUMERATOR = re.compile(
     r"|[\u0621-\u064a]\u0640?\s*-"
     r"|\d+\s*[.\-])")
 
-
-RUNNING_QUOTE = "\u00ab"
+RUNNING_QUOTE = "\u00ab"      # opening guillemet
 
 
 class Block:
@@ -178,14 +178,15 @@ def _starts_block(prev, line, block, geo, pitches, cont_indents, first_indents, 
     if block.centred or block.bold:
         return True
     indent = geo.right_indent(line)
+    if not cont_indents or not first_indents:
+        raise L.ExtractionError("no paragraph margins could be learnt from the layout")
     d_cont = min(abs(indent - v) for v in cont_indents)
     d_first = min(abs(indent - v) for v in first_indents)
     if min(d_cont, d_first) > 1.0 or abs(d_cont - d_first) < 0.5:
         raise L.ExtractionError(
             "cannot decide whether p%d %s starts a paragraph (indent %.1f)"
             % (line.page, line.column, indent))
-    near_first = d_first < d_cont
-    if near_first:
+    if d_first < d_cont:
         return True
     # continuation: the paragraph left open must agree
     last = block.last

@@ -251,19 +251,22 @@ def build_lines(page, body):
     def is_full(g):
         return any(abs(g.base - b) <= LINE_GAP for b in full_bases)
 
+    # band k = what stands between full-width line k-1 and full-width line k;
+    # the columns of a band are read before the full-width line that closes it
     lines = []
-    bands = sorted({(band_of(g), 0 if is_full(g) else 1) for g in ink})
-    for band, kind in bands:
-        members = [g for g in ink if band_of(g) == band and (0 if is_full(g) else 1) == kind]
-        if kind == 0:
-            for group in _cluster(members):
-                lines.append(_make_line(page, "full", group, band))
-            continue
-        for column in ("right", "left"):
-            col = [g for g in members
-                   if ((g.x0 + g.x1) / 2 > PAGE_MID_X) == (column == "right")]
-            for group in _cluster(col):
-                line = _make_line(page, column, group, band)
+    keys = sorted({(band_of(g), 1 if is_full(g) else 0) for g in ink})
+    for band, full in keys:
+        members = [g for g in ink
+                   if band_of(g) == band and (1 if is_full(g) else 0) == full]
+        if full:
+            columns = [("full", members)]
+        else:
+            columns = [(name, [g for g in members
+                               if ((g.x0 + g.x1) / 2 > PAGE_MID_X) == (name == "right")])
+                       for name in ("right", "left")]
+        for name, glyphs in columns:
+            for group in _cluster(glyphs):
+                line = _make_line(page, name, group, band)
                 if line is not None:
                     lines.append(line)
     return lines
