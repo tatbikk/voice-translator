@@ -103,7 +103,9 @@ export const ROLES: Readonly<Record<RoleCode, RoleDefinition>> = {
   PANEL_PRESIDENT: role('PANEL_PRESIDENT', 'panel', 'INTERNAL', { court: true }),
   PANEL_MEMBER: role('PANEL_MEMBER', 'panel', 'INTERNAL', { court: true }),
   PUBLIC_PROSECUTOR: role('PUBLIC_PROSECUTOR', 'prosecution', 'INTERNAL', { court: true }),
-  ROYAL_COMMISSIONER: role('ROYAL_COMMISSIONER', 'prosecution', 'INTERNAL', { court: true }),
+  // Sits before administrative courts only (articles 101, 107, 364); the demo has
+  // none, so the role is attached to no court for now (decision 31, question 22).
+  ROYAL_COMMISSIONER: role('ROYAL_COMMISSIONER', 'prosecution', 'INTERNAL', { court: false }),
   BAILIFF: role('BAILIFF', 'bailiff', 'PROFESSIONAL', { court: true }),
   EXPERT: role('EXPERT', 'expert', 'PROFESSIONAL'),
   ENFORCEMENT_JUDGE: role('ENFORCEMENT_JUDGE', 'enforcement_judge', 'INTERNAL', { court: true }),

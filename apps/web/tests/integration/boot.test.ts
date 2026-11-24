@@ -14,7 +14,11 @@ import { resetDatabase, useFreshDatabase } from '../helpers/reset';
 import { findLeaks } from '../helpers/sensitive';
 
 function bootCheck(overrides: Record<string, string | undefined> = {}): ProcessResult {
+  // As in a web or worker process: the owner's connection is held by the release
+  // step only (review A-01); the tests that need it put it back explicitly.
   const env: NodeJS.ProcessEnv = { ...process.env };
+  Reflect.deleteProperty(env, 'MIGRATION_DATABASE_URL');
+  Reflect.deleteProperty(env, 'APP_DB_PASSWORD');
   for (const [name, value] of Object.entries(overrides)) {
     if (value === undefined) Reflect.deleteProperty(env, name);
     else env[name] = value;
@@ -41,6 +45,26 @@ describe('boot check (memo row 20, contract §13.6)', () => {
   it('row 20: demo mode with the test configuration boots (exit 0)', () => {
     const result = bootCheck();
     expect(result.status, result.output.slice(-3000)).toBe(0);
+  });
+
+  it('any mode refuses the owner database connection in its environment (review A-01)', () => {
+    for (const mode of ['demo', 'production']) {
+      const result = bootCheck({ APP_MODE: mode, MIGRATION_DATABASE_URL: requireEnv('MIGRATION_DATABASE_URL') });
+      expect(result.status, mode).not.toBe(0);
+      expect(result.output, mode).toContain('OWNER_DATABASE_URL_PRESENT');
+      expect(result.output, 'the connection string itself is never printed').not.toContain(requireEnv('MIGRATION_DATABASE_URL'));
+    }
+  });
+
+  it('any mode refuses a database whose schema is behind the code', async () => {
+    await sql(`UPDATE "_prisma_migrations" SET rolled_back_at = now() WHERE migration_name = (SELECT max(migration_name) FROM "_prisma_migrations")`);
+    try {
+      const result = bootCheck();
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain('SCHEMA_NOT_MIGRATED');
+    } finally {
+      await sql(`UPDATE "_prisma_migrations" SET rolled_back_at = NULL WHERE rolled_back_at IS NOT NULL`);
+    }
   });
 
   it('row 20: APP_MODE=production with the test configuration refuses to boot', () => {

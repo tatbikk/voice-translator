@@ -1,7 +1,6 @@
 import { authorize, roleLabelKey } from '@mahkama/core';
 import { directionOf } from '@/i18n/locales';
 import { isTranslated, translator } from '@/i18n/translate';
-import { institutionalIdentity } from '@/server/identity-settings';
 import { unreadCount } from '@/server/notifications/service';
 import type { GateContext } from '@/server/permissions/guard';
 import { AccountMenu } from './AccountMenu';
@@ -25,20 +24,20 @@ function readingPreferences(req: Request): { size: number; contrast: number } {
 export async function TopBar({ context }: { context: GateContext }) {
   const t = translator(context.locale);
   const dir = directionOf(context.locale);
-  const identity = await institutionalIdentity();
   const subject = context.session?.subject ?? null;
   const unread = subject ? await unreadCount(subject.userId) : 0;
   const reading = readingPreferences(context.req);
   const canSwitchRole =
     subject !== null &&
     authorize(subject, 'account.switch-role', undefined, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled }).allowed;
-  const roleLabel = subject ? t(roleLabelKey(subject.role)) : '';
+  const roleLabel = subject ? t(roleLabelKey(subject.role, context.session?.courtDegree)) : '';
 
   return (
     <header className="border-b border-line bg-paper">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
         <a href={subject ? '/dashboard' : '/'} className="flex items-center gap-3 text-ink-900 no-underline">
-          <LogoSlot label={t('shell.logoSlot')} logoUrl={identity.logoFileId ? '/api/v1/identity/logo' : null} />
+          {/* The neutral frame until the institutional identity screen serves the logo (Phase 9; review A-18). */}
+          <LogoSlot label={t('shell.logoSlot')} logoUrl={null} />
           <span className="font-naskh text-lg font-bold">{t('common.platformName')}</span>
         </a>
         {context.mode === 'demo' ? (

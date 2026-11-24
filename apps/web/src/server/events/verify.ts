@@ -38,22 +38,50 @@ function toRecord(row: Event): ChainedEventRecord {
   };
 }
 
-async function* rowsFrom(fromSeq: number): AsyncGenerator<ChainedEventRecord> {
+type Anchor = { readonly seq: number; readonly hash: string };
+
+/**
+ * Verifies the chain page by page: memory does not grow with the log (review
+ * A-08). Each page is verified from the last row of the previous one, which is
+ * its anchor, so that the link between pages is checked too. `mustContain` is
+ * the stored head of a full pass: that row must still be there, unchanged.
+ */
+async function verifyInPages(
+  fromSeq: number,
+  anchor: Anchor | undefined,
+  mustContain: Anchor | null,
+  pageSize: number,
+): Promise<ChainVerification> {
+  let carry: ChainedEventRecord | null = null;
+  let count = 0;
+  let head: Anchor | null = null;
+  let sawStoredHead = mustContain === null;
   let next = BigInt(fromSeq);
   for (;;) {
-    const page = await getDb().event.findMany({ where: { seq: { gte: next } }, orderBy: { seq: 'asc' }, take: PAGE });
-    for (const row of page) yield toRecord(row);
-    if (page.length < PAGE) return;
+    const page = (await getDb().event.findMany({ where: { seq: { gte: next } }, orderBy: { seq: 'asc' }, take: pageSize })).map(toRecord);
+    if (page.length === 0) break;
+    const rows = carry ? [carry, ...page] : page;
+    const pageAnchor = carry ? { seq: carry.seq, hash: carry.hash } : anchor;
+    const result = verifyChain(chainKeyring, rows, pageAnchor ? { anchor: pageAnchor } : {});
+    if (!result.ok) return result;
+    if (mustContain && !sawStoredHead) {
+      const stored = page.find((r) => r.seq === mustContain.seq);
+      if (stored) {
+        if (stored.hash !== mustContain.hash) return { ok: false, brokenAtSeq: stored.seq, reason: 'ANCHOR_MISMATCH' };
+        sawStoredHead = true;
+      }
+    }
+    count += carry ? result.count - 1 : result.count;
+    head = result.head;
     const last = page.at(-1);
-    if (!last) return;
-    next = last.seq + 1n;
+    if (!last || page.length < pageSize) break;
+    carry = last;
+    next = BigInt(last.seq) + 1n;
   }
-}
-
-async function collect(fromSeq: number): Promise<ChainedEventRecord[]> {
-  const rows: ChainedEventRecord[] = [];
-  for await (const row of rowsFrom(fromSeq)) rows.push(row);
-  return rows;
+  if (mustContain && !sawStoredHead) return { ok: false, brokenAtSeq: mustContain.seq, reason: 'HEAD_BEHIND_ANCHOR' };
+  // Anchored, and not even the anchored row is left.
+  if (anchor && head === null) return { ok: false, brokenAtSeq: anchor.seq, reason: 'HEAD_BEHIND_ANCHOR' };
+  return { ok: true, count, head };
 }
 
 export interface VerificationReport {
@@ -61,7 +89,7 @@ export interface VerificationReport {
   readonly mode: 'INCREMENTAL' | 'FULL';
 }
 
-export async function verifyEventChain(options: { full?: boolean } = {}): Promise<VerificationReport> {
+export async function verifyEventChain(options: { full?: boolean; pageSize?: number } = {}): Promise<VerificationReport> {
   const db = getDb();
   const state = await db.systemState.findUnique({ where: { id: 1 } });
   const due = !state?.lastFullVerifiedAt || clock.now().getTime() - state.lastFullVerifiedAt.getTime() > FULL_PASS_EVERY_MS;
@@ -72,13 +100,9 @@ export async function verifyEventChain(options: { full?: boolean } = {}): Promis
       : undefined;
 
   // The full pass also checks the stored anchor: the anchored row must still exist unchanged.
-  const rows = await collect(anchor ? anchor.seq : 1);
-  let result = verifyChain(chainKeyring, rows, anchor ? { anchor } : {});
-  if (result.ok && full && state?.chainHeadSeq != null && state.chainHeadHash) {
-    const anchored = rows.find((r) => r.seq === Number(state.chainHeadSeq));
-    if (!anchored) result = { ok: false, brokenAtSeq: Number(state.chainHeadSeq), reason: 'HEAD_BEHIND_ANCHOR' };
-    else if (anchored.hash !== state.chainHeadHash) result = { ok: false, brokenAtSeq: anchored.seq, reason: 'ANCHOR_MISMATCH' };
-  }
+  const storedHead =
+    full && state?.chainHeadSeq != null && state.chainHeadHash ? { seq: Number(state.chainHeadSeq), hash: state.chainHeadHash } : null;
+  const result = await verifyInPages(anchor ? anchor.seq : 1, anchor, storedHead, options.pageSize ?? PAGE);
 
   const mode = full ? 'FULL' : 'INCREMENTAL';
   const now = clock.now();

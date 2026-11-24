@@ -4,7 +4,7 @@ import type { Prisma } from '@/generated/prisma/client';
 import { getEnv } from '../config/env';
 import { clock } from '../clock';
 import { getDb } from '../db';
-import { appendEvent, type EventActor } from '../events/append';
+import { appendEvent, type EventActor, eventTransaction } from '../events/append';
 
 // Notifications inside the user's space. Three kinds, never confused: a legal
 // notification (opens a time limit, acknowledged), information, a reminder.
@@ -102,8 +102,11 @@ export async function notificationOwner(id: string): Promise<string | null> {
 }
 
 export async function markRead(id: string, actor: EventActor, clientIdHash: string): Promise<void> {
-  await getDb().$transaction(async (tx) => {
-    await tx.notification.updateMany({ where: { id, readAt: null }, data: { readAt: clock.now() } });
-    await appendEvent(tx, { action: 'notification.read', details: { notificationId: id }, actor, clientIdHash });
+  await eventTransaction(async (tx) => {
+    const changed = await tx.notification.updateMany({ where: { id, readAt: null }, data: { readAt: clock.now() } });
+    // Logged when the notification changes, not again for one already read (review A-18).
+    if (changed.count === 1) {
+      await appendEvent(tx, { action: 'notification.read', details: { notificationId: id }, actor, clientIdHash });
+    }
   });
 }

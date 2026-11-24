@@ -2,21 +2,21 @@ import 'server-only';
 import { randomInt } from 'node:crypto';
 import {
   SECURITY_POLICY,
+  failuresSinceLastSuccess,
   formatMoroccoDate,
   formatMoroccoTime,
   issuanceAllowed,
-  secondFactorRemaining,
-  shouldLock,
 } from '@mahkama/core';
 import type { Prisma, User } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getDb } from '../db';
-import { appendEvent, appendStandaloneEvent } from '../events/append';
+import { appendEvent, appendStandaloneEvent, eventTransaction } from '../events/append';
 import { identifierHash, hmacHex, sessionKey } from '../keys';
 import { messaging } from '../messaging';
 import { createNotification } from '../notifications/service';
 import { consume } from '../security/rate-limit';
-import { activeLock, attemptsFor, bucketFor, recordAttempt, startLock, type Bucket } from './attempts';
+import { appendRefusalEvent } from '../security/refusals';
+import { activeLock, attemptsFor, bucketFor, lastEndedLock, markAttemptSucceeded, recordAttempt, reserveAttempt, startLock, type Bucket } from './attempts';
 import { deviceIdFromRequest, newDeviceId, rememberDevice } from './device-cookie';
 import { needsRehash, hashPassword, verifyPassword } from './passwords';
 import { createSession, revokeSession, rotateSession, type SessionContext } from './sessions';
@@ -72,7 +72,15 @@ async function lockAccount(
   lockMs: number,
   inTx?: (tx: Tx) => Promise<void>,
 ): Promise<Date> {
-  const until = await getDb().$transaction(async (tx) => {
+  const outcome = await eventTransaction(async (tx) => {
+    // Serialised by the event-log lock: a lock already started by a concurrent
+    // request is reused, so that a burst creates one lock and one notification.
+    const existing = await tx.lockout.findFirst({
+      where: { identifierHash: idHash, bucket: bucket.storage, until: { gt: clock.systemNow() } },
+      orderBy: { until: 'desc' },
+      select: { until: true },
+    });
+    if (existing) return { until: existing.until, created: false };
     if (inTx) await inTx(tx);
     const lockedUntil = await startLock(idHash, bucket, cause, lockMs, tx);
     await appendEvent(tx, {
@@ -80,10 +88,10 @@ async function lockAccount(
       details: { cause, bucket: bucket.kind, until: lockedUntil.toISOString() },
       actor: user ? { userId: user.id, roleAssignmentId: null, role: null, viaDemoSwitch: false } : null,
     });
-    return lockedUntil;
+    return { until: lockedUntil, created: true };
   });
-  if (user) await notifyLock(user, until);
-  return until;
+  if (user && outcome.created) await notifyLock(user, outcome.until);
+  return outcome.until;
 }
 
 async function sendCode(user: User, sessionId: string, code: string, expiresAt: Date): Promise<void> {
@@ -136,7 +144,7 @@ export async function loginWithPassword(
 ): Promise<LoginResult> {
   const throttle = await consume(`login:client:${clientIdHash}`, SECURITY_POLICY.loginPerClient);
   if (throttle.limited) {
-    await appendStandaloneEvent({ action: 'auth.login.throttled', details: {}, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'auth.login.throttled', details: {}, clientIdHash });
     return { kind: 'throttled', retryAfterSeconds: throttle.retryAfterSeconds };
   }
 
@@ -150,12 +158,31 @@ export async function loginWithPassword(
   // password is right or wrong, and the attempt is neither verified nor counted.
   const lockedUntil = await activeLock(idHash, bucket);
   if (lockedUntil) {
-    await appendStandaloneEvent({
-      action: 'auth.login.blocked',
-      details: { identifierHash: idHash, bucket: bucket.kind },
-      clientIdHash,
-    });
+    await appendRefusalEvent(
+      { clientIdHash, sessionId: null },
+      { action: 'auth.login.blocked', details: { identifierHash: idHash, bucket: bucket.kind }, clientIdHash },
+    );
     return { kind: 'locked', retryAfterSeconds: secondsUntil(lockedUntil) };
+  }
+
+  // The attempt is counted before the password is checked: concurrent requests
+  // never get more checks than the policy allows (review S-03).
+  const passwordPolicy = SECURITY_POLICY.password;
+  const attemptId = await reserveAttempt('PASSWORD', { identifierHash: idHash, bucket, clientIdHash });
+  const failures = failuresSinceLastSuccess(
+    await attemptsFor('PASSWORD', idHash, bucket, passwordPolicy.windowMs, await lastEndedLock(idHash, bucket, ['PASSWORD', 'REAUTH'])),
+    clock.systemNow(),
+    passwordPolicy.windowMs,
+  );
+  if (failures > passwordPolicy.maxFailures) {
+    // Concurrent requests passed the limit together: refused without a check, and
+    // the lock is made sure of (none of them may have seen exactly the limit).
+    await appendRefusalEvent(
+      { clientIdHash, sessionId: null },
+      { action: 'auth.login.blocked', details: { identifierHash: idHash, bucket: bucket.kind }, clientIdHash },
+    );
+    const until = await lockAccount(user, idHash, bucket, 'PASSWORD', passwordPolicy.lockMs);
+    return { kind: 'locked', retryAfterSeconds: secondsUntil(until) };
   }
 
   const usableRoles = user ? await db.roleAssignment.count({ where: { userId: user.id, revokedAt: null } }) : 0;
@@ -163,35 +190,35 @@ export async function loginWithPassword(
   const ok = await verifyPassword(usable ? user.passwordHash : null, password);
 
   if (!ok || !user) {
-    await recordAttempt('PASSWORD', { identifierHash: idHash, bucket, clientIdHash, ok: false });
-    await appendStandaloneEvent({
-      action: 'auth.login.failed',
-      details: { identifierHash: idHash, reason: 'INVALID_CREDENTIALS' },
-      clientIdHash,
-    });
-    const attempts = await attemptsFor('PASSWORD', idHash, bucket, SECURITY_POLICY.password.windowMs);
-    if (shouldLock(attempts, clock.systemNow(), SECURITY_POLICY.password)) {
-      await lockAccount(user, idHash, bucket, 'PASSWORD', SECURITY_POLICY.password.lockMs);
+    await appendRefusalEvent(
+      { clientIdHash, sessionId: null },
+      { action: 'auth.login.failed', details: { identifierHash: idHash, reason: 'INVALID_CREDENTIALS' }, clientIdHash },
+    );
+    if (failures >= passwordPolicy.maxFailures) {
+      await lockAccount(user, idHash, bucket, 'PASSWORD', passwordPolicy.lockMs);
     }
     return { kind: 'invalid' };
   }
 
-  await recordAttempt('PASSWORD', { identifierHash: idHash, bucket, clientIdHash, ok: true });
+  await markAttemptSucceeded(attemptId);
   if (user.passwordHash && needsRehash(user.passwordHash)) {
     await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
   }
 
   if (!issuanceAllowed(await issuedRecently(idHash), clock.systemNow())) {
-    await appendStandaloneEvent({
-      action: 'auth.second-factor.refused',
-      details: { reason: 'ISSUANCE_CAP' },
-      actor: { userId: user.id, roleAssignmentId: null, role: null, viaDemoSwitch: false },
-      clientIdHash,
-    });
+    await appendRefusalEvent(
+      { clientIdHash, sessionId: null },
+      {
+        action: 'auth.second-factor.refused',
+        details: { reason: 'ISSUANCE_CAP' },
+        actor: { userId: user.id, roleAssignmentId: null, role: null, viaDemoSwitch: false },
+        clientIdHash,
+      },
+    );
     return { kind: 'locked', retryAfterSeconds: Math.ceil(SECURITY_POLICY.secondFactor.issueWindowMs / 1000) };
   }
 
-  const result = await db.$transaction(async (tx) => {
+  const result = await eventTransaction(async (tx) => {
     // One pending session per account: a new login closes the previous one.
     const pending = await tx.session.findMany({
       where: { userId: user.id, revokedAt: null, state: { not: 'ACTIVE' } },
@@ -237,8 +264,12 @@ export async function verifySecondFactor(
   const { user, session, actor } = context;
   const idHash = identifierHash(user.email);
   const bucket = await bucketFor(req, user.id);
+  const owner = { clientIdHash, sessionId: session.id };
   const lockedUntil = await activeLock(idHash, bucket);
-  if (lockedUntil) return { kind: 'locked', retryAfterSeconds: secondsUntil(lockedUntil) };
+  if (lockedUntil) {
+    await appendRefusalEvent(owner, { action: 'auth.second-factor.refused', details: { reason: 'LOCKED' }, actor, clientIdHash });
+    return { kind: 'locked', retryAfterSeconds: secondsUntil(lockedUntil) };
+  }
 
   const db = getDb();
   const now = clock.systemNow();
@@ -247,40 +278,56 @@ export async function verifySecondFactor(
     orderBy: { createdAt: 'desc' },
   });
   if (!challenge || challenge.expiresAt.getTime() <= now.getTime()) {
-    await appendStandaloneEvent({ action: 'auth.second-factor.refused', details: { reason: 'EXPIRED' }, actor, clientIdHash });
+    await appendRefusalEvent(owner, { action: 'auth.second-factor.refused', details: { reason: 'EXPIRED' }, actor, clientIdHash });
     return { kind: 'expired' };
   }
 
-  if (!safeEqual(codeMac(challenge.id, code), challenge.codeMac)) {
-    await recordAttempt('SECOND_FACTOR', { identifierHash: idHash, bucket, clientIdHash, ok: false });
-    const attempts = await attemptsFor('SECOND_FACTOR', idHash, bucket, SECURITY_POLICY.secondFactor.windowMs);
-    if (shouldLock(attempts, clock.systemNow(), SECURITY_POLICY.secondFactor)) {
-      const until = await lockAccount(user, idHash, bucket, 'SECOND_FACTOR', SECURITY_POLICY.secondFactor.lockMs, async (tx) => {
-        await tx.secondFactorChallenge.updateMany({
-          where: { userId: user.id, consumedAt: null, voidedAt: null },
-          data: { voidedAt: clock.systemNow() },
-        });
-        const pending = await tx.session.findMany({
-          where: { userId: user.id, revokedAt: null, state: { not: 'ACTIVE' } },
-          select: { id: true },
-        });
-        for (const p of pending) await revokeSession(tx, p.id, 'SECOND_FACTOR_LOCK');
+  // The attempt is counted before the code is compared: concurrent requests
+  // never get more comparisons than the policy allows (review S-03).
+  const policy = SECURITY_POLICY.secondFactor;
+  const attemptId = await reserveAttempt('SECOND_FACTOR', { identifierHash: idHash, bucket, clientIdHash });
+  const failures = failuresSinceLastSuccess(
+    await attemptsFor('SECOND_FACTOR', idHash, bucket, policy.windowMs, await lastEndedLock(idHash, bucket, ['SECOND_FACTOR'])),
+    clock.systemNow(),
+    policy.windowMs,
+  );
+  // The lock voids every open code and ends every session waiting for one.
+  const lockSecondFactor = () =>
+    lockAccount(user, idHash, bucket, 'SECOND_FACTOR', policy.lockMs, async (tx) => {
+      await tx.secondFactorChallenge.updateMany({
+        where: { userId: user.id, consumedAt: null, voidedAt: null },
+        data: { voidedAt: clock.systemNow() },
       });
-      return { kind: 'locked', retryAfterSeconds: secondsUntil(until) };
+      const pending = await tx.session.findMany({
+        where: { userId: user.id, revokedAt: null, state: { not: 'ACTIVE' } },
+        select: { id: true },
+      });
+      for (const p of pending) await revokeSession(tx, p.id, 'SECOND_FACTOR_LOCK');
+    });
+  if (failures > policy.maxFailures) {
+    // Concurrent requests passed the limit together: refused without a comparison,
+    // and the lock is made sure of (none of them may have seen exactly the limit).
+    await appendRefusalEvent(owner, { action: 'auth.second-factor.refused', details: { reason: 'LOCKED' }, actor, clientIdHash });
+    return { kind: 'locked', retryAfterSeconds: secondsUntil(await lockSecondFactor()) };
+  }
+
+  if (!safeEqual(codeMac(challenge.id, code), challenge.codeMac)) {
+    if (failures >= policy.maxFailures) {
+      return { kind: 'locked', retryAfterSeconds: secondsUntil(await lockSecondFactor()) };
     }
-    const remaining = secondFactorRemaining(attempts, clock.systemNow());
+    const remaining = Math.max(0, policy.maxFailures - failures);
     await appendStandaloneEvent({ action: 'auth.second-factor.failed', details: { remaining }, actor, clientIdHash });
     return { kind: 'invalid', remaining };
   }
 
   const deviceId = deviceIdFromRequest(req) ?? newDeviceId();
-  const outcome = await db.$transaction(async (tx) => {
+  const outcome = await eventTransaction(async (tx) => {
     const consumed = await tx.secondFactorChallenge.updateMany({
       where: { id: challenge.id, consumedAt: null, voidedAt: null, expiresAt: { gt: clock.systemNow() } },
       data: { consumedAt: clock.systemNow() },
     });
     if (consumed.count !== 1) return null;
-    await recordAttempt('SECOND_FACTOR', { identifierHash: idHash, bucket, clientIdHash, ok: true }, tx);
+    await markAttemptSucceeded(attemptId, tx);
     const roles = await tx.roleAssignment.findMany({ where: { userId: user.id, revokedAt: null }, orderBy: { createdAt: 'asc' } });
     const single = roles.length === 1 ? (roles[0] ?? null) : null;
     const rotated = await rotateSession(tx, session.id, {
@@ -314,15 +361,13 @@ export async function resendSecondFactor(context: SessionContext, clientIdHash: 
   // The cap is per account (contract §4.5): logins and resends together, 5 per
   // 15 minutes and 20 per day, whatever the number of sessions.
   if (!issuanceAllowed(await issuedRecently(idHash), clock.systemNow())) {
-    await appendStandaloneEvent({
-      action: 'auth.second-factor.refused',
-      details: { reason: 'ISSUANCE_CAP' },
-      actor,
-      clientIdHash,
-    });
+    await appendRefusalEvent(
+      { clientIdHash, sessionId: session.id },
+      { action: 'auth.second-factor.refused', details: { reason: 'ISSUANCE_CAP' }, actor, clientIdHash },
+    );
     return { kind: 'refused', retryAfterSeconds: Math.ceil(SECURITY_POLICY.secondFactor.issueWindowMs / 1000) };
   }
-  const challenge = await getDb().$transaction(async (tx) => {
+  const challenge = await eventTransaction(async (tx) => {
     await tx.session.update({ where: { id: session.id }, data: { resendCount: { increment: 1 } } });
     const created = await createChallenge(tx, user.id, session.id, idHash, clientIdHash);
     await appendEvent(tx, {
@@ -348,7 +393,7 @@ export async function selectRole(context: SessionContext, clientIdHash: string, 
     where: { id: roleAssignmentId, userId: user.id, revokedAt: null },
   });
   if (!assignment) return { kind: 'not-found' };
-  const token = await db.$transaction(async (tx) => {
+  const token = await eventTransaction(async (tx) => {
     const rotated = await rotateSession(tx, session.id, {
       state: 'ACTIVE',
       roleAssignment: { connect: { id: assignment.id } },
@@ -367,7 +412,7 @@ export async function selectRole(context: SessionContext, clientIdHash: string, 
 }
 
 export async function logout(context: SessionContext, clientIdHash: string): Promise<void> {
-  await getDb().$transaction(async (tx) => {
+  await eventTransaction(async (tx) => {
     await revokeSession(tx, context.session.id, 'LOGOUT');
     await appendEvent(tx, { action: 'auth.logout', details: {}, actor: context.actor, clientIdHash });
   });
@@ -385,25 +430,41 @@ export async function reauthenticate(
   const { user, session, actor } = context;
   const idHash = identifierHash(user.email);
   const bucket = await bucketFor(req, user.id);
+  const owner = { clientIdHash, sessionId: session.id };
   const lockedUntil = await activeLock(idHash, bucket);
-  if (lockedUntil) return { kind: 'locked', retryAfterSeconds: secondsUntil(lockedUntil) };
+  if (lockedUntil) {
+    await appendRefusalEvent(owner, { action: 'auth.reauth.blocked', details: { bucket: bucket.kind }, actor, clientIdHash });
+    return { kind: 'locked', retryAfterSeconds: secondsUntil(lockedUntil) };
+  }
+
+  // Counted before the password is checked, like a login (review S-03).
+  const policy = SECURITY_POLICY.password;
+  const attemptId = await reserveAttempt('PASSWORD', { identifierHash: idHash, bucket, clientIdHash });
+  const failures = failuresSinceLastSuccess(
+    await attemptsFor('PASSWORD', idHash, bucket, policy.windowMs, await lastEndedLock(idHash, bucket, ['PASSWORD', 'REAUTH'])),
+    clock.systemNow(),
+    policy.windowMs,
+  );
+  // The person at the keyboard is presumably not the owner: the lock ends the session.
+  const lockReauth = () =>
+    lockAccount(user, idHash, bucket, 'REAUTH', policy.lockMs, async (tx) => {
+      await revokeSession(tx, session.id, 'REAUTH_LOCK');
+    });
+  if (failures > policy.maxFailures) {
+    await appendRefusalEvent(owner, { action: 'auth.reauth.blocked', details: { bucket: bucket.kind }, actor, clientIdHash });
+    return { kind: 'locked', retryAfterSeconds: secondsUntil(await lockReauth()) };
+  }
 
   const ok = await verifyPassword(user.passwordHash, password);
   if (!ok) {
-    await recordAttempt('PASSWORD', { identifierHash: idHash, bucket, clientIdHash, ok: false });
     await appendStandaloneEvent({ action: 'auth.reauth.failed', details: {}, actor, clientIdHash });
-    const attempts = await attemptsFor('PASSWORD', idHash, bucket, SECURITY_POLICY.password.windowMs);
-    if (shouldLock(attempts, clock.systemNow(), SECURITY_POLICY.password)) {
-      // The person at the keyboard is presumably not the owner: the session ends.
-      const until = await lockAccount(user, idHash, bucket, 'REAUTH', SECURITY_POLICY.password.lockMs, async (tx) => {
-        await revokeSession(tx, session.id, 'REAUTH_LOCK');
-      });
-      return { kind: 'locked', retryAfterSeconds: secondsUntil(until) };
+    if (failures >= policy.maxFailures) {
+      return { kind: 'locked', retryAfterSeconds: secondsUntil(await lockReauth()) };
     }
     return { kind: 'invalid' };
   }
-  await recordAttempt('PASSWORD', { identifierHash: idHash, bucket, clientIdHash, ok: true });
-  await getDb().$transaction(async (tx) => {
+  await markAttemptSucceeded(attemptId);
+  await eventTransaction(async (tx) => {
     await tx.session.update({ where: { id: session.id }, data: { reauthAt: clock.systemNow() } });
     await appendEvent(tx, { action: 'auth.reauth.succeeded', details: {}, actor, clientIdHash });
   });

@@ -7,6 +7,7 @@ export const GET = defineEndpoint({
   method: 'GET',
   path: '/healthz',
   access: { kind: 'public' },
+  platformClock: false,
   handler: async () => {
     const up = await checkDatabase();
     return new Response(JSON.stringify({ status: up ? 'ok' : 'unavailable' }), {

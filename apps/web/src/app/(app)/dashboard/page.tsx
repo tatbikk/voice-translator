@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const t = translator(context.locale);
   const { subject, session } = context;
   const data = await dashboardFor(subject, session.session.previousLoginAt);
-  const roleText = t(roleLabelKey(subject.role));
+  const roleText = t(roleLabelKey(subject.role, session.courtDegree));
   const dateTime = (d: Date) => t('common.dateTime', { date: formatMoroccoDate(d), time: formatMoroccoTime(d) });
   return (
     <Frame context={context}>

@@ -2,6 +2,7 @@ import 'server-only';
 import { SECURITY_POLICY, countInWindow } from '@mahkama/core';
 import { getDb } from '../db';
 import { appendStandaloneEvent } from '../events/append';
+import { appendRefusalEvent } from '../security/refusals';
 import { getEnv } from '../config/env';
 import { COOKIES, readCookie, serializeCookie } from '../http/cookies';
 import { hmacBase64Url, sessionKey } from '../keys';
@@ -74,11 +75,11 @@ export async function submitAccessCode(clientIdHash: string, code: string): Prom
   const perClient = SECURITY_POLICY.accessCode.perClient;
   const global = SECURITY_POLICY.accessCode.global;
   if (countInWindow(await failuresSince({ clientIdHash }, perClient.windowMs), now, perClient.windowMs) >= perClient.max) {
-    await appendStandaloneEvent({ action: 'access.code.blocked', details: { scope: 'client' }, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'access.code.blocked', details: { scope: 'client' }, clientIdHash });
     return { kind: 'blocked', scope: 'client', retryAfterSeconds: perClient.blockMs / 1000 };
   }
   if (countInWindow(await failuresSince({}, global.windowMs), now, global.windowMs) >= global.max) {
-    await appendStandaloneEvent({ action: 'access.code.blocked', details: { scope: 'global' }, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'access.code.blocked', details: { scope: 'global' }, clientIdHash });
     return { kind: 'blocked', scope: 'global', retryAfterSeconds: global.blockMs / 1000 };
   }
   const accepted = accessCodeMatches(code);
@@ -86,7 +87,7 @@ export async function submitAccessCode(clientIdHash: string, code: string): Prom
     data: { kind: 'ACCESS_CODE', identifierHash: null, bucket: 'default', clientIdHash, ok: accepted, at: now },
   });
   if (!accepted) {
-    await appendStandaloneEvent({ action: 'access.code.rejected', details: {}, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'access.code.rejected', details: {}, clientIdHash });
     return { kind: 'rejected' };
   }
   await appendStandaloneEvent({ action: 'access.code.accepted', details: {}, clientIdHash });

@@ -4,8 +4,14 @@
 // See .railway/README.md for the first deployment.
 //
 // Secrets are never generated here (ctx.randomString() is predictable): the owner
-// sets them once on the web service, `preserve()` keeps them, and the worker
-// references the web service's values so that both always hold the same keys.
+// sets them once on the web service, `preserve()` keeps them, and the worker and
+// the release step reference the web service's values, so that all hold the same keys.
+//
+// The owner's database connection and the demo password belong to the release
+// service alone, which runs once per deployment and exits: no running process
+// can rewrite the event log (review A-01). The web service and the worker refuse
+// to boot until the release step has applied this version's migrations
+// (SCHEMA_NOT_MIGRATED), and restart until it has.
 import { bucket, defineRailway, github, postgres, preserve, project, ref, service } from 'railway/iac';
 
 export default defineRailway(() => {
@@ -22,12 +28,11 @@ export default defineRailway(() => {
   const web = service('web', {
     source,
     build,
-    // Release step: migrations, runtime-role grants, then (demo only) the idempotent demo data.
-    preDeploy: 'node dist-server/release.mjs',
-    deploy: { preDeployTimeoutSeconds: 300, restartPolicyType: 'ON_FAILURE', restartPolicyMaxRetries: 5 },
+    // Retries cover the minutes the release step takes to migrate.
+    deploy: { restartPolicyType: 'ON_FAILURE', restartPolicyMaxRetries: 10, drainingSeconds: 30 },
     start: 'node ../../node_modules/next/dist/bin/next start',
     healthcheck: '/healthz',
-    healthcheckTimeout: 120,
+    healthcheckTimeout: 300,
     env: {
       APP_MODE: 'demo',
       DEMO_TOOLS: 'true',
@@ -36,13 +41,10 @@ export default defineRailway(() => {
       NODE_ENV: 'production',
       LOG_LEVEL: 'info',
       APP_URL: 'https://${{RAILWAY_PUBLIC_DOMAIN}}',
-      MIGRATION_DATABASE_URL: db.env.DATABASE_URL,
       DATABASE_URL: runtimeDatabaseUrl,
-      APP_DB_PASSWORD: '${{shared.APP_DB_PASSWORD}}',
       SESSION_SECRET: preserve(),
       SECRETS_MASTER_KEY: preserve(),
       ACCESS_CODE: preserve(),
-      SEED_DEMO_PASSWORD: preserve(),
       S3_BUCKET: ref(documents, 'BUCKET'),
       S3_ENDPOINT: ref(documents, 'ENDPOINT'),
       S3_REGION: ref(documents, 'REGION'),
@@ -55,7 +57,7 @@ export default defineRailway(() => {
     source,
     build,
     start: 'node dist-server/worker.mjs',
-    deploy: { restartPolicyType: 'ALWAYS' },
+    deploy: { restartPolicyType: 'ALWAYS', drainingSeconds: 30 },
     env: {
       APP_MODE: 'demo',
       DEMO_TOOLS: 'true',
@@ -71,6 +73,31 @@ export default defineRailway(() => {
     },
   });
 
+  // Release step: migrations, runtime-role grants, then (demo only) the idempotent
+  // demo data. It runs once per deployment and exits; never a reset.
+  const release = service('release', {
+    source,
+    build,
+    start: 'node dist-server/release.mjs',
+    deploy: { restartPolicyType: 'NEVER' },
+    env: {
+      APP_MODE: 'demo',
+      DEMO_TOOLS: 'true',
+      DEMO_BUILD: 'true',
+      AI_EXTERNAL_ALLOWED: 'false',
+      NODE_ENV: 'production',
+      LOG_LEVEL: 'info',
+      APP_URL: 'https://${{web.RAILWAY_PUBLIC_DOMAIN}}',
+      MIGRATION_DATABASE_URL: db.env.DATABASE_URL,
+      DATABASE_URL: runtimeDatabaseUrl,
+      APP_DB_PASSWORD: '${{shared.APP_DB_PASSWORD}}',
+      SESSION_SECRET: web.env.SESSION_SECRET,
+      SECRETS_MASTER_KEY: web.env.SECRETS_MASTER_KEY,
+      ACCESS_CODE: web.env.ACCESS_CODE,
+      SEED_DEMO_PASSWORD: preserve(),
+    },
+  });
+
   // No TCP proxy and no public domain on the database.
-  return project('mahkama', { resources: [db, documents, web, worker] });
+  return project('mahkama', { resources: [db, documents, release, web, worker] });
 });

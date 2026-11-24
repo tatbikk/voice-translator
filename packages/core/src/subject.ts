@@ -27,6 +27,7 @@ export type Resource =
       readonly userId: string;
       readonly isDemo: boolean;
       readonly activated: boolean;
+      readonly disabled: boolean;
       readonly role: RoleCode | null;
     }
   /** the role is null when the request names no known role (the body is validated after authorization) */

@@ -9,6 +9,7 @@ export type ConditionCode =
   | 'DEMO_TOOLS_ENABLED'
   | 'TARGET_IS_DEMO_ACCOUNT'
   | 'TARGET_NOT_ACTIVATED'
+  | 'TARGET_NOT_DISABLED'
   | 'SUBJECT_RELATED_TO_CASE';
 
 export type ConditionFailure = 'NOT_FOUND' | 'CONDITION_NOT_MET' | 'MODE_NOT_PERMITTED';
@@ -40,6 +41,10 @@ export const CONDITIONS: Readonly<Record<ConditionCode, ConditionDefinition>> = 
   TARGET_NOT_ACTIVATED: {
     onFail: 'CONDITION_NOT_MET',
     test: (_subject, resource) => resource?.kind === 'account' && !resource.activated,
+  },
+  TARGET_NOT_DISABLED: {
+    onFail: 'CONDITION_NOT_MET',
+    test: (_subject, resource) => resource?.kind === 'account' && !resource.disabled,
   },
   SUBJECT_RELATED_TO_CASE: {
     // Phase 0 has no relation between users and case files yet: always false.

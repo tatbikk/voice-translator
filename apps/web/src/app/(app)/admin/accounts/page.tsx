@@ -1,4 +1,4 @@
-import { ACTIONS, resolveLegalBasis, roleLabelKey } from '@mahkama/core';
+import { ACTIONS, authorize, resolveLegalBasis, roleLabelKey, type Resource } from '@mahkama/core';
 import { dictionary } from '@/i18n/dictionary';
 import { translator } from '@/i18n/translate';
 import { ReissueActivationButton } from '@/components/forms/ReissueActivationButton';
@@ -42,11 +42,20 @@ export default async function AccountsPage() {
             </thead>
             <tbody>
               {accounts.map((a) => {
-                const firstRole = (a.roles[0]?.role ?? null);
-                const basis = legalBasisText(
-                  t,
-                  resolveLegalBasis(rule, { kind: 'account', userId: a.id, isDemo: a.isDemo, activated: a.activated, role: firstRole }),
-                );
+                const resource: Resource = {
+                  kind: 'account',
+                  userId: a.id,
+                  isDemo: a.isDemo,
+                  activated: a.activated,
+                  disabled: a.disabled,
+                  role: a.roles[0]?.role ?? null,
+                };
+                const basis = legalBasisText(t, resolveLegalBasis(rule, resource));
+                // The button exists only when the core allows the action on this account.
+                const canReissue = authorize(context.subject, rule.code, resource, {
+                  mode: context.mode,
+                  demoToolsEnabled: context.demoToolsEnabled,
+                }).allowed;
                 return (
                   <tr key={a.id} className="border-b border-line align-top">
                     <td className="px-4 py-3">
@@ -73,7 +82,7 @@ export default async function AccountsPage() {
                         : a.activated
                           ? t('admin.accounts.status.active')
                           : t('admin.accounts.status.pending')}
-                      {!a.activated && !a.disabled ? (
+                      {canReissue ? (
                         <div className="mt-2">
                           <ReissueActivationButton
                             userId={a.id}

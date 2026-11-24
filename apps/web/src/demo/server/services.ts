@@ -1,7 +1,7 @@
 import 'server-only';
 import { getEnv } from '@/server/config/env';
 import { getDb } from '@/server/db';
-import { appendEvent, appendStandaloneEvent, type EventActor } from '@/server/events/append';
+import { appendEvent, appendStandaloneEvent, type EventActor, eventTransaction } from '@/server/events/append';
 import { createSession, revokeSession } from '@/server/auth/sessions';
 
 // Demo tools deliberately bypass controls: they are isolated here, reached only
@@ -83,7 +83,7 @@ export async function switchAccount(
 ): Promise<string> {
   const db = getDb();
   const assignment = await db.roleAssignment.findUniqueOrThrow({ where: { id: roleAssignmentId }, include: { user: true } });
-  return db.$transaction(async (tx) => {
+  return eventTransaction(async (tx) => {
     if (previous.sessionId) await revokeSession(tx, previous.sessionId, 'DEMO_SWITCH');
     const { token } = await createSession(tx, {
       userId: assignment.userId,

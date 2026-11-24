@@ -29,7 +29,7 @@ export const EVENT_TYPES = {
   },
   'access.throttled': {
     outcome: 'DENIED',
-    details: detailsOf({ scope: z.enum(['client', 'session']), suppressedCount: count, windowStart: iso }),
+    details: detailsOf({ scope: z.enum(['client', 'session', 'global']), suppressedCount: count, windowStart: iso }),
   },
   'auth.login.succeeded': { outcome: 'DONE', details: detailsOf({ identifierHash: hash }) },
   'auth.login.failed': {
@@ -75,6 +75,7 @@ export const EVENT_TYPES = {
   },
   'auth.reauth.succeeded': { outcome: 'DONE', details: detailsOf({}) },
   'auth.reauth.failed': { outcome: 'DENIED', details: detailsOf({}) },
+  'auth.reauth.blocked': { outcome: 'DENIED', details: detailsOf({ bucket: z.enum(['default', 'device']) }) },
   'account.activated': { outcome: 'DONE', details: detailsOf({ userId: id }) },
   'account.activation.failed': {
     outcome: 'DENIED',
@@ -84,6 +85,16 @@ export const EVENT_TYPES = {
     outcome: 'DONE',
     details: detailsOf({
       newUserId: id,
+      role: roleCode,
+      courtId: id.nullable(),
+      requestReferenceHash: hash,
+    }),
+  },
+  /** a role added to an account that already existed (review A-18) */
+  'admin.role.granted': {
+    outcome: 'DONE',
+    details: detailsOf({
+      userId: id,
       role: roleCode,
       courtId: id.nullable(),
       requestReferenceHash: hash,

@@ -30,6 +30,16 @@ export function runProcess(
   return { status: result.status, stdout, stderr, output: `${stdout}\n${stderr}` };
 }
 
+/**
+ * The environment of a web or worker process: without the owner's connection and
+ * the seed password, which only the release step holds (review A-01).
+ */
+export function runtimeOnly(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const copy = { ...env };
+  for (const name of ['MIGRATION_DATABASE_URL', 'APP_DB_PASSWORD', 'SEED_DEMO_PASSWORD']) Reflect.deleteProperty(copy, name);
+  return copy;
+}
+
 /** `node dist-server/<name>.mjs …` from apps/web. */
 export function runBundled(
   name: 'boot-check' | 'seed' | 'verify-events' | 'db-roles' | 'worker',
@@ -69,7 +79,11 @@ export interface RunningProcess {
 
 /** Starts the bundled worker (dist-server/worker.mjs) in the background, as `npm run worker` does. */
 export function startWorker(env: NodeJS.ProcessEnv = process.env): RunningProcess {
-  const child = spawn(process.execPath, [join('dist-server', 'worker.mjs')], { cwd: WEB_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [join('dist-server', 'worker.mjs')], {
+    cwd: WEB_ROOT,
+    env: runtimeOnly(env),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   const chunks: string[] = [];
   child.stdout.on('data', (d: Buffer) => chunks.push(d.toString('utf8')));
   child.stderr.on('data', (d: Buffer) => chunks.push(d.toString('utf8')));

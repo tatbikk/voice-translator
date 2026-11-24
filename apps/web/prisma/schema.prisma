@@ -119,6 +119,10 @@ model User {
   disabledAt      DateTime? @db.Timestamptz(3)
   lastLoginAt     DateTime? @db.Timestamptz(3)
   createdByUserId String?   @db.Uuid
+  /// The administrator's session that created the account: the only one that
+  /// sees its activation links in the simulated outbox (review S-06). No foreign
+  /// key, because sessions are cleaned up.
+  createdInSessionId String?  @db.Uuid
   createdAt       DateTime  @default(now()) @db.Timestamptz(3)
 
   roles            RoleAssignment[]

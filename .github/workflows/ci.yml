@@ -64,6 +64,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Owner role, databases and per-run secrets
         run: bash .github/scripts/ci-database.sh mahkama_test http://localhost:3100
+      # The generated Prisma client is not in the repository.
+      - run: npm run generate
       - run: npm run test:int
 
   e2e:
@@ -121,9 +123,12 @@ jobs:
         run: bash .github/scripts/ci-database.sh mahkama_dev http://localhost:3000
       - name: Release step, then /healthz
         run: |
-          env | grep -E '^(APP_MODE|DEMO_TOOLS|AI_EXTERNAL_ALLOWED|APP_URL|DATABASE_URL|MIGRATION_DATABASE_URL|APP_DB_PASSWORD|SESSION_SECRET|SECRETS_MASTER_KEY|ACCESS_CODE|SEED_DEMO_PASSWORD)=' > "$RUNNER_TEMP/app.env"
-          docker run --rm --network host --env-file "$RUNNER_TEMP/app.env" mahkama:ci node dist-server/release.mjs
-          docker run -d --name web --network host --env-file "$RUNNER_TEMP/app.env" mahkama:ci
+          # The release step alone holds the owner's connection and the seed
+          # password; the web container gets the runtime configuration only.
+          env | grep -E '^(APP_MODE|DEMO_TOOLS|AI_EXTERNAL_ALLOWED|APP_URL|DATABASE_URL|SESSION_SECRET|SECRETS_MASTER_KEY|ACCESS_CODE)=' > "$RUNNER_TEMP/runtime.env"
+          env | grep -E '^(MIGRATION_DATABASE_URL|APP_DB_PASSWORD|SEED_DEMO_PASSWORD)=' > "$RUNNER_TEMP/owner.env"
+          docker run --rm --network host --env-file "$RUNNER_TEMP/runtime.env" --env-file "$RUNNER_TEMP/owner.env" mahkama:ci node dist-server/release.mjs
+          docker run -d --name web --network host --env-file "$RUNNER_TEMP/runtime.env" mahkama:ci
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3000/healthz; then exit 0; fi
             sleep 2
@@ -143,6 +148,6 @@ jobs:
       - name: Semgrep
         run: |
           python3 -m pip install --user semgrep==1.185.0
-          ~/.local/bin/semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/secrets --config p/javascript
+          ~/.local/bin/semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/nextjs --config p/secrets --config p/javascript
       - name: gitleaks (full history)
         run: bash .github/scripts/gitleaks.sh

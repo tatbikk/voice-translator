@@ -1,13 +1,13 @@
 import 'server-only';
-import { ROLES, accountCreationBasis, canCombineRoles, isRoleCode, type RoleCode } from '@mahkama/core';
+import { ROLES, accountCreationBasis, canCombineRoles, isRoleCode, roleLabelKey, type CourtDegree, type RoleCode } from '@mahkama/core';
 import type { OrganizationKind } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getDb } from '../db';
-import { appendEvent, type EventActor } from '../events/append';
+import { appendEvent, eventTransaction, type EventActor } from '../events/append';
 import { professionalIdentity } from '../identity';
 import { messaging } from '../messaging';
 import { createNotification } from '../notifications/service';
-import { activationLink, createActivationToken } from '../auth/activation';
+import { activationExpiresAt, activationLink, createActivationToken } from '../auth/activation';
 import { sha256Hex } from '../auth/tokens';
 
 // Account administration (contract §6): the system administrator creates an
@@ -84,11 +84,14 @@ export async function createAccount(
   const email = input.email.trim().toLowerCase();
 
   let courtId: string | null = null;
+  let courtDegree: CourtDegree | null = null;
   if (definition.requiresCourt) {
     const court = input.courtId ? await db.court.findUnique({ where: { id: input.courtId } }) : null;
     if (!court) return { kind: 'invalid', fields: { courtId: 'errors.field.required' } };
     courtId = court.id;
+    courtDegree = court.degree;
   }
+  const roleKey = roleLabelKey(role, courtDegree);
   const organizationKind = ORGANIZATION_KIND[role];
   if (definition.requiresOrganization && !input.organizationName?.trim()) {
     return { kind: 'invalid', fields: { organizationName: 'errors.field.required' } };
@@ -110,7 +113,7 @@ export async function createAccount(
   });
   const legalBasis = accountCreationBasis({ kind: 'account-draft', role });
 
-  const result = await db.$transaction(async (tx) => {
+  const result = await eventTransaction(async (tx) => {
     const user =
       existing ??
       (await tx.user.create({
@@ -120,6 +123,7 @@ export async function createAccount(
           phone: input.phone.trim(),
           isDemo: false,
           createdByUserId: admin.actor.userId,
+          createdInSessionId: admin.sessionId,
           createdAt: clock.now(),
         },
       }));
@@ -143,7 +147,7 @@ export async function createAccount(
       userId: user.id,
       kind: 'INFORMATION',
       templateKey: 'notifications.roleGranted',
-      params: { roleKey: `roles.${role}` },
+      params: { roleKey },
     });
     const otherAdmins = await tx.roleAssignment.findMany({
       where: { role: 'SYSTEM_ADMIN', revokedAt: null, userId: { not: admin.actor.userId } },
@@ -154,22 +158,29 @@ export async function createAccount(
         userId: other.userId,
         kind: 'INFORMATION',
         templateKey: 'notifications.adminAccountCreated',
-        params: { roleKey: `roles.${role}` },
+        params: { roleKey },
         targetPath: '/admin/accounts',
       });
     }
-    await appendEvent(tx, {
-      action: 'admin.account.created',
-      details: {
-        newUserId: user.id,
-        role,
-        courtId,
-        requestReferenceHash: sha256Hex(input.requestReference.trim()),
-      },
-      actor: admin.actor,
-      clientIdHash: admin.clientIdHash,
-      legalBasis,
-    });
+    const requestReferenceHash = sha256Hex(input.requestReference.trim());
+    if (existing) {
+      // A role added to an account that already existed is not a new account.
+      await appendEvent(tx, {
+        action: 'admin.role.granted',
+        details: { userId: user.id, role, courtId, requestReferenceHash },
+        actor: admin.actor,
+        clientIdHash: admin.clientIdHash,
+        legalBasis,
+      });
+    } else {
+      await appendEvent(tx, {
+        action: 'admin.account.created',
+        details: { newUserId: user.id, role, courtId, requestReferenceHash },
+        actor: admin.actor,
+        clientIdHash: admin.clientIdHash,
+        legalBasis,
+      });
+    }
     return { user, token };
   });
 
@@ -181,9 +192,11 @@ export async function createAccount(
       templateKey: 'messages.email.activation',
       params: { link: activationLink(result.token) },
       holdsSecret: true,
-      expiresAt: new Date(clock.now().getTime() + 24 * 60 * 60 * 1000),
-      // A non-demo account's link is shown only to the administrator who created it.
-      visibleToSessionId: admin.sessionId,
+      expiresAt: activationExpiresAt(),
+      // A non-demo account's links are shown only to the session that created the
+      // account, whoever asks for a new one: in the demo environment, where every
+      // visitor can act as the demo administrator, nobody else can obtain them (S-06).
+      visibleToSessionId: result.user.isDemo ? null : result.user.createdInSessionId,
     });
   }
   return { kind: 'created', userId: result.user.id, activationSent: result.token !== null };
@@ -200,6 +213,7 @@ export async function accountResource(userId: string) {
     userId: user.id,
     isDemo: user.isDemo,
     activated: user.passwordHash !== null,
+    disabled: user.disabledAt !== null,
     role: (user.roles[0]?.role) ?? null,
   };
 }
@@ -210,7 +224,7 @@ export async function reissueActivation(
 ): Promise<void> {
   const db = getDb();
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
-  const token = await db.$transaction(async (tx) => {
+  const token = await eventTransaction(async (tx) => {
     const created = await createActivationToken(tx, user.id, admin.actor.userId);
     await appendEvent(tx, {
       action: 'admin.account.activation-reissued',
@@ -227,7 +241,7 @@ export async function reissueActivation(
     templateKey: 'messages.email.activation',
     params: { link: activationLink(token) },
     holdsSecret: true,
-    expiresAt: new Date(clock.now().getTime() + 24 * 60 * 60 * 1000),
-    visibleToSessionId: user.isDemo ? null : admin.sessionId,
+    expiresAt: activationExpiresAt(),
+    visibleToSessionId: user.isDemo ? null : user.createdInSessionId,
   });
 }

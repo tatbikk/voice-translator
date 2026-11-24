@@ -101,8 +101,14 @@ describe('account administration (memo rows 10, 25, 26)', () => {
       expect((await eventsAfter(since, 'auth.session.revoked')).some((e) => e.details.cause === 'REAUTH_LOCK')).toBe(true);
       const after = await client.get('/api/v1/notifications');
       expect({ status: after.status, code: after.code }).toEqual({ status: 401, code: 'SESSION_REQUIRED' });
-      const relogin = await (await visitor()).post('/api/v1/auth/login', { email: admin.email, password: admin.password });
-      expect(relogin.status, 'the account is locked').toBe(423);
+      // The failures came from a browser carrying the owner's device cookie, so
+      // they lock that device's bucket (contract §4.5, device-cookie scheme;
+      // docs/decisions.md, decision 35): the same browser is refused even with
+      // the right password, another browser keeps its own counter.
+      const sameBrowser = await client.post('/api/v1/auth/login', { email: admin.email, password: admin.password });
+      expect(sameBrowser.status, 'the browser where the failures were made is locked').toBe(423);
+      const elsewhere = await (await visitor()).post('/api/v1/auth/login', { email: admin.email, password: admin.password });
+      expect(elsewhere.status, 'another browser is not locked by this device lock').not.toBe(423);
     });
   });
 

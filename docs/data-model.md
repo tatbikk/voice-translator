@@ -17,7 +17,7 @@
 | `Court` | المحكمة ودرجتها | `code` (فريد)، `name`، `degree` (`FIRST_INSTANCE` ابتدائية، `APPEAL` استئناف)، `appealCourtId` (محكمة الاستئناف التي تتبعها) | التهيئة، ثم مدبر النظام في مرحلة لاحقة |
 | `Panel` | الهيئة داخل المحكمة | `courtId`، `name`، `kind` (`COLLEGIAL` جماعية، `SINGLE` فردية) | التهيئة |
 | `Organization` | الجهة التي ينتمي إليها الحساب | `kind` (`LAW_FIRM` مكتب محاماة، `BANK` بنك، `PUBLIC_ADMINISTRATION` إدارة عمومية، `STATE_JUDICIAL_AGENCY` الوكالة القضائية للمملكة، `EXPERT_OFFICE`، `BAILIFF_OFFICE`)، `name` | التهيئة، ومدبر النظام عند إنشاء حساب |
-| `User` | صاحب الحساب | `email` (فريد، بحروف صغيرة)، `fullName`، `phone`، `passwordHash` (Argon2id، فارغ قبل التفعيل)، `isDemo`، `disabledAt`، `lastLoginAt` (زمن حقيقي)، `createdByUserId` | التهيئة، ومدبر النظام |
+| `User` | صاحب الحساب | `email` (فريد، بحروف صغيرة)، `fullName`، `phone`، `passwordHash` (Argon2id، فارغ قبل التفعيل)، `isDemo`، `disabledAt`، `lastLoginAt` (زمن المنصة: يقارن به «جديد منذ آخر دخول»)، `createdByUserId`، `createdInSessionId` (جلسة المدبر التي أنشأت الحساب، وهي وحدها ترى روابط تفعيله في صندوق الرسائل الصادرة) | التهيئة، ومدبر النظام |
 | `RoleAssignment` | صفة من صفات المستعمل، ويجوز أن تتعدد | `userId`، `role` (إحدى الصفات الست والعشرين)، `courtId`، `organizationId`، `panelId`، `verificationStatus` (`VERIFIED_SIMULATED` «تم التحقق (محاكاة)»، `VERIFIED`، `UNVERIFIED`)، `verificationSource`، `revokedAt` | التهيئة، ومدبر النظام |
 
 قيد في الخدمة لا في المخطط: صفة مدبر النظام وصفة المختص القانوني المصادق على القواعد لا تجتمعان مع صفة أخرى للمستعمل نفسه.
@@ -26,7 +26,7 @@
 
 | الجدول | الغاية | الأعمدة الأساسية | ملاحظات |
 | --- | --- | --- | --- |
-| `Session` | الجلسة القائمة أو غير المكتملة | `tokenHash` (بصمة SHA-256 للرمز، فريدة)، `userId`، `state` (`PENDING_SECOND_FACTOR`، `PENDING_ROLE`، `ACTIVE`)، `origin` (`LOGIN` أو `DEMO_SWITCH`)، `roleAssignmentId`، `createdAt`، `lastSeenAt`، `absoluteExpiresAt`، `pendingExpiresAt`، `previousLoginAt`، `reauthAt`، `revokedAt`، `revokeReason`، `resendCount`، `clientIdHash` | الأزمنة كلها حقيقية. الرمز نفسه في ملف التعريف وحده |
+| `Session` | الجلسة القائمة أو غير المكتملة | `tokenHash` (بصمة SHA-256 للرمز، فريدة)، `userId`، `state` (`PENDING_SECOND_FACTOR`، `PENDING_ROLE`، `ACTIVE`)، `origin` (`LOGIN` أو `DEMO_SWITCH`)، `roleAssignmentId`، `createdAt`، `lastSeenAt`، `absoluteExpiresAt`، `pendingExpiresAt`، `previousLoginAt`، `reauthAt`، `revokedAt`، `revokeReason`، `resendCount`، `clientIdHash` | الأزمنة كلها حقيقية، إلا `previousLoginAt` فهو زمن المنصة لأنه نسخة من `User.lastLoginAt`. الرمز نفسه في ملف التعريف وحده |
 | `SecondFactorChallenge` | رمز وسيلة التأكيد الثانية | `sessionId`، `userId`، `codeMac` (بصمة مفتاحية للرمز)، `createdAt`، `expiresAt`، `consumedAt`، `voidedAt` | يستهلك بعملية واحدة ذرية |
 | `KnownDevice` | المتصفحات التي أتم فيها صاحب الحساب وسيلة التأكيد الثانية | `userId`، `deviceIdHash`، `createdAt`، `lastSeenAt`، `expiresAt` | به تحسب محاولات المتصفح المعتاد في حساب مستقل |
 | `ActivationToken` | رابط تفعيل الحساب | `userId`، `tokenHash` (فريد)، `createdAt`، `expiresAt`، `usedAt`، `voidedAt`، `createdByUserId` | يستعمل مرة واحدة، ويبطل بعد أربع وعشرين ساعة أو بإصدار رابط جديد |
@@ -75,7 +75,7 @@
 | `CaseFile` | الملف، بما تحتاجه صفحتا «تتبع الملف» و«جدول الجلسات» | `nationalRef` (المعرف الوطني الموحد، فريد)، `courtId`، `number`، `code`، `year` (رقم الملف بالمحكمة: رقم، فرمز، فسنة، والثلاثة مع المحكمة فريدة)، `status` (الحالات الاثنتا عشرة)، `nextHearingId`، `isDemo`، `createdAt` |
 | `Hearing` | الجلسة | `courtId`، `panelId`، `room`، `startsAt` (ساعة المنصة) |
 
-الحالات الاثنتا عشرة كما تسميها الدراسة: `FILED` مودع، `REGISTERED` مسجل، `RAPPORTEUR_ASSIGNED` معين مقرره، `IN_NOTIFICATION` في التبليغ، `IN_PREPARATION` في التجهيز، `IN_EXPERTISE` في الخبرة، `READY` جاهز، `IN_DELIBERATION` في المداولة، `JUDGMENT_ISSUED` صدر الحكم، `UNDER_APPEAL` مطعون فيه، `IN_ENFORCEMENT` في التنفيذ، `CLOSED` منته.
+الحالات الاثنتا عشرة كما تسميها الدراسة: `FILED` مودع، `REGISTERED` مقيد (لفظ القانون، القرار 21)، `RAPPORTEUR_ASSIGNED` معين مقرره، `IN_NOTIFICATION` في التبليغ، `IN_PREPARATION` في التجهيز، `IN_EXPERTISE` في الخبرة، `READY` جاهز، `IN_DELIBERATION` في المداولة، `JUDGMENT_ISSUED` صدر الحكم، `UNDER_APPEAL` مطعون فيه، `IN_ENFORCEMENT` في التنفيذ، `CLOSED` منته.
 
 ولا تجيب صفحة «تتبع الملف» إلا بالحالة وتاريخ الجلسة المقبلة، ولا صفحة «جدول الجلسات» إلا بالساعة والقاعة والهيئة وأرقام الملفات، دون اسم طرف ولا وثيقة.
 

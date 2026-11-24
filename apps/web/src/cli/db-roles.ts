@@ -76,6 +76,8 @@ async function main(): Promise<void> {
     await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${ident}`);
     await client.query(`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON "Event" FROM ${ident}`);
     await client.query(`REVOKE ALL ON "_prisma_migrations" FROM ${ident}`);
+    // Read only: the boot check compares the applied migrations with the code.
+    await client.query(`GRANT SELECT ON "_prisma_migrations" TO ${ident}`);
     await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${ident}`);
 
     // Production: an empty, unstamped database is stamped once, here. Demo
@@ -92,7 +94,8 @@ async function main(): Promise<void> {
     await client.query('COMMIT');
 
     const check = await client.query<{ super: boolean; owns: boolean; modify: boolean }>(
-      `SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls) AS super,
+      `SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls
+               OR EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = r.oid)) AS super,
               (SELECT c.relowner = r.oid FROM pg_class c WHERE c.oid = '"Event"'::regclass) AS owns,
               (has_table_privilege(r.oid, '"Event"', 'UPDATE')
                OR has_table_privilege(r.oid, '"Event"', 'DELETE')

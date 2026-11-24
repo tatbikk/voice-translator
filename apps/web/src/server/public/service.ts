@@ -1,5 +1,5 @@
 import 'server-only';
-import { SECURITY_POLICY, moroccoCalendarDate, type CaseNumber } from '@mahkama/core';
+import { SECURITY_POLICY, moroccoCalendarDate, type CaseNumber, formatCaseNumber } from '@mahkama/core';
 import { clock } from '../clock';
 import { getDb } from '../db';
 import { consume } from '../security/rate-limit';
@@ -85,7 +85,7 @@ export async function hearingsOn(clientIdHash: string, courtId: string, date: st
         startsAt: h.startsAt,
         room: h.room,
         panelName: h.panel.name,
-        caseNumbers: h.caseFiles.map((c) => `${String(c.number)}/${String(c.code)}/${String(c.year)}`),
+        caseNumbers: h.caseFiles.map((c) => formatCaseNumber({ number: c.number, code: c.code, year: c.year })),
       })),
   };
 }

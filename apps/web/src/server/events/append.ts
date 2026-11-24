@@ -53,9 +53,30 @@ export interface AppendedEvent {
 
 type Tx = Prisma.TransactionClient;
 
+/**
+ * Takes the event log's lock. A transaction that writes to the log takes it as
+ * its very first statement, before any row lock (eventTransaction): two such
+ * transactions then never wait on each other in opposite orders. The lock is
+ * held until the transaction ends; taking it again inside is free.
+ */
+export async function lockEventLog(tx: Tx): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${EVENT_LOG_LOCK})`;
+}
+
+/** A business transaction that appends to the event log: the log's lock comes first. */
+export function eventTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return getDb().$transaction(
+    async (tx) => {
+      await lockEventLog(tx);
+      return fn(tx);
+    },
+    { timeout: 10_000 },
+  );
+}
+
 export async function appendEvent<A extends EventAction>(tx: Tx, input: AppendInput<A>): Promise<AppendedEvent> {
   const details = validateEventDetails(input.action, input.details);
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${EVENT_LOG_LOCK})`;
+  await lockEventLog(tx);
   const head = await tx.$queryRaw<{ seq: bigint; hash: string }[]>`
     SELECT "seq", "hash" FROM "Event" ORDER BY "seq" DESC LIMIT 1`;
   const recorded = await tx.$queryRaw<{ at: Date }[]>`SELECT clock_timestamp() AS "at"`;

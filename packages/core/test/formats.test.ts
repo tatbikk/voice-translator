@@ -96,6 +96,14 @@ describe('safe internal redirect', () => {
       42,
       `/a${String.fromCodePoint(0x2028)}b`,
       `/${'a'.repeat(3000)}`,
+      // Dot segments that resolve to a protocol-relative "//host" (review S-01).
+      '/.//evil.example',
+      '/././/evil.example',
+      '/%2e//evil.example',
+      '/%2E//evil.example',
+      '/a/..//evil.example',
+      '/a/%2e%2e//evil.example',
+      '/.//evil.example/dashboard?x=1',
     ]) {
       expect(safeInternalPath(value, origin)).toBe('/');
     }

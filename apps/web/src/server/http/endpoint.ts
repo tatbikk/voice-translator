@@ -65,6 +65,8 @@ export interface EndpointDefinition<P, B> {
    */
   readonly resource?: (params: P, context: { session: SessionContext | null; rawBody: unknown }) => Promise<Resource | null>;
   readonly handler: (context: EndpointContext<P, B>) => Promise<Response>;
+  /** false for /healthz, which must answer 503 by itself when the database is down */
+  readonly platformClock?: boolean;
 }
 
 export interface EndpointHandler {
@@ -136,10 +138,9 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
   definition: EndpointDefinition<P, B>,
 ): EndpointHandler {
   const handler = async (req: Request): Promise<Response> => {
-    const env = getEnv();
-    await clock.refresh();
-    const clientIdHash = computeClientIdHash(req);
     let session: SessionContext | null = null;
+    // Set inside the try below; a refusal before it counts under the shared bucket.
+    let clientIdHash = 'unknown';
 
     const refuse = async (step: RefusalStep, status: number, code: ErrorCode, extra: Parameters<typeof fail>[2] = {}) => {
       const logged = await recordRefusal({
@@ -154,6 +155,12 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
     };
 
     try {
+      // Inside the error envelope: a database outage answers 500 with a
+      // correlation id, never with the error's text (review A-14).
+      const env = getEnv();
+      if (definition.platformClock !== false) await clock.refresh();
+      clientIdHash = computeClientIdHash(req);
+
       // 1. Method and body size.
       if (req.method !== definition.method) return await refuse('METHOD', 405, 'METHOD_NOT_ALLOWED');
       let rawBody: unknown = {};

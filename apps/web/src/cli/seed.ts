@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { z } from 'zod';
-import { SECURITY_POLICY, moroccoCalendarDate } from '@mahkama/core';
+import { SECURITY_POLICY, moroccoCalendarDate, roleLabelKey } from '@mahkama/core';
 import { clock } from '@/server/clock';
 import { closeDb, getDb } from '@/server/db';
 import { appendStandaloneEvent } from '@/server/events/append';
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
           userId: user.id,
           kind: 'INFORMATION',
           templateKey: 'notifications.accountCreated',
-          params: { roleKey: `roles.${r.role}` },
+          params: { roleKey: roleLabelKey(r.role, r.court ? DEMO_COURTS[r.court].degree : null) },
           createdAt: now,
         },
       });

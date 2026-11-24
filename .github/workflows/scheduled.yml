@@ -30,6 +30,6 @@ jobs:
       - name: Semgrep
         run: |
           python3 -m pip install --user semgrep==1.185.0
-          ~/.local/bin/semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/secrets --config p/javascript
+          ~/.local/bin/semgrep scan --error --metrics=off --config p/typescript --config p/nodejs --config p/nextjs --config p/secrets --config p/javascript
       - name: gitleaks (full history)
         run: bash .github/scripts/gitleaks.sh

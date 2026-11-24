@@ -33,6 +33,8 @@ export const SECURITY_POLICY = {
   refusals: {
     unauthenticatedPerClient: { max: 30, windowMs: MINUTE },
     authenticatedPerSession: { max: 60, windowMs: MINUTE },
+    /** every request without a session together: beyond it, one summary per minute */
+    unauthenticatedGlobal: { max: 300, windowMs: MINUTE },
   },
   demoEndpoints: { perClient: { max: 60, windowMs: MINUTE } },
   preferencesPerClient: { max: 30, windowMs: 15 * MINUTE },

@@ -4,7 +4,8 @@ import type { Prisma } from '@/generated/prisma/client';
 import { getEnv } from '../config/env';
 import { clock } from '../clock';
 import { getDb } from '../db';
-import { appendEvent, appendStandaloneEvent } from '../events/append';
+import { appendEvent, eventTransaction } from '../events/append';
+import { appendRefusalEvent } from '../security/refusals';
 import { consume } from '../security/rate-limit';
 import { acceptablePassword, hashPassword } from './passwords';
 import { randomToken, sha256Hex } from './tokens';
@@ -15,6 +16,11 @@ import { randomToken, sha256Hex } from './tokens';
 // link is built from APP_URL, never from the request's Host header.
 
 type Tx = Prisma.TransactionClient;
+
+/** When an activation link issued now stops working: real time, like every security timer. */
+export function activationExpiresAt(): Date {
+  return new Date(clock.systemNow().getTime() + SECURITY_POLICY.activation.ttlMs);
+}
 
 export async function createActivationToken(tx: Tx, userId: string, createdByUserId: string | null): Promise<string> {
   const now = clock.systemNow();
@@ -48,7 +54,7 @@ export type ActivationResult =
 export async function activateAccount(clientIdHash: string, token: string, password: string): Promise<ActivationResult> {
   const throttle = await consume(`activation:client:${clientIdHash}`, SECURITY_POLICY.activationPerClient);
   if (throttle.limited) {
-    await appendStandaloneEvent({ action: 'account.activation.failed', details: { reason: 'THROTTLED' }, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'account.activation.failed', details: { reason: 'THROTTLED' }, clientIdHash });
     return { kind: 'throttled', retryAfterSeconds: throttle.retryAfterSeconds };
   }
   const db = getDb();
@@ -59,15 +65,15 @@ export async function activateAccount(clientIdHash: string, token: string, passw
   const valid =
     row !== null && row.usedAt === null && row.voidedAt === null && row.expiresAt > now && row.user.disabledAt === null;
   if (!valid) {
-    await appendStandaloneEvent({ action: 'account.activation.failed', details: { reason: 'INVALID_TOKEN' }, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'account.activation.failed', details: { reason: 'INVALID_TOKEN' }, clientIdHash });
     return { kind: 'invalid-token' };
   }
   if (!acceptablePassword(password, row.user.email)) {
-    await appendStandaloneEvent({ action: 'account.activation.failed', details: { reason: 'PASSWORD_POLICY' }, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'account.activation.failed', details: { reason: 'PASSWORD_POLICY' }, clientIdHash });
     return { kind: 'password-policy' };
   }
   const passwordHash = await hashPassword(password);
-  const done = await db.$transaction(async (tx) => {
+  const done = await eventTransaction(async (tx) => {
     const consumed = await tx.activationToken.updateMany({
       where: { id: row.id, usedAt: null, voidedAt: null, expiresAt: { gt: clock.systemNow() } },
       data: { usedAt: clock.systemNow() },
@@ -83,7 +89,7 @@ export async function activateAccount(clientIdHash: string, token: string, passw
     return true;
   });
   if (!done) {
-    await appendStandaloneEvent({ action: 'account.activation.failed', details: { reason: 'INVALID_TOKEN' }, clientIdHash });
+    await appendRefusalEvent({ clientIdHash, sessionId: null }, { action: 'account.activation.failed', details: { reason: 'INVALID_TOKEN' }, clientIdHash });
     return { kind: 'invalid-token' };
   }
   return { kind: 'ok' };

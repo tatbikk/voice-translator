@@ -53,7 +53,7 @@ export default async function TrackPage({ searchParams }: { searchParams: Promis
         </Field>
         <p className="mb-3 text-sm text-text-muted">{t('track.hint')}</p>
         <div className="grid grid-cols-3 gap-3" dir="ltr">
-          <Field id="number" label={t('terms.caseNumber')}>
+          <Field id="number" label={t('terms.caseSerial')}>
             <TextInput id="number" inputMode="numeric" defaultValue={query.number} maxLength={6} required />
           </Field>
           <Field id="code" label={t('terms.caseCode')}>

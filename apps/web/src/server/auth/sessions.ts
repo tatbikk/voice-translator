@@ -1,10 +1,10 @@
 import 'server-only';
-import { SECURITY_POLICY, type UserSubject } from '@mahkama/core';
+import { SECURITY_POLICY, type CourtDegree, type UserSubject } from '@mahkama/core';
 import type { Prisma, RoleAssignment, Session, User } from '@/generated/prisma/client';
 import { getEnv } from '../config/env';
 import { clock } from '../clock';
 import { getDb } from '../db';
-import { appendEvent, appendStandaloneEvent, type EventActor } from '../events/append';
+import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
 import { COOKIES, clearCookie, readCookie, serializeCookie } from '../http/cookies';
 import { isBackgroundRefresh } from '../http/request-info';
 import { randomToken, sha256Hex } from './tokens';
@@ -21,6 +21,8 @@ export interface SessionContext {
   readonly user: User;
   readonly roleAssignment: RoleAssignment | null;
   readonly roleCount: number;
+  /** degree of the court of the selected role (the first president is «الرئيس الأول») */
+  readonly courtDegree: CourtDegree | null;
   /** present only for an ACTIVE session with a selected role */
   readonly subject: UserSubject | null;
   readonly actor: EventActor;
@@ -133,7 +135,7 @@ export async function resolveSession(req: Request): Promise<SessionContext | nul
   const db = getDb();
   const session = await db.session.findUnique({
     where: { tokenHash: sha256Hex(token) },
-    include: { user: true, roleAssignment: true },
+    include: { user: true, roleAssignment: { include: { court: { select: { degree: true } } } } },
   });
   if (!session || session.revokedAt) return null;
 
@@ -158,7 +160,7 @@ export async function resolveSession(req: Request): Promise<SessionContext | nul
   else if (roleAssignment?.revokedAt) invalid = 'ROLE_REVOKED';
   if (invalid) {
     // revokeSession writes auth.session.revoked with the cause.
-    await db.$transaction((tx) => revokeSession(tx, session.id, invalid));
+    await eventTransaction((tx) => revokeSession(tx, session.id, invalid));
     return null;
   }
 
@@ -183,7 +185,7 @@ export async function resolveSession(req: Request): Promise<SessionContext | nul
         }
       : null;
 
-  return { session, user, roleAssignment, roleCount, subject, actor };
+  return { session, user, roleAssignment, roleCount, courtDegree: roleAssignment?.court?.degree ?? null, subject, actor };
 }
 
 /** Re-authentication within the last minutes (sensitive actions). */

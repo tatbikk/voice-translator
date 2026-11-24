@@ -9,6 +9,7 @@ const cleanDb = {
   runtimeRoleIsPrivileged: false,
   runtimeRoleOwnsEvent: false,
   runtimeRoleCanModifyEvent: false,
+  schemaUpToDate: true,
 };
 
 const production: BootInput = {
@@ -21,6 +22,7 @@ const production: BootInput = {
   masterKeyBytes: 32,
   secretsEqual: false,
   seedPasswordSet: false,
+  ownerDatabaseUrlPresent: false,
   components: [
     { id: 'messaging', implementation: 'real' },
     { id: 'professional-identity', implementation: 'real' },
@@ -93,6 +95,14 @@ describe('every mode', () => {
     ['demo', demo],
   ];
   for (const [mode, input] of both) {
+    it(`${mode}: refuses the owner's database connection in a running process (review A-01)`, () => {
+      expect(violations({ ...input, ownerDatabaseUrlPresent: true })).toContain('OWNER_DATABASE_URL_PRESENT');
+    });
+
+    it(`${mode}: refuses a database whose schema is behind the code`, () => {
+      expect(violations({ ...input, db: { ...(input.db ?? cleanDb), schemaUpToDate: false } })).toContain('SCHEMA_NOT_MIGRATED');
+    });
+
     it(`${mode}: refuses weak or reused secrets`, () => {
       expect(violations({ ...input, sessionSecretBytes: 16 })).toContain('SESSION_SECRET_TOO_SHORT');
       expect(violations({ ...input, masterKeyBytes: 16 })).toContain('MASTER_KEY_INVALID');

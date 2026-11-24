@@ -145,7 +145,7 @@ export const ACTIONS: Readonly<Record<ActionCode, ActionRule>> = {
     legalBasis: accountCreationBasis,
     confirm: true,
     holders: ['SYSTEM_ADMIN'],
-    requires: ['TARGET_NOT_ACTIVATED'],
+    requires: ['TARGET_NOT_ACTIVATED', 'TARGET_NOT_DISABLED'],
     resourceKind: 'account',
   }),
   'case.content.view': rule('case.content.view', {

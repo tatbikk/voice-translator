@@ -5,7 +5,7 @@
   "home.spacesTitle": "الفضاءات",
   "home.servicesTitle": "خدمات لا تتطلب حسابا",
   "home.loginTitle": "الدخول إلى الفضاء",
-  "home.loginText": "يدخل كل فاعل إلى فضائه بحساب تحقق منه، ثم بوسيلة تأكيد ثانية.",
+  "home.loginText": "يدخل كل فاعل إلى فضائه بهوية جرى التحقق منها، ثم بوسيلة تأكيد ثانية.",
   "screens.track": "تتبع الملف",
   "track.intro": "يعرض هذا البحث الحالة المسطرية للملف وتاريخ جلسته المقبلة، دون أي وثيقة ولا اسم طرف.",
   "track.submit": "بحث",
@@ -28,7 +28,7 @@
   "screens.environment": "مكونات بيئة العرض",
   "environment.intro": "تشتغل هذه البيئة ببيانات مفترضة. وما يتوقف على جهة خارجية لم يبرم معها اتفاق بعد يقوم مقامه مكون محاكى، خلف الواجهة الداخلية نفسها التي يربط بها المكون الحقيقي. أما منطق المسطرة فحقيقي كله.",
   "environment.columns.component": "المكون",
-  "environment.columns.current": "التنفيذ الحالي",
+  "environment.columns.current": "الطبيعة الحالية",
   "environment.columns.replacement": "ما يستبدل به",
   "environment.implementation.simulated": "محاكى",
   "environment.implementation.real": "حقيقي",
@@ -37,5 +37,5 @@
   "environment.chain.OK": "سليمة عند آخر تحقق.",
   "environment.chain.BROKEN": "كشف التحقق خللا فيها.",
   "environment.chain.UNVERIFIED": "لم يجر التحقق منها بعد.",
-  "environment.noDocuments": "لا تودع في هذه البيئة وثائق حقيقية ولا بيانات أشخاص حقيقيين."
+  "environment.noDocuments": "يرجى عدم إيداع وثائق حقيقية ولا بيانات أشخاص حقيقيين في هذه البيئة."
 }

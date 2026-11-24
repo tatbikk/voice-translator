@@ -208,7 +208,7 @@ describe('sessions (memo rows 8, 13, 14)', () => {
   });
 
   describe('logout', () => {
-    it('logout revokes the session, clears the cookies and sends Clear-Site-Data', async () => {
+    it('logout revokes the session, clears its cookies, keeps the device cookie and sends Clear-Site-Data', async () => {
       const user = await createUser({ roles: ['LAWYER'] });
       const client = await login(user);
       const token = client.cookie(COOKIE.session) ?? '';
@@ -216,9 +216,11 @@ describe('sessions (memo rows 8, 13, 14)', () => {
       const { result: res, events } = await capturingEvents(() => client.post('/api/v1/auth/logout'));
       expect(res.status, describeResponse(res)).toBe(200);
       const clear = res.headers.get('Clear-Site-Data') ?? '';
-      expect(clear).toContain('"cookies"');
       expect(clear).toContain('"storage"');
+      // "cookies" would erase the device cookie and undo decision 11 (reviews S-05, A-09).
+      expect(clear).not.toContain('"cookies"');
       expect(client.cookie(COOKIE.session)).toBeUndefined();
+      expect(client.cookie(COOKIE.device), 'the device cookie survives the logout').toBeDefined();
       expect(events.map((e) => e.action)).toContain('auth.logout');
       expectNoSession(await withToken(keep, token));
       expect(await liveSession(user.id)).toBeNull();

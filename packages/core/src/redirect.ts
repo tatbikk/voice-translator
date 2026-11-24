@@ -48,5 +48,15 @@ export function safeInternalPath(value: unknown, appOrigin: string): string {
     return '/';
   }
   if (url.origin !== origin) return '/';
-  return `${url.pathname}${url.search}${url.hash}`;
+  // The result is checked again: dot segments ("/.//x", "/%2e//x", "/a/..//x")
+  // can resolve to a path that starts with "//", which a browser reads as
+  // another site. Such a result, or one that resolves elsewhere, is refused.
+  const result = `${url.pathname}${url.search}${url.hash}`;
+  if (!acceptable(result)) return '/';
+  try {
+    if (new URL(result, origin).origin !== origin) return '/';
+  } catch {
+    return '/';
+  }
+  return result;
 }

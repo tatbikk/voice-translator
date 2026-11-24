@@ -16,8 +16,8 @@
     "test:int": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "db:migrate": "prisma migrate deploy",
-    "db:roles": "npm run bundle && node --env-file-if-exists=.env dist-server/db-roles.mjs",
-    "db:seed": "npm run bundle && node --env-file-if-exists=.env dist-server/seed.mjs",
+    "db:roles": "npm run bundle && node --env-file-if-exists=.env --env-file-if-exists=.env.owner dist-server/db-roles.mjs",
+    "db:seed": "npm run bundle && node --env-file-if-exists=.env --env-file-if-exists=.env.owner dist-server/seed.mjs",
     "events:verify": "npm run bundle && node --env-file-if-exists=.env dist-server/verify-events.mjs",
     "boot:check": "npm run bundle && node --env-file-if-exists=.env dist-server/boot-check.mjs"
   },

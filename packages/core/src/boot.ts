@@ -13,6 +13,8 @@ export type BootViolation =
   | 'RUNTIME_ROLE_TOO_POWERFUL'
   | 'RUNTIME_ROLE_OWNS_EVENT'
   | 'RUNTIME_ROLE_CAN_MODIFY_EVENT'
+  | 'OWNER_DATABASE_URL_PRESENT'
+  | 'SCHEMA_NOT_MIGRATED'
   | 'DEMO_WITHOUT_TOOLS'
   | 'ACCESS_CODE_TOO_SHORT'
   | 'DATABASE_STAMPED_PRODUCTION'
@@ -36,6 +38,8 @@ export interface BootDatabaseFacts {
   readonly runtimeRoleIsPrivileged: boolean;
   readonly runtimeRoleOwnsEvent: boolean;
   readonly runtimeRoleCanModifyEvent: boolean;
+  /** the newest migration shipped with the code is applied to the database */
+  readonly schemaUpToDate: boolean;
 }
 
 export interface BootInput {
@@ -49,6 +53,12 @@ export interface BootInput {
   readonly masterKeyBytes: number;
   readonly secretsEqual: boolean;
   readonly seedPasswordSet: boolean;
+  /**
+   * The owner role's connection is in the environment of the web or worker
+   * process: whoever ran code in it could rewrite the event log. Only the release
+   * step holds it (review A-01).
+   */
+  readonly ownerDatabaseUrlPresent: boolean;
   readonly components: readonly { readonly id: string; readonly implementation: ComponentImplementation }[];
   /** null when the process has no database (should not happen for web and worker) */
   readonly db: BootDatabaseFacts | null;
@@ -82,6 +92,7 @@ export function evaluateBoot(input: BootInput): BootResult {
   if (input.masterKeyBytes !== MASTER_KEY_BYTES) add('MASTER_KEY_INVALID');
   if (input.secretsEqual) add('SECRETS_EQUAL');
   if (input.components.some((c) => c.implementation === 'test')) add('TEST_COMPONENT');
+  if (input.ownerDatabaseUrlPresent) add('OWNER_DATABASE_URL_PRESENT');
 
   const db = input.db;
   if (db === null) {
@@ -92,6 +103,9 @@ export function evaluateBoot(input: BootInput): BootResult {
     if (db.runtimeRoleIsPrivileged) add('RUNTIME_ROLE_TOO_POWERFUL');
     if (db.runtimeRoleOwnsEvent) add('RUNTIME_ROLE_OWNS_EVENT');
     if (db.runtimeRoleCanModifyEvent) add('RUNTIME_ROLE_CAN_MODIFY_EVENT');
+    // The release step runs in its own service: until it has applied the
+    // migrations of this version, the new code refuses to start.
+    if (!db.schemaUpToDate) add('SCHEMA_NOT_MIGRATED');
   }
 
   if (input.mode === 'demo') {

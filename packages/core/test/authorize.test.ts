@@ -47,6 +47,7 @@ const passingResource: Partial<Record<ActionCode, Resource>> = {
     userId: OTHER_ID,
     isDemo: false,
     activated: false,
+    disabled: false,
     role: 'LAWYER',
   },
   'case.content.view': { kind: 'case', caseFileId: OTHER_ID, relatedUserIds: [USER_ID] },
@@ -148,11 +149,22 @@ describe('resource conditions', () => {
     const decision = authorize(
       userSubject('SYSTEM_ADMIN'),
       'admin.accounts.reissue-activation',
-      { kind: 'account', userId: OTHER_ID, isDemo: false, activated: true, role: 'LAWYER' },
+      { kind: 'account', userId: OTHER_ID, isDemo: false, activated: true, disabled: false, role: 'LAWYER' },
       demo,
     );
     expect(decision).toEqual({ allowed: false, reason: 'CONDITION_NOT_MET' });
   });
+
+  it('never reissues an activation link for a disabled account', () => {
+    const decision = authorize(
+      userSubject('SYSTEM_ADMIN'),
+      'admin.accounts.reissue-activation',
+      { kind: 'account', userId: OTHER_ID, isDemo: false, activated: false, disabled: true, role: 'LAWYER' },
+      demo,
+    );
+    expect(decision).toEqual({ allowed: false, reason: 'CONDITION_NOT_MET' });
+  });
+
 });
 
 describe('demo tools', () => {
