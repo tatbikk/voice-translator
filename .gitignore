@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist-server/
+apps/web/src/generated/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+next-env.d.ts
+__pycache__/
+*.pyc
+.DS_Store
+# environment files hold secrets: only the example is tracked
+.env
+.env.*
+!.env.example

@@ -1,0 +1,461 @@
+// Database schema of the digital court platform (Phase 0).
+// Documented in docs/data-model.md. Raw-SQL protections (append-only event log,
+// one-way database stamp, monotonic platform clock) are appended to the
+// migration; runtime-role grants are applied by src/cli/db-roles.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// People and roles
+
+enum CourtDegree {
+  FIRST_INSTANCE
+  APPEAL
+}
+
+enum PanelKind {
+  COLLEGIAL
+  SINGLE
+}
+
+enum OrganizationKind {
+  LAW_FIRM
+  BANK
+  PUBLIC_ADMINISTRATION
+  STATE_JUDICIAL_AGENCY
+  EXPERT_OFFICE
+  BAILIFF_OFFICE
+}
+
+enum RoleCode {
+  LAWYER
+  LAWYER_ASSISTANT
+  CLERK_REGISTRATION
+  CLERK_CASHIER
+  CLERK_NOTIFICATION
+  CLERK_HEARING
+  CLERK_COPIES_ENFORCEMENT
+  CHIEF_CLERK
+  COURT_PRESIDENT
+  JUDGE_RAPPORTEUR
+  JUDGE_IN_CHARGE
+  COUNSELLOR_RAPPORTEUR
+  PANEL_PRESIDENT
+  PANEL_MEMBER
+  PUBLIC_PROSECUTOR
+  ROYAL_COMMISSIONER
+  BAILIFF
+  EXPERT
+  ENFORCEMENT_JUDGE
+  LITIGANT
+  PUBLIC_ADMIN_SUPERVISOR
+  PUBLIC_ADMIN_LITIGATION
+  STATE_JUDICIAL_AGENT
+  GARNISHEE_BANK
+  SYSTEM_ADMIN
+  RULES_LEGAL_VALIDATOR
+}
+
+enum VerificationStatus {
+  VERIFIED_SIMULATED
+  VERIFIED
+  UNVERIFIED
+}
+
+model Court {
+  id            String      @id @default(uuid()) @db.Uuid
+  code          String      @unique
+  name          String
+  degree        CourtDegree
+  appealCourtId String?     @db.Uuid
+  appealCourt   Court?      @relation("AppealCourt", fields: [appealCourtId], references: [id])
+  firstInstance Court[]     @relation("AppealCourt")
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+
+  panels    Panel[]
+  roles     RoleAssignment[]
+  caseFiles CaseFile[]
+  hearings  Hearing[]
+}
+
+model Panel {
+  id        String    @id @default(uuid()) @db.Uuid
+  courtId   String    @db.Uuid
+  court     Court     @relation(fields: [courtId], references: [id])
+  name      String
+  kind      PanelKind
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  roles    RoleAssignment[]
+  hearings Hearing[]
+
+  @@index([courtId])
+}
+
+model Organization {
+  id        String           @id @default(uuid()) @db.Uuid
+  kind      OrganizationKind
+  name      String
+  isDemo    Boolean          @default(false)
+  createdAt DateTime         @default(now()) @db.Timestamptz(3)
+
+  roles RoleAssignment[]
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  fullName        String
+  phone           String
+  passwordHash    String?
+  isDemo          Boolean   @default(false)
+  disabledAt      DateTime? @db.Timestamptz(3)
+  lastLoginAt     DateTime? @db.Timestamptz(3)
+  createdByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+
+  roles            RoleAssignment[]
+  sessions         Session[]
+  challenges       SecondFactorChallenge[]
+  activationTokens ActivationToken[]
+  knownDevices     KnownDevice[]
+  notifications    Notification[]
+}
+
+model RoleAssignment {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @db.Uuid
+  user               User               @relation(fields: [userId], references: [id])
+  role               RoleCode
+  courtId            String?            @db.Uuid
+  court              Court?             @relation(fields: [courtId], references: [id])
+  organizationId     String?            @db.Uuid
+  organization       Organization?      @relation(fields: [organizationId], references: [id])
+  panelId            String?            @db.Uuid
+  panel              Panel?             @relation(fields: [panelId], references: [id])
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  verificationSource String?
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  revokedAt          DateTime?          @db.Timestamptz(3)
+
+  sessions Session[]
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Identity, sessions and security counters (all times here are real time)
+
+enum SessionState {
+  PENDING_SECOND_FACTOR
+  PENDING_ROLE
+  ACTIVE
+}
+
+enum SessionOrigin {
+  LOGIN
+  DEMO_SWITCH
+}
+
+model Session {
+  id                String          @id @default(uuid()) @db.Uuid
+  tokenHash         String          @unique @db.Char(64)
+  userId            String          @db.Uuid
+  user              User            @relation(fields: [userId], references: [id])
+  state             SessionState
+  origin            SessionOrigin   @default(LOGIN)
+  roleAssignmentId  String?         @db.Uuid
+  roleAssignment    RoleAssignment? @relation(fields: [roleAssignmentId], references: [id])
+  createdAt         DateTime        @db.Timestamptz(3)
+  lastSeenAt        DateTime        @db.Timestamptz(3)
+  absoluteExpiresAt DateTime        @db.Timestamptz(3)
+  pendingExpiresAt  DateTime?       @db.Timestamptz(3)
+  previousLoginAt   DateTime?       @db.Timestamptz(3)
+  reauthAt          DateTime?       @db.Timestamptz(3)
+  revokedAt         DateTime?       @db.Timestamptz(3)
+  revokeReason      String?
+  resendCount       Int             @default(0)
+  clientIdHash      String?         @db.Char(64)
+
+  challenges SecondFactorChallenge[]
+
+  @@index([userId])
+}
+
+model SecondFactorChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  sessionId  String    @db.Uuid
+  session    Session   @relation(fields: [sessionId], references: [id])
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id])
+  codeMac    String    @db.Char(64)
+  createdAt  DateTime  @db.Timestamptz(3)
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  voidedAt   DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([sessionId])
+}
+
+model KnownDevice {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id])
+  deviceIdHash String   @db.Char(64)
+  createdAt    DateTime @db.Timestamptz(3)
+  lastSeenAt   DateTime @db.Timestamptz(3)
+  expiresAt    DateTime @db.Timestamptz(3)
+
+  @@unique([userId, deviceIdHash])
+}
+
+model ActivationToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  user            User      @relation(fields: [userId], references: [id])
+  tokenHash       String    @unique @db.Char(64)
+  createdAt       DateTime  @db.Timestamptz(3)
+  expiresAt       DateTime  @db.Timestamptz(3)
+  usedAt          DateTime? @db.Timestamptz(3)
+  voidedAt        DateTime? @db.Timestamptz(3)
+  createdByUserId String?   @db.Uuid
+
+  @@index([userId])
+}
+
+enum AttemptKind {
+  PASSWORD
+  SECOND_FACTOR
+  SECOND_FACTOR_ISSUE
+  ACCESS_CODE
+  REAUTH
+  ACTIVATION
+}
+
+model AuthAttempt {
+  id             String      @id @default(uuid()) @db.Uuid
+  kind           AttemptKind
+  identifierHash String?     @db.Char(64)
+  bucket         String      @default("default")
+  clientIdHash   String?     @db.Char(64)
+  ok             Boolean
+  at             DateTime    @db.Timestamptz(3)
+
+  @@index([kind, identifierHash, bucket, at])
+  @@index([kind, clientIdHash, at])
+  @@index([kind, at])
+}
+
+model Lockout {
+  id             String   @id @default(uuid()) @db.Uuid
+  identifierHash String   @db.Char(64)
+  bucket         String
+  cause          String
+  createdAt      DateTime @db.Timestamptz(3)
+  until          DateTime @db.Timestamptz(3)
+
+  @@index([identifierHash, bucket, until])
+}
+
+model RateLimitHit {
+  id  String   @id @default(uuid()) @db.Uuid
+  key String
+  at  DateTime @db.Timestamptz(3)
+
+  @@index([key, at])
+}
+
+// ---------------------------------------------------------------------------
+// Event log (append-only; see the raw SQL of the foundation migration)
+
+model Event {
+  seq                   BigInt   @id
+  id                    String   @unique @db.Uuid
+  occurredAt            DateTime @db.Timestamptz(3)
+  recordedAt            DateTime @db.Timestamptz(3)
+  actorUserId           String?  @db.Uuid
+  actorRoleAssignmentId String?  @db.Uuid
+  actorRole             String?
+  viaDemoSwitch         Boolean  @default(false)
+  clientIdHash          String?  @db.Char(64)
+  action                String
+  outcome               String
+  caseFileId            String?  @db.Uuid
+  legalBasis            Json?
+  details               Json
+  keyVersion            Int
+  prevHash              String   @db.Char(64)
+  hash                  String   @unique @db.Char(64)
+
+  @@index([action])
+  @@index([caseFileId])
+  @@index([actorUserId])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications and outbound messages
+
+enum NotificationKind {
+  LEGAL_NOTIFICATION
+  INFORMATION
+  REMINDER
+}
+
+model Notification {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  user        User             @relation(fields: [userId], references: [id])
+  kind        NotificationKind
+  templateKey String
+  params      Json             @default("{}")
+  caseFileId  String?          @db.Uuid
+  targetPath  String?
+  createdAt   DateTime         @db.Timestamptz(3)
+  readAt      DateTime?        @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+enum MessageChannel {
+  SMS
+  EMAIL
+}
+
+model OutboundMessage {
+  id                 String         @id @default(uuid()) @db.Uuid
+  channel            MessageChannel
+  sender             String
+  recipientUserId    String?        @db.Uuid
+  recipientAddress   String
+  templateKey        String
+  body               String
+  holdsSecret        Boolean        @default(false)
+  visibleToSessionId String?        @db.Uuid
+  createdAt          DateTime       @db.Timestamptz(3)
+  expiresAt          DateTime?      @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([recipientUserId])
+}
+
+// ---------------------------------------------------------------------------
+// System state and settings
+
+model SystemState {
+  id                 Int       @id @default(1)
+  databaseMode       String?
+  chainHeadSeq       BigInt?
+  chainHeadHash      String?   @db.Char(64)
+  chainStatus        String    @default("UNVERIFIED")
+  brokenAtSeq        BigInt?
+  lastVerifiedAt     DateTime? @db.Timestamptz(3)
+  lastFullVerifiedAt DateTime? @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @db.Timestamptz(3)
+}
+
+model PlatformClock {
+  id            Int      @id @default(1)
+  offsetSeconds BigInt   @default(0)
+  updatedAt     DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model SecretSetting {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String   @unique
+  ciphertext      Bytes
+  iv              Bytes
+  tag             Bytes
+  last4           String
+  keyVersion      Int
+  updatedAt       DateTime @db.Timestamptz(3)
+  updatedByUserId String?  @db.Uuid
+}
+
+model InstitutionalIdentity {
+  id           Int      @id @default(1)
+  operatorName String?
+  headerLines  Json?
+  logoFileId   String?  @db.Uuid
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  DEAD
+}
+
+model Job {
+  id             String    @id @default(uuid()) @db.Uuid
+  type           String
+  payload        Json
+  runAt          DateTime  @db.Timestamptz(3)
+  status         JobStatus @default(PENDING)
+  attempts       Int       @default(0)
+  lockedAt       DateTime? @db.Timestamptz(3)
+  lockedBy       String?
+  lastErrorClass String?
+  createdAt      DateTime  @db.Timestamptz(3)
+  updatedAt      DateTime  @db.Timestamptz(3)
+
+  @@index([status, runAt])
+}
+
+// ---------------------------------------------------------------------------
+// Case files and hearings (minimal precursor, extended in Phase 1)
+
+enum CaseStatus {
+  FILED
+  REGISTERED
+  RAPPORTEUR_ASSIGNED
+  IN_NOTIFICATION
+  IN_PREPARATION
+  IN_EXPERTISE
+  READY
+  IN_DELIBERATION
+  JUDGMENT_ISSUED
+  UNDER_APPEAL
+  IN_ENFORCEMENT
+  CLOSED
+}
+
+model CaseFile {
+  id            String     @id @default(uuid()) @db.Uuid
+  nationalRef   String     @unique
+  courtId       String     @db.Uuid
+  court         Court      @relation(fields: [courtId], references: [id])
+  number        Int
+  code          Int
+  year          Int
+  status        CaseStatus
+  nextHearingId String?    @db.Uuid
+  nextHearing   Hearing?   @relation(fields: [nextHearingId], references: [id])
+  isDemo        Boolean    @default(false)
+  createdAt     DateTime   @db.Timestamptz(3)
+
+  @@unique([courtId, number, code, year])
+}
+
+model Hearing {
+  id        String   @id @default(uuid()) @db.Uuid
+  courtId   String   @db.Uuid
+  court     Court    @relation(fields: [courtId], references: [id])
+  panelId   String   @db.Uuid
+  panel     Panel    @relation(fields: [panelId], references: [id])
+  room      String
+  startsAt  DateTime @db.Timestamptz(3)
+  isDemo    Boolean  @default(false)
+
+  caseFiles CaseFile[]
+
+  @@index([courtId, startsAt])
+}

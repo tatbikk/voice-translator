@@ -1,0 +1,88 @@
+# نموذج البيانات
+
+يعرض هذا الملف مخطط قاعدة المعطيات قبل إنشاء هجراتها، كما يشترط البرومبت في باب «نموذج البيانات». وهو يغطي في المرحلة 0 ما تحتاجه الهوية والجلسات وسجل الأحداث والإشعارات وأدوات العرض والصفحتان العموميتان، ويوسع في المرحلة 1 بالمجموعات الباقية (الملف كاملا، والأطراف، والطلبات، والوثائق، والمسطرة، والمال، والتنفيذ، والقواعد، والتوقيع).
+
+## قواعد عامة
+
+- قاعدة المعطيات PostgreSQL. المخطط في `apps/web/prisma/schema.prisma`، والهجرات مؤرخة في `apps/web/prisma/migrations/`، وتطبق بـ`prisma migrate deploy` وحده.
+- دوران: الدور المالك (للهجرات وإسناد الصلاحيات والتهيئة وحدها)، ودور التطبيق `mahkama_app` الذي يشتغل به التطبيق والـworker. دور التطبيق لا يملك جدولا، ولا يحق له إنشاء شيء في المخطط، وليس له على جدول الأحداث غير القراءة والإضافة.
+- كل تاريخ قانوني أو معروض يؤخذ من ساعة المنصة. ومؤقتات الأمان (الجلسات، والقفل، وصلاحية الرموز، وحدود الطلبات) تؤخذ من الزمن الحقيقي. ويذكر أمام كل عمود زمني مصدره.
+- لا تحفظ كلمة سر ولا رمز ولا رمز تفعيل بنصه: تحفظ بصمته وحدها. ولا يحفظ عنوان العميل بنصه: تحفظ بصمته المفتاحية.
+- الأسماء والمحاكم في بيئة العرض مفترضة كلها. والصفوف التي تهيئها بيانات العرض موسومة (`isDemo`).
+
+## الأشخاص والصفات
+
+| الجدول | الغاية | الأعمدة الأساسية | من يكتبه |
+| --- | --- | --- | --- |
+| `Court` | المحكمة ودرجتها | `code` (فريد)، `name`، `degree` (`FIRST_INSTANCE` ابتدائية، `APPEAL` استئناف)، `appealCourtId` (محكمة الاستئناف التي تتبعها) | التهيئة، ثم مدبر النظام في مرحلة لاحقة |
+| `Panel` | الهيئة داخل المحكمة | `courtId`، `name`، `kind` (`COLLEGIAL` جماعية، `SINGLE` فردية) | التهيئة |
+| `Organization` | الجهة التي ينتمي إليها الحساب | `kind` (`LAW_FIRM` مكتب محاماة، `BANK` بنك، `PUBLIC_ADMINISTRATION` إدارة عمومية، `STATE_JUDICIAL_AGENCY` الوكالة القضائية للمملكة، `EXPERT_OFFICE`، `BAILIFF_OFFICE`)، `name` | التهيئة، ومدبر النظام عند إنشاء حساب |
+| `User` | صاحب الحساب | `email` (فريد، بحروف صغيرة)، `fullName`، `phone`، `passwordHash` (Argon2id، فارغ قبل التفعيل)، `isDemo`، `disabledAt`، `lastLoginAt` (زمن حقيقي)، `createdByUserId` | التهيئة، ومدبر النظام |
+| `RoleAssignment` | صفة من صفات المستعمل، ويجوز أن تتعدد | `userId`، `role` (إحدى الصفات الست والعشرين)، `courtId`، `organizationId`، `panelId`، `verificationStatus` (`VERIFIED_SIMULATED` «تم التحقق (محاكاة)»، `VERIFIED`، `UNVERIFIED`)، `verificationSource`، `revokedAt` | التهيئة، ومدبر النظام |
+
+قيد في الخدمة لا في المخطط: صفة مدبر النظام وصفة المختص القانوني المصادق على القواعد لا تجتمعان مع صفة أخرى للمستعمل نفسه.
+
+## الهوية والجلسات والأمان
+
+| الجدول | الغاية | الأعمدة الأساسية | ملاحظات |
+| --- | --- | --- | --- |
+| `Session` | الجلسة القائمة أو غير المكتملة | `tokenHash` (بصمة SHA-256 للرمز، فريدة)، `userId`، `state` (`PENDING_SECOND_FACTOR`، `PENDING_ROLE`، `ACTIVE`)، `origin` (`LOGIN` أو `DEMO_SWITCH`)، `roleAssignmentId`، `createdAt`، `lastSeenAt`، `absoluteExpiresAt`، `pendingExpiresAt`، `previousLoginAt`، `reauthAt`، `revokedAt`، `revokeReason`، `resendCount`، `clientIdHash` | الأزمنة كلها حقيقية. الرمز نفسه في ملف التعريف وحده |
+| `SecondFactorChallenge` | رمز وسيلة التأكيد الثانية | `sessionId`، `userId`، `codeMac` (بصمة مفتاحية للرمز)، `createdAt`، `expiresAt`، `consumedAt`، `voidedAt` | يستهلك بعملية واحدة ذرية |
+| `KnownDevice` | المتصفحات التي أتم فيها صاحب الحساب وسيلة التأكيد الثانية | `userId`، `deviceIdHash`، `createdAt`، `lastSeenAt`، `expiresAt` | به تحسب محاولات المتصفح المعتاد في حساب مستقل |
+| `ActivationToken` | رابط تفعيل الحساب | `userId`، `tokenHash` (فريد)، `createdAt`، `expiresAt`، `usedAt`، `voidedAt`، `createdByUserId` | يستعمل مرة واحدة، ويبطل بعد أربع وعشرين ساعة أو بإصدار رابط جديد |
+| `AuthAttempt` | محاولات الدخول ووسيلة التأكيد وكلمة العبور وإعادة التحقق والتفعيل | `kind`، `identifierHash` (بصمة البريد، سواء وجد الحساب أم لم يوجد)، `bucket` (`default` أو `device:<معرف>`)، `clientIdHash`، `ok`، `at` | منه تحسب حدود المحاولات |
+| `Lockout` | القفل المؤقت | `identifierHash`، `bucket`، `cause`، `createdAt`، `until` | القفل لا يبطل جلسة قائمة، إلا إذا نتج عن فشل إعادة التحقق |
+| `RateLimitHit` | حدود الطلبات لكل عميل أو جلسة أو بصفة شاملة | `key`، `at` | ينظفه الـworker |
+
+## سجل الأحداث
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `Event` | كل عملية: من قام بها، وبأي صفة، ومتى، وفي أي ملف، وبأي سند | `seq` (تسلسل بلا فجوة، مفتاح أساسي)، `id`، `occurredAt` (ساعة المنصة)، `recordedAt` (زمن حقيقي)، `actorUserId`، `actorRoleAssignmentId`، `actorRole`، `viaDemoSwitch`، `clientIdHash`، `action`، `outcome` (`DONE`، `DENIED`، `FAILED`)، `caseFileId`، `legalBasis`، `details`، `keyVersion`، `prevHash`، `hash` (فريدة) |
+
+ضوابطه في قاعدة المعطيات نفسها:
+
+- قيد يرفض كل تعديل أو حذف لصف (`BEFORE UPDATE OR DELETE`)، وقيد يرفض الإفراغ (`BEFORE TRUNCATE`).
+- دور التطبيق ليس له على الجدول غير `SELECT` و`INSERT`، ولا يملكه، فلا يستطيع تعطيل القيد ولا حذف الجدول. ويرفض الإقلاع دورا يملكه أو يحق له تعديله.
+- لا مفتاح أجنبي من الجدول ولا إليه، حتى لا يمتد إليه حذف من جدول آخر. والمعرفات محفوظة قيما مجردة.
+- كل حدث يحمل بصمة الحدث الذي قبله، محسوبة بمفتاح سري لا يدخل القاعدة. ويثبت رأس السلسلة بعد كل تحقق في `SystemState` وفي السجل التقني خارج القاعدة.
+- تفاصيل الحدث مخطط مغلق لكل صنف: معرفات وبصمات وأعداد وقيم معدودة، ولا نص حر ولا معطى شخصي.
+- الخط الزمني للملف عرض لهذا الجدول، وليس سجلا ثانيا.
+
+## الإشعارات والرسائل
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `Notification` | إشعار داخل الفضاء | `userId`، `kind` (`LEGAL_NOTIFICATION` تبليغ قانوني، `INFORMATION` إخبار، `REMINDER` تذكير)، `templateKey`، `params`، `caseFileId`، `targetPath` (مسار داخلي يمر بدالة التحقق)، `createdAt` (ساعة المنصة)، `readAt` |
+| `OutboundMessage` | الرسائل النصية والبريد في بيئة العرض: «صندوق الرسائل الصادرة» | `channel` (`SMS`، `EMAIL`)، `sender`، `recipientUserId`، `recipientAddress`، `templateKey`، `body`، `holdsSecret`، `visibleToSessionId`، `createdAt` (ساعة المنصة)، `expiresAt` |
+
+لا يكتب في `OutboundMessage` غير التنفيذ المحاكى لخدمة الرسائل. ورسائل الحسابات غير الموسومة لا تظهر إلا للجلسة التي طلبتها، وتحذف الرسائل الحاملة لرمز أو رابط بعد انقضاء صلاحيتها.
+
+## الحالة العامة والإعدادات
+
+| الجدول | الغاية | الأعمدة الأساسية | ضوابط |
+| --- | --- | --- | --- |
+| `SystemState` | صف واحد | `databaseMode` (`demo` أو `production`)، `chainHeadSeq`، `chainHeadHash`، `chainStatus` (`UNVERIFIED`، `OK`، `BROKEN`)، `brokenAtSeq`، `lastVerifiedAt`، `lastFullVerifiedAt` | وسم القاعدة لا يتغير بعد وضعه، ولا يحذف الصف بعده (قيد في القاعدة) |
+| `PlatformClock` | صف واحد: تقديم ساعة المنصة في بيئة العرض | `offsetSeconds` | لا يكون سالبا ولا ينقص (قيد في القاعدة)، ويرفض الإقلاع في التشغيل الفعلي قيمة غير الصفر |
+| `SecretSetting` | الإعدادات المشفرة (مفاتيح المزودين من المرحلة 8) | `name` (فريد)، `ciphertext`، `iv`، `tag`، `last4`، `keyVersion`، `updatedAt`، `updatedByUserId` | AES-256-GCM بمفتاح مشتق من `SECRETS_MASTER_KEY`، ولا يعرض بعد إدخاله غير الأحرف الأربعة الأخيرة |
+| `InstitutionalIdentity` | صف واحد: الهوية المؤسسية | `operatorName`، `headerLines`، `logoFileId`، `updatedAt` | في بيئة العرض يعرض دائما الإطار المحايد «موضع الشعار الرسمي» |
+| `Job` | طابور المهام المؤجلة | `type` (من قائمة مغلقة)، `payload`، `runAt` (ساعة المنصة)، `status` (`PENDING`، `RUNNING`، `DONE`، `DEAD`)، `attempts`، `lockedAt`، `lockedBy`، `lastErrorClass` | خمس محاولات على الأكثر، والنوع المجهول أو الحمولة غير الصالحة تنقل المهمة إلى `DEAD` |
+
+## الملفات والجلسات (حد أدنى في المرحلة 0)
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `CaseFile` | الملف، بما تحتاجه صفحتا «تتبع الملف» و«جدول الجلسات» | `nationalRef` (المعرف الوطني الموحد، فريد)، `courtId`، `number`، `code`، `year` (رقم الملف بالمحكمة: رقم، فرمز، فسنة، والثلاثة مع المحكمة فريدة)، `status` (الحالات الاثنتا عشرة)، `nextHearingId`، `isDemo`، `createdAt` |
+| `Hearing` | الجلسة | `courtId`، `panelId`، `room`، `startsAt` (ساعة المنصة) |
+
+الحالات الاثنتا عشرة كما تسميها الدراسة: `FILED` مودع، `REGISTERED` مسجل، `RAPPORTEUR_ASSIGNED` معين مقرره، `IN_NOTIFICATION` في التبليغ، `IN_PREPARATION` في التجهيز، `IN_EXPERTISE` في الخبرة، `READY` جاهز، `IN_DELIBERATION` في المداولة، `JUDGMENT_ISSUED` صدر الحكم، `UNDER_APPEAL` مطعون فيه، `IN_ENFORCEMENT` في التنفيذ، `CLOSED` منته.
+
+ولا تجيب صفحة «تتبع الملف» إلا بالحالة وتاريخ الجلسة المقبلة، ولا صفحة «جدول الجلسات» إلا بالساعة والقاعة والهيئة وأرقام الملفات، دون اسم طرف ولا وثيقة.
+
+## صلاحيات دور التطبيق
+
+يطبقها أمر `db-roles` بالدور المالك بعد كل هجرة:
+
+- نزع كل صلاحية على المخطط من العموم، ومنح دور التطبيق حق الاستعمال دون حق الإنشاء.
+- `SELECT` و`INSERT` و`UPDATE` و`DELETE` على كل جدول إلا جدول الأحداث، و`SELECT` و`INSERT` وحدهما على جدول الأحداث، ونزع `UPDATE` و`DELETE` و`TRUNCATE` عليه صراحة من دور التطبيق ومن العموم.
+- لا يملك دور التطبيق أي جدول، فلا يستطيع تعطيل قيد ولا حذف جدول.
