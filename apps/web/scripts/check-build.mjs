@@ -1,8 +1,12 @@
 // Post-build checks (contract §6 and §9):
 // 1. no app route may be prerendered: a static page carries no CSP nonce, so its
 //    scripts would be blocked;
-// 2. a build made without DEMO_BUILD=true must contain no demo route.
-import { readFileSync, existsSync } from 'node:fs';
+// 2. a build made without DEMO_BUILD=true must contain no demo route;
+// 3. nor any code of src/demo: the server build is searched for the marker
+//    string of src/demo/server/services.ts (review A-15). A demo build must
+//    contain it, which shows that the search finds it when it is there.
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const next = fileURLToPath(new URL('../.next/', import.meta.url));
@@ -30,6 +34,25 @@ const demoBuild = process.env.DEMO_BUILD === 'true';
 if (!demoBuild && demoPaths.length > 0) {
   fail(`demo routes present in a non-demo build: ${demoPaths.join(', ')}`);
 }
+// Read from the source, so that the two never drift apart.
+const servicesSource = readFileSync(fileURLToPath(new URL('../src/demo/server/services.ts', import.meta.url)), 'utf8');
+const marker = /DEMO_BUILD_MARKER = '([a-z0-9-]{16,})'/.exec(servicesSource)?.[1];
+if (!marker) fail('DEMO_BUILD_MARKER not found in src/demo/server/services.ts');
+
+function filesUnder(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? filesUnder(path) : entry.isFile() ? [path] : [];
+  });
+}
+const serverFiles = filesUnder(`${next}server`);
+const withMarker = serverFiles.filter((file) => readFileSync(file).includes(marker));
+if (!demoBuild && withMarker.length > 0) {
+  fail(`code of src/demo present in a non-demo build: ${withMarker.map((f) => f.slice(next.length)).join(', ')}`);
+}
+if (demoBuild && withMarker.length === 0) {
+  fail('the demo build does not contain the src/demo marker: the search for demo code cannot be trusted');
+}
 console.log(
-  `check-build: ok (${appPaths.length} app paths, ${demoPaths.length} demo paths, demo build: ${demoBuild})`,
+  `check-build: ok (${appPaths.length} app paths, ${demoPaths.length} demo paths, ${serverFiles.length} server files searched, demo build: ${demoBuild})`,
 );

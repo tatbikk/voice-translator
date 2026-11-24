@@ -12,6 +12,7 @@ import type { z } from 'zod';
 import { getEnv } from '../config/env';
 import { clock } from '../clock';
 import { hasAccess } from '../auth/access-gate';
+import { HashingBusyError } from '../auth/passwords';
 import { clientIdHash as computeClientIdHash } from '../auth/client-id';
 import { bindingIdFromRequest, csrfTokenValid } from '../auth/csrf';
 import { recentlyReauthenticated, resolveSession, type SessionContext, type SessionState } from '../auth/sessions';
@@ -26,6 +27,8 @@ import { fail, type ErrorCode } from './responses';
 //   1 body size and method  2 visitor gate  3 mode (demo endpoints)  4 CSRF
 //   5 session  6 rate limit  7 path/query parameters  8 authorization
 //   9 recent re-authentication  10 body  11 handler
+
+const HASHING_RETRY_AFTER_SECONDS = 5;
 
 export type EndpointAccess =
   | { readonly kind: 'public' }
@@ -295,6 +298,11 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
       // 11. Handler.
       return await definition.handler({ req, params, body, session, subject, clientIdHash, resource, action });
     } catch (error) {
+      if (error instanceof HashingBusyError) {
+        // Too many password checks waiting (review S-03): a temporary refusal, not a fault.
+        log.warn('endpoint busy', { endpoint: definition.id, cause: 'HASHING_QUEUE_FULL' });
+        return fail(503, 'UNAVAILABLE', { retryAfterSeconds: HASHING_RETRY_AFTER_SECONDS });
+      }
       const correlationId = randomUUID();
       log.error('endpoint failed', { endpoint: definition.id, correlationId, ...errorFields(error) });
       return fail(500, 'INTERNAL', { correlationId });

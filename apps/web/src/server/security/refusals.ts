@@ -1,6 +1,6 @@
 import 'server-only';
 import { SECURITY_POLICY, type EventAction } from '@mahkama/core';
-import { appendStandaloneEvent, type AppendInput, type EventActor } from '../events/append';
+import { appendEvent, appendStandaloneEvent, eventTransaction, type AppendInput, type EventActor } from '../events/append';
 import { clock } from '../clock';
 import { getDb } from '../db';
 import { log, errorFields } from '../log';
@@ -88,30 +88,49 @@ export async function recordRefusal(input: RefusalInput): Promise<boolean> {
   );
 }
 
-/** Worker task: one summary event per throttled client/session and finished minute. */
+// Arbitrary constant identifying the lock of the summary job.
+const THROTTLE_SUMMARY_LOCK = 582_506_391;
+
+/**
+ * Worker task: one summary event per throttled client/session and finished minute.
+ * Each summary is one transaction (review A-13): the event log's lock first
+ * (decision 41), the job's lock, the counted rows deleted and returned, then
+ * the event appended. A stop between the two can neither lose the count nor
+ * write it twice, and two workers never summarise the same rows.
+ */
 export async function flushThrottleSummaries(): Promise<number> {
-  const db = getDb();
   const currentWindow = windowStart(clock.systemNow());
-  const rows = await db.rateLimitHit.groupBy({
+  const rows = await getDb().rateLimitHit.groupBy({
     by: ['key'],
     where: { key: { startsWith: `${SUPPRESSED_PREFIX}|` } },
-    _count: { _all: true },
   });
   let written = 0;
   for (const row of rows) {
     const [, scope, owner, start] = row.key.split('|');
     if (!scope || !owner || !start || start === currentWindow) continue;
-    await appendStandaloneEvent({
-      action: 'access.throttled',
-      details: {
-        scope: scope === 'session' ? 'session' : scope === 'global' ? 'global' : 'client',
-        suppressedCount: row._count._all,
-        windowStart: start,
-      },
-      clientIdHash: scope === 'client' ? owner : null,
-    });
-    await db.rateLimitHit.deleteMany({ where: { key: row.key } });
-    written += 1;
+    let appended = false;
+    try {
+      appended = await eventTransaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${THROTTLE_SUMMARY_LOCK})`;
+        const deleted = await tx.$queryRaw<{ id: string }[]>`
+          DELETE FROM "RateLimitHit" WHERE "key" = ${row.key} RETURNING "id"`;
+        if (deleted.length === 0) return false;
+        await appendEvent(tx, {
+          action: 'access.throttled',
+          details: {
+            scope: scope === 'session' ? 'session' : scope === 'global' ? 'global' : 'client',
+            suppressedCount: deleted.length,
+            windowStart: start,
+          },
+          clientIdHash: scope === 'client' ? owner : null,
+        });
+        return true;
+      });
+    } catch (error) {
+      // The rows stay for the next pass; the other summaries go on.
+      log.error('throttle summary not written', { scope, ...errorFields(error) });
+    }
+    if (appended) written += 1;
   }
   return written;
 }

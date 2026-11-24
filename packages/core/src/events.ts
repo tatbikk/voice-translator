@@ -54,6 +54,8 @@ export const EVENT_TYPES = {
       cause: z.enum(['PASSWORD', 'SECOND_FACTOR', 'REAUTH']),
       bucket: z.enum(['default', 'device']),
       until: iso,
+      /** whether the account holder was told; false past the daily cap of notices (review S-08) */
+      notified: z.boolean(),
     }),
   },
   'auth.role.selected': { outcome: 'DONE', details: detailsOf({ roleAssignmentId: id, role: roleCode }) },

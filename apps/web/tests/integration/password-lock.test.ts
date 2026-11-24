@@ -186,6 +186,22 @@ describe('password attempts and locks (memo rows 3, 4, 5, 22)', () => {
       expect(sent.length).toBe(messages + 1);
       expect(sent.at(-1)?.body ?? '').not.toContain(user.password ?? '\u0000');
     });
+
+    it('row 4 (review S-08): past three lock notices in a day, the account is still locked and the lock logged, but nobody is notified', async () => {
+      const user = await createUser({ roles: ['LAWYER'] });
+      const notifications = (await notificationsOf(user.id)).length;
+      const messages = (await outboundTo(user.id, 'SMS')).length;
+      const since = await headSeq();
+      for (let i = 0; i < 4; i += 1) {
+        await lockByPasswords(user.email);
+        expect((await attempt(await visitor(), user.email, user.password)).status, `lock ${String(i + 1)}`).toBe(423);
+        await expireLockouts();
+      }
+      const locked = await eventsAfter(since, 'auth.account.locked');
+      expect(locked.map((e) => e.details.notified), 'four locks, the fourth without a notice').toEqual([true, true, true, false]);
+      expect((await notificationsOf(user.id)).length - notifications, 'three notifications').toBe(3);
+      expect((await outboundTo(user.id, 'SMS')).length - messages, 'three text messages').toBe(3);
+    });
   });
 
   describe('row 5: discovering accounts', () => {
@@ -304,6 +320,33 @@ describe('password attempts and locks (memo rows 3, 4, 5, 22)', () => {
 
       const res = await attempt(await visitor(), user.email, user.password);
       expect(res.status, describeResponse(res)).toBe(423);
+    });
+
+    it('row 22 (review S-08): advancing the platform clock does not reset the daily cap of lock notices', async () => {
+      const user = await createUser({ roles: ['LAWYER'] });
+      const notifications = (await notificationsOf(user.id)).length;
+      const messages = (await outboundTo(user.id, 'SMS')).length;
+      for (let i = 0; i < 3; i += 1) {
+        await lockByPasswords(user.email);
+        await expireLockouts();
+      }
+      expect((await notificationsOf(user.id)).length - notifications).toBe(3);
+      await sql(`UPDATE "PlatformClock" SET "offsetSeconds" = 172800, "updatedAt" = now() WHERE id = 1`);
+      await forgetAppClockCache();
+      let advanced = false;
+      for (let i = 0; i < 40 && !advanced; i += 1) {
+        await new Client().get('/api/v1/notifications');
+        const last = (await events('access.denied')).at(-1);
+        advanced = !!last && last.occurredAt.getTime() - last.recordedAt.getTime() >= 170_000_000;
+        if (!advanced) await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      expect(advanced, 'the platform clock must read two days ahead').toBe(true);
+
+      const since = await headSeq();
+      await lockByPasswords(user.email);
+      expect((await eventsAfter(since, 'auth.account.locked')).map((e) => e.details.notified)).toEqual([false]);
+      expect((await notificationsOf(user.id)).length - notifications, 'no fourth notification').toBe(3);
+      expect((await outboundTo(user.id, 'SMS')).length - messages, 'no fourth message').toBe(3);
     });
   });
 });

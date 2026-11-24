@@ -10,55 +10,44 @@ import { runDueJobs } from '@/server/jobs/queue';
 import { log, errorFields } from '@/server/log';
 import { cleanupExpired } from '@/server/security/maintenance';
 import { flushThrottleSummaries } from '@/server/security/refusals';
+import { createScheduler } from './scheduler';
 
 const QUEUE_EVERY_MS = 5_000;
 const THROTTLE_EVERY_MS = 60_000;
 const MAINTENANCE_EVERY_MS = 10 * 60_000;
 
-let stopping = false;
-let running: Promise<void> = Promise.resolve();
-
-function every(ms: number, name: string, task: () => Promise<unknown>): NodeJS.Timeout {
-  const tick = () => {
-    if (stopping) return;
-    running = running
-      .then(async () => {
-        await clock.refresh();
-        await task();
-      })
-      .catch((error: unknown) => {
-        log.error('worker task failed', { task: name, ...errorFields(error) });
-      });
-  };
-  tick();
-  return setInterval(tick, ms);
-}
-
 async function main(): Promise<void> {
   await enforceBoot('worker');
-  const timers = [
-    every(QUEUE_EVERY_MS, 'jobs', () =>
-      runDueJobs({
-        'events.verify-chain': async (payload) => {
-          await verifyEventChain(payload.full === undefined ? {} : { full: payload.full });
+  const scheduler = createScheduler({
+    beforeEach: () => clock.refresh(),
+    onError: (task, error) => {
+      log.error('worker task failed', { task, ...errorFields(error) });
+    },
+  });
+  scheduler.every(QUEUE_EVERY_MS, 'jobs', (stopping) =>
+    runDueJobs(
+      {
+        'events.verify-chain': async (payload, { stopping: jobStopping }) => {
+          await verifyEventChain({ ...(payload.full === undefined ? {} : { full: payload.full }), stopping: jobStopping });
         },
         'maintenance.cleanup': () => cleanupExpired(),
         'security.throttle-summaries': async () => {
           await flushThrottleSummaries();
         },
-      }),
+      },
+      { stopping },
     ),
-    every(THROTTLE_EVERY_MS, 'throttle-summaries', () => flushThrottleSummaries()),
-    every(MAINTENANCE_EVERY_MS, 'chain-verification', () => verifyEventChain()),
-    every(MAINTENANCE_EVERY_MS, 'cleanup', () => cleanupExpired()),
-  ];
+  );
+  scheduler.every(THROTTLE_EVERY_MS, 'throttle-summaries', () => flushThrottleSummaries());
+  scheduler.every(MAINTENANCE_EVERY_MS, 'chain-verification', (stopping) => verifyEventChain({ stopping }));
+  scheduler.every(MAINTENANCE_EVERY_MS, 'cleanup', () => cleanupExpired());
 
+  let stopRequested = false;
   const stop = (signal: string) => {
-    if (stopping) return;
-    stopping = true;
+    if (stopRequested) return;
+    stopRequested = true;
     log.info('worker stopping', { signal });
-    for (const timer of timers) clearInterval(timer);
-    void running.finally(async () => {
+    void scheduler.stop().finally(async () => {
       await closeDb();
       process.exit(0);
     });

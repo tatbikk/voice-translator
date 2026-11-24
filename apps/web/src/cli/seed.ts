@@ -19,6 +19,7 @@ import { clock } from '@/server/clock';
 import { closeDb, getDb } from '@/server/db';
 import { appendStandaloneEvent } from '@/server/events/append';
 import { hashPassword } from '@/server/auth/passwords';
+import { enforceBuild } from '@/server/boot/build-info';
 import { seedCaseContent } from './seed-cases';
 import {
   DEMO_CASES,
@@ -82,6 +83,8 @@ function addDays(day: string, days: number): string {
 }
 
 async function main(): Promise<void> {
+  // The build marker first, like every process (review A-15).
+  enforceBuild('seed');
   const parsed = schema.safeParse(process.env);
   if (!parsed.success) fail(`INVALID_ENV:${parsed.error.issues.map((i) => i.path.join('.')).join(',')}`);
   const env = parsed.data;
