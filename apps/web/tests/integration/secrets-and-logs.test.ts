@@ -140,7 +140,7 @@ describe('secrets and personal data (memo rows 16 and 17)', () => {
     expect(put && read && describeSetting, 'secrets/store exports put, getPlaintextForUse and describe').toBeTruthy();
     if (!put || !read || !describeSetting) return;
 
-    const name = 'providers.test.apiKey';
+    const name = 'providers.test.api-key';
     const value = `sk-test-${randomBytes(18).toString('hex')}`;
     trackSensitive('secret', value);
     await put(name, value, null);
@@ -182,7 +182,7 @@ describe('secrets and personal data (memo rows 16 and 17)', () => {
     // The setting name is the additional authenticated data: moving a ciphertext under another name fails.
     await sql('UPDATE "SecretSetting" SET iv = $2, tag = $3 WHERE name = $1', [name, row.iv, row.tag]);
     expect(await read(name)).toBe(value);
-    const other = 'providers.other.apiKey';
+    const other = 'providers.other.api-key';
     await put(other, `sk-other-${randomBytes(18).toString('hex')}`, null);
     await sql(
       'UPDATE "SecretSetting" SET ciphertext = $2, iv = $3, tag = $4, last4 = $5 WHERE name = $1',

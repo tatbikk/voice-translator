@@ -29,7 +29,8 @@ test.describe('account creation from the interface', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.adminAccountsNew);
     await page.getByLabel(FORMS.account.fullName).first().fill(name);
     await page.getByLabel(FORMS.account.email).fill(`e2e.${tag}@itest.mahkama.example`);
-    await page.getByLabel(FORMS.account.phone).fill(`+2126${String(10_000_000 + Number.parseInt(tag, 16) % 80_000_000)}`);
+    // A fictitious, non-routable number, like every phone number of the demo data.
+    await page.getByLabel(FORMS.account.phone).fill(`+000 0001 ${String(Number.parseInt(tag, 16) % 10_000).padStart(4, '0')}`);
     await page.getByLabel(FORMS.account.role).selectOption({ label: ROLE_LABELS.LAWYER ?? 'المحامي' });
     await page.getByLabel(FORMS.account.requestReference).fill(`REQ-E2E-${tag}`);
     await page.getByRole('button', { name: FORMS.account.submit }).click();

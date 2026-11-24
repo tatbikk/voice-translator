@@ -311,8 +311,9 @@ export type ResendResult = { kind: 'ok' } | { kind: 'refused'; retryAfterSeconds
 export async function resendSecondFactor(context: SessionContext, clientIdHash: string): Promise<ResendResult> {
   const { user, session, actor } = context;
   const idHash = identifierHash(user.email);
-  const maxResends = 3;
-  if (session.resendCount >= maxResends || !issuanceAllowed(await issuedRecently(idHash), clock.systemNow())) {
+  // The cap is per account (contract §4.5): logins and resends together, 5 per
+  // 15 minutes and 20 per day, whatever the number of sessions.
+  if (!issuanceAllowed(await issuedRecently(idHash), clock.systemNow())) {
     await appendStandaloneEvent({
       action: 'auth.second-factor.refused',
       details: { reason: 'ISSUANCE_CAP' },

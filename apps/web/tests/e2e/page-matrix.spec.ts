@@ -62,7 +62,7 @@ test.describe('page refusal matrix (memo row 2)', () => {
     }
   });
 
-  test('an unknown page answers 404, the same with or without the access cookie', async ({ playwright }) => {
+  test('past the gate an unknown page answers 404 (demo paths included); without the access cookie it leads to the passphrase', async ({ playwright }) => {
     const anonymous = await playwright.request.newContext({ baseURL: baseUrl() });
     const visitor = await playwright.request.newContext({ baseURL: baseUrl() });
     try {
@@ -72,7 +72,8 @@ test.describe('page refusal matrix (memo row 2)', () => {
       const demoUnknown = await get(visitor, '/demo/no-such-tool');
       expect(demoUnknown.status()).toBe(404);
       const before = await get(anonymous, '/no-such-page');
-      expect([404, ...REDIRECT]).toContain(before.status());
+      expect(REDIRECT, `an unknown page without the access cookie answers ${String(before.status())}`).toContain(before.status());
+      expect(redirectTarget(before).pathname).toBe('/access');
     } finally {
       await anonymous.dispose();
       await visitor.dispose();

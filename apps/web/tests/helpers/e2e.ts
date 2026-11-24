@@ -202,3 +202,18 @@ export async function reauthUi(page: Page, password = secrets().seedPassword): P
   await page.getByRole('button', { name: FORMS.reauth.submit }).click();
   await expect(page).not.toHaveURL(/\/reauth(\?|$)/);
 }
+
+// ---------------------------------------------------------------------------
+// Which seeded account each spec uses. Code issuance is capped at 5 per
+// account and 15 minutes (contract §4.5): the specs spread their logins so
+// that no account needs more than four codes in one run.
+
+export function roleLoopAccount(accounts: readonly DemoAccount[], role: string): DemoAccount | undefined {
+  return accounts.find((a) => a.role === role && a.roleAssignmentCount === 1) ?? accounts.find((a) => a.role === role);
+}
+
+/** An account no other spec logs in with (for the lock test). */
+export function untouchedAccount(accounts: readonly DemoAccount[], roles: readonly string[]): DemoAccount | undefined {
+  const used = new Set(roles.map((role) => roleLoopAccount(accounts, role)?.email));
+  return accounts.find((a) => !used.has(a.email) && a.roleAssignmentCount === 1 && a.role !== 'SYSTEM_ADMIN');
+}

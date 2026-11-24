@@ -7,11 +7,12 @@
 // is over.
 import { describe, expect, it } from 'vitest';
 import { login } from '../helpers/auth';
-import { eventsAfter, headSeq } from '../helpers/db';
+import { eventsAfter, headSeq, type EventRow } from '../helpers/db';
+import { startWorker } from '../helpers/cli';
 import { createUser } from '../helpers/factories';
 import { Client, nextIp } from '../helpers/http';
 import { useFreshDatabase } from '../helpers/reset';
-import { awayFromMinuteBoundary, untilNextWindow } from '../helpers/time';
+import { awayFromMinuteBoundary, sleep, untilNextWindow } from '../helpers/time';
 
 describe('refusal throttle (memo row 28)', () => {
   useFreshDatabase();
@@ -56,9 +57,21 @@ describe('refusal throttle (memo row 28)', () => {
     const nextSession = await session.get('/api/v1/admin/accounts');
     expect(nextSession.code).toBe('FORBIDDEN');
 
-    const throttled = await eventsAfter(since, 'access.throttled');
-    const byClient = throttled.filter((e) => e.details.scope === 'client');
-    const bySession = throttled.filter((e) => e.details.scope === 'session');
+    // The summaries may be written on the next refusal or by the worker: run it
+    // and wait for them (at most 90 seconds).
+    const worker = startWorker();
+    let byClient: EventRow[] = [];
+    let bySession: EventRow[] = [];
+    try {
+      for (let i = 0; i < 90 && (byClient.length === 0 || bySession.length === 0); i += 1) {
+        const throttled = await eventsAfter(since, 'access.throttled');
+        byClient = throttled.filter((e) => e.details.scope === 'client');
+        bySession = throttled.filter((e) => e.details.scope === 'session');
+        if (byClient.length === 0 || bySession.length === 0) await sleep(1_000);
+      }
+    } finally {
+      await worker.stop();
+    }
     expect(byClient.map((e) => e.details.suppressedCount), 'one summary for the client').toEqual([10]);
     expect(bySession.map((e) => e.details.suppressedCount), 'one summary for the session').toEqual([10]);
     for (const summary of [...byClient, ...bySession]) {
@@ -66,5 +79,5 @@ describe('refusal throttle (memo row 28)', () => {
       expect(windowStart).toBeGreaterThanOrEqual(start - 60_000);
       expect(windowStart).toBeLessThanOrEqual(start + 60_000);
     }
-  }, 180_000);
+  }, 300_000);
 });

@@ -3,7 +3,7 @@
 // headers() and the per-request CSP of src/proxy.ts); robots.txt disallows
 // everything.
 import { expect, test, type APIResponse } from '@playwright/test';
-import { baseUrl, desktopOnly, nextAddress } from '../helpers/e2e';
+import { baseUrl, desktopOnly, nextAddress, passGateRequest } from '../helpers/e2e';
 
 const STATIC_HEADERS: Record<string, RegExp> = {
   'strict-transport-security': /^max-age=63072000; includeSubDomains$/,
@@ -76,10 +76,18 @@ test.describe('security headers (memo row 30)', () => {
   test('a 404 carries the security headers and the CSP', async ({ playwright }) => {
     const request = await playwright.request.newContext({ baseURL: baseUrl() });
     try {
+      await passGateRequest(request, { 'X-Real-IP': nextAddress() });
       const res = await request.get('/no-such-page', { headers: { 'X-Real-IP': nextAddress() }, maxRedirects: 0 });
-      expect([404, 302, 303, 307, 308]).toContain(res.status());
+      expect(res.status()).toBe(404);
       expectStaticHeaders(res, 'a 404');
       expectCsp(res, 'a 404');
+      const redirect = await playwright.request.newContext({ baseURL: baseUrl() });
+      try {
+        const res2 = await redirect.get('/no-such-page', { headers: { 'X-Real-IP': nextAddress() }, maxRedirects: 0 });
+        expectStaticHeaders(res2, 'the redirect to the passphrase');
+      } finally {
+        await redirect.dispose();
+      }
     } finally {
       await request.dispose();
     }

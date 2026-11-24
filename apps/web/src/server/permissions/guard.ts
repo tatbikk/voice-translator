@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { authorize, safeInternalPath, type ActionCode, type Resource, type Subject, type UserSubject } from '@mahkama/core';
@@ -9,12 +10,18 @@ import { hasAccess } from '../auth/access-gate';
 import { clientIdHash } from '../auth/client-id';
 import { resolveSession, type SessionContext, type SessionState } from '../auth/sessions';
 import { COOKIES, parseCookieHeader, readCookie } from '../http/cookies';
-import { recordRefusal } from '../security/refusals';
+import { PAGES } from '../http/page-registry';
+import { recordRefusal, type RefusalStep } from '../security/refusals';
 
 // Page guards (contract §7). Every page and every layout of the (gate) and
 // (app) groups calls exactly one of them as its first statement. The request
 // interceptor (proxy.ts) is never relied upon as a guard: every check is made
 // again here, on the server, for every page.
+//
+// A layout and its page render in the same request, in parallel, and both call
+// a guard. The request is therefore resolved once (session included), and a
+// refusal is recorded once: a layout records it under the id of the page the
+// path designates, so that the page's identical record is deduplicated.
 
 export interface GateContext {
   readonly req: Request;
@@ -43,23 +50,56 @@ function loginRedirect(path: string): never {
   redirect(`/login?next=${encodeURIComponent(path)}`);
 }
 
-export async function requireGate(pageId: string): Promise<GateContext> {
+interface RequestState {
+  readonly req: Request;
+  readonly path: string;
+  readonly client: string;
+  readonly access: boolean;
+  readonly session: SessionContext | null;
+}
+
+/** The request, resolved once per server request (React cache). */
+const requestState = cache(async (): Promise<RequestState> => {
   await clock.refresh();
-  const env = getEnv();
   const { req, path } = await currentRequest();
-  const client = clientIdHash(req);
-  if (!hasAccess(req)) {
-    await recordRefusal({ step: 'GATE', reason: 'ACCESS_CODE_REQUIRED', target: pageId, clientIdHash: client, sessionId: null, actor: null });
-    redirect(`/access?next=${encodeURIComponent(path)}`);
+  const access = hasAccess(req);
+  return { req, path, client: clientIdHash(req), access, session: access ? await resolveSession(req) : null };
+});
+
+/** A refusal, written once per request for the same step, reason and target. */
+const refuseOnce = cache(async (step: RefusalStep, reason: string, target: string): Promise<void> => {
+  const state = await requestState();
+  await recordRefusal({
+    step,
+    reason,
+    target,
+    clientIdHash: state.client,
+    sessionId: state.session?.session.id ?? null,
+    actor: state.session?.actor ?? null,
+  });
+});
+
+/** Layout guards record a refusal under the id of the page the path designates. */
+function refusalTarget(pageId: string, path: string): string {
+  if (!pageId.startsWith('layout.')) return pageId;
+  const pathname = path.split('?')[0] ?? path;
+  return PAGES.find((page) => page.path === pathname)?.id ?? pageId;
+}
+
+export async function requireGate(pageId: string): Promise<GateContext> {
+  const env = getEnv();
+  const state = await requestState();
+  if (!state.access) {
+    await refuseOnce('GATE', 'ACCESS_CODE_REQUIRED', refusalTarget(pageId, state.path));
+    redirect(`/access?next=${encodeURIComponent(state.path)}`);
   }
-  const session = await resolveSession(req);
   return {
-    req,
-    path,
-    locale: resolveLocale(readCookie(req, COOKIES.locale)),
-    session,
-    subject: session?.subject ?? { kind: 'anonymous' },
-    clientIdHash: client,
+    req: state.req,
+    path: state.path,
+    locale: resolveLocale(readCookie(state.req, COOKIES.locale)),
+    session: state.session,
+    subject: state.session?.subject ?? { kind: 'anonymous' },
+    clientIdHash: state.client,
     mode: env.mode,
     demoToolsEnabled: env.demoToolsEnabled,
   };
@@ -80,14 +120,7 @@ export async function requirePending(
     });
     if (decision.allowed) return { ...context, session };
   }
-  await recordRefusal({
-    step: 'SESSION',
-    reason: 'SESSION_REQUIRED',
-    target: pageId,
-    clientIdHash: context.clientIdHash,
-    sessionId: session?.session.id ?? null,
-    actor: session?.actor ?? null,
-  });
+  await refuseOnce('SESSION', 'SESSION_REQUIRED', refusalTarget(pageId, context.path));
   loginRedirect('/dashboard');
 }
 
@@ -95,14 +128,7 @@ export async function requirePage(pageId: string, action: ActionCode, resource?:
   const context = await requireGate(pageId);
   const { session } = context;
   if (!session?.subject) {
-    await recordRefusal({
-      step: 'SESSION',
-      reason: 'SESSION_REQUIRED',
-      target: pageId,
-      clientIdHash: context.clientIdHash,
-      sessionId: session?.session.id ?? null,
-      actor: session?.actor ?? null,
-    });
+    await refuseOnce('SESSION', 'SESSION_REQUIRED', refusalTarget(pageId, context.path));
     if (session?.session.state === 'PENDING_SECOND_FACTOR') redirect('/login/confirm');
     if (session?.session.state === 'PENDING_ROLE') redirect('/login/role');
     loginRedirect(context.path);
@@ -112,14 +138,7 @@ export async function requirePage(pageId: string, action: ActionCode, resource?:
     demoToolsEnabled: context.demoToolsEnabled,
   });
   if (!decision.allowed) {
-    await recordRefusal({
-      step: 'AUTHZ',
-      reason: decision.reason,
-      target: pageId,
-      clientIdHash: context.clientIdHash,
-      sessionId: session.session.id,
-      actor: session.actor,
-    });
+    await refuseOnce('AUTHZ', decision.reason, refusalTarget(pageId, context.path));
     notFound();
   }
   return { ...context, session, subject: session.subject };
@@ -132,14 +151,7 @@ export async function requireDemo(pageId: string, action: ActionCode): Promise<G
     demoToolsEnabled: context.demoToolsEnabled,
   });
   if (!decision.allowed) {
-    await recordRefusal({
-      step: 'MODE',
-      reason: decision.reason,
-      target: pageId,
-      clientIdHash: context.clientIdHash,
-      sessionId: context.session?.session.id ?? null,
-      actor: context.session?.actor ?? null,
-    });
+    await refuseOnce('MODE', decision.reason, refusalTarget(pageId, context.path));
     notFound();
   }
   return context;

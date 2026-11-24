@@ -6,7 +6,7 @@
 // but SYSTEM_ADMIN, without showing any of their content (memo rows 2 and 8).
 import { expect, test } from '@playwright/test';
 import { DEMO_ACCOUNTS } from '../../src/cli/seed-data/accounts';
-import { expectDashboard, loginUi, passGateUi, useOwnAddress } from '../helpers/e2e';
+import { expectDashboard, loginUi, passGateUi, roleLoopAccount, useOwnAddress } from '../helpers/e2e';
 import { ADMIN_ONLY_TEXT, PAGE_TITLES, ROLE_CODES_E2E, ROLE_LABELS } from '../helpers/labels';
 
 const SESSION_PAGES = ['/dashboard', '/notifications', '/account', '/reauth'];
@@ -20,7 +20,7 @@ test.describe('login with each role (contract §13.2)', () => {
 
   for (const role of ROLE_CODES_E2E) {
     test(`${role} (${ROLE_LABELS[role] ?? role}): login, dashboard with its three boxes, and the pages of the role`, async ({ page, context }) => {
-      const account = DEMO_ACCOUNTS.find((a) => a.role === role);
+      const account = roleLoopAccount(DEMO_ACCOUNTS, role);
       expect(account, `a seeded account holds ${role}`).toBeDefined();
       if (!account) return;
       await useOwnAddress(context);

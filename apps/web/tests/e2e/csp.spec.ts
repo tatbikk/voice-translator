@@ -2,10 +2,12 @@
 // page of Phase 0 — as a visitor, in the login steps, with a session, as the
 // administrator — with the account menu and a confirmation dialog open, and
 // on an unknown URL. Violations are caught by a securitypolicyviolation
-// listener added before any page script runs.
+// listener added before any page script runs. The session and administration
+// pages are also checked with axe-core here (a11y.spec.ts covers the others),
+// so that the administrator logs in once for both checks.
 import { expect, test } from '@playwright/test';
 import { DEMO_ACCOUNTS } from '../../src/cli/seed-data/accounts';
-import { desktopOnly, expectNoViolation, loginUi, monitor, passGateUi, reauthUi, useOwnAddress } from '../helpers/e2e';
+import { desktopOnly, expectAccessible, expectNoViolation, loginUi, monitor, passGateUi, reauthUi, useOwnAddress } from '../helpers/e2e';
 import { FORMS, ROLE_LABELS, TOP_BAR } from '../helpers/labels';
 
 const VISITOR_PAGES = ['/', '/track', '/hearings', '/environment', '/login', '/activate', '/demo/outbox'];
@@ -14,7 +16,7 @@ const SESSION_PAGES = ['/dashboard', '/notifications', '/account', '/reauth', '/
 test.describe('content security policy (contract §13.7)', () => {
   desktopOnly();
 
-  test('no violation and no console error on any page, with the account menu and a confirmation open, and on an unknown URL', async ({
+  test('no violation and no console error on any page, with the account menu and a confirmation open, and on an unknown URL; session pages pass axe', async ({
     page,
     context,
   }) => {
@@ -42,6 +44,8 @@ test.describe('content security policy (contract §13.7)', () => {
       await page.goto(path);
       await page.waitForLoadState('load');
       await expectNoViolation(page, mon, path);
+      await expect(page.locator('h1'), `one <h1> on ${path}`).toHaveCount(1);
+      await expectAccessible(page, path);
     }
 
     await page.goto('/dashboard');
@@ -54,7 +58,7 @@ test.describe('content security policy (contract §13.7)', () => {
     await page.goto('/admin/accounts/new');
     await page.getByLabel(FORMS.account.fullName).first().fill('الأستاذ زاي');
     await page.getByLabel(FORMS.account.email).fill('csp.check@itest.mahkama.example');
-    await page.getByLabel(FORMS.account.phone).fill('+212611112222');
+    await page.getByLabel(FORMS.account.phone).fill('+000 0001 2222');
     await page.getByLabel(FORMS.account.role).selectOption({ label: ROLE_LABELS.LAWYER ?? 'المحامي' });
     await page.getByLabel(FORMS.account.requestReference).fill('REQ-CSP-0001');
     await page.getByRole('button', { name: FORMS.account.submit }).click();

@@ -14,7 +14,8 @@ function toText(chunk: unknown): string {
   if (typeof chunk === 'string') return chunk;
   if (chunk instanceof Uint8Array) return Buffer.from(chunk).toString('utf8');
   try {
-    return JSON.stringify(chunk) ?? String(chunk);
+    const json = JSON.stringify(chunk) as string | undefined;
+    return json ?? String(chunk);
   } catch {
     return String(chunk);
   }
@@ -37,7 +38,7 @@ export function installLogCapture(): void {
       state.chunks.push(toText(args[0]));
       return original(...args);
     };
-    stream.write = patched as typeof stream.write;
+    stream.write = patched;
   }
 
   const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;

@@ -5,7 +5,16 @@ import { verifyEventChain } from '@/server/events/verify';
 
 const report = await verifyEventChain({ full: true });
 if (report.result.ok) {
-  console.log(JSON.stringify({ level: 'info', msg: 'event chain intact', count: report.result.count, headSeq: report.result.head?.seq ?? 0 }));
+  // The verified head goes to the technical log: an anchor kept outside the database.
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      msg: 'event chain intact',
+      count: report.result.count,
+      headSeq: report.result.head?.seq ?? 0,
+      headHash: report.result.head?.hash ?? null,
+    }),
+  );
 } else {
   console.error(
     JSON.stringify({ level: 'error', msg: 'event chain broken', brokenAtSeq: report.result.brokenAtSeq, reason: report.result.reason }),

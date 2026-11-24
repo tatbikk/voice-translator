@@ -1,13 +1,13 @@
 // Contract §7 and §13 item 7: axe-core on every page of Phase 0 — zero serious
 // or critical violation — each page in the state that shows it: visitor,
-// pending second factor, pending role selection, active session, administrator,
-// and the 404 page. One <h1> per page, lang and dir set.
+// pending second factor, pending role selection and the 404 page here; the
+// session and administration pages in csp.spec.ts (one administrator login for
+// both checks). One <h1> per page, lang and dir set.
 import { expect, test, type Page } from '@playwright/test';
 import { DEMO_ACCOUNTS } from '../../src/cli/seed-data/accounts';
 import {
   desktopOnly,
   expectAccessible,
-  loginUi,
   newOutboxCode,
   outboxCodes,
   passGateUi,
@@ -58,17 +58,5 @@ test.describe('accessibility (axe-core, zero serious or critical violation)', ()
     await page.waitForURL(/\/login\/role/);
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.loginRole);
     await check(page, null, '/login/role');
-  });
-
-  test('session pages and administration pages', async ({ page, context }) => {
-    const admin = DEMO_ACCOUNTS.find((a) => a.role === 'SYSTEM_ADMIN');
-    expect(admin).toBeDefined();
-    if (!admin) return;
-    await useOwnAddress(context);
-    await passGateUi(page, '/login');
-    await loginUi(page, admin);
-    for (const path of ['/dashboard', '/notifications', '/account', '/reauth', '/admin/accounts', '/admin/accounts/new']) {
-      await check(page, path, path);
-    }
   });
 });

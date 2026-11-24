@@ -67,7 +67,7 @@ export const PARTIAL_TRANSLATION_NOTICE = {
 /** Forms (field names follow the API bodies of contract §6; wording proposed unless stated). */
 export const FORMS = {
   access: {
-    passphrase: /كلمة العبور/, // prompt «كلمة عبور واحدة للزوار»
+    passphrase: /كلمة (ال)?عبور/, // prompt «كلمة عبور واحدة للزوار»; glossary «كلمة عبور الزوار»
     submit: /متابعة|دخول/, // proposed
   },
   login: {
@@ -145,7 +145,7 @@ export const ROLE_LABELS: Record<string, string> = {
 /** Case statuses (contract §8). */
 export const STATUS_LABELS: Record<string, string> = {
   FILED: 'مودع',
-  REGISTERED: 'مسجل',
+  REGISTERED: 'مقيد', // the law's term prevails over the contract's «مسجل» (docs/decisions.md, decision 21)
   RAPPORTEUR_ASSIGNED: 'معين مقرره',
   IN_NOTIFICATION: 'في التبليغ',
   IN_PREPARATION: 'في التجهيز',

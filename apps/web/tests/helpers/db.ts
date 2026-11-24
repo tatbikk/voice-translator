@@ -21,10 +21,10 @@ export function runtime(): pg.Pool {
 }
 
 export async function closePools(): Promise<void> {
-  const pools = [ownerPool, runtimePool];
+  const pools = [ownerPool, runtimePool].filter((p): p is pg.Pool => p !== null);
   ownerPool = null;
   runtimePool = null;
-  await Promise.all(pools.map((p) => p?.end()));
+  await Promise.all(pools.map((p) => p.end()));
 }
 
 /** A dedicated client on the runtime role, for statements that must not share a pooled session. */

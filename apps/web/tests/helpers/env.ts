@@ -83,14 +83,14 @@ export function idleMinutes(): number {
  * the change by itself.
  */
 export async function forgetCachedConfiguration(): Promise<void> {
-  let mod: Record<string, unknown>;
+  let mod: { resetEnvCache?: unknown };
   try {
-    mod = (await import('@/server/config/env')) as unknown as Record<string, unknown>;
+    mod = await import('@/server/config/env');
   } catch {
     return;
   }
   const reset = mod.resetEnvCache;
-  if (typeof reset === 'function') (reset as () => void)();
+  if (typeof reset === 'function') Reflect.apply(reset, undefined, []);
 }
 
 /** Sets (or, with undefined, removes) variables, and returns a function that restores them. */

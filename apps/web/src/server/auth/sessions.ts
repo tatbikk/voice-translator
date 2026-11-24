@@ -4,7 +4,7 @@ import type { Prisma, RoleAssignment, Session, User } from '@/generated/prisma/c
 import { getEnv } from '../config/env';
 import { clock } from '../clock';
 import { getDb } from '../db';
-import { appendStandaloneEvent, type EventActor } from '../events/append';
+import { appendEvent, appendStandaloneEvent, type EventActor } from '../events/append';
 import { COOKIES, clearCookie, readCookie, serializeCookie } from '../http/cookies';
 import { isBackgroundRefresh } from '../http/request-info';
 import { randomToken, sha256Hex } from './tokens';
@@ -93,11 +93,23 @@ export type RevokeCause =
   | 'SECOND_FACTOR_LOCK'
   | 'LOGOUT';
 
-export async function revokeSession(tx: Tx, sessionId: string, cause: RevokeCause): Promise<void> {
-  await tx.session.updateMany({
+/**
+ * Ends a session and writes it to the event log in the same transaction, once:
+ * a session already ended is left as it is. Logout and expiry are recorded by
+ * their own, more specific events (auth.logout, auth.session.expired).
+ */
+export async function revokeSession(tx: Tx, sessionId: string, cause: RevokeCause | 'EXPIRED'): Promise<boolean> {
+  const session = await tx.session.findUnique({ where: { id: sessionId }, include: { roleAssignment: true } });
+  if (!session || session.revokedAt) return false;
+  const updated = await tx.session.updateMany({
     where: { id: sessionId, revokedAt: null },
     data: { revokedAt: clock.systemNow(), revokeReason: cause },
   });
+  if (updated.count !== 1) return false;
+  if (cause !== 'LOGOUT' && cause !== 'EXPIRED') {
+    await appendEvent(tx, { action: 'auth.session.revoked', details: { cause }, actor: actorOf(session, session.roleAssignment) });
+  }
+  return true;
 }
 
 function actorOf(session: Session, roleAssignment: RoleAssignment | null): EventActor {
@@ -136,7 +148,7 @@ export async function resolveSession(req: Request): Promise<SessionContext | nul
     expired = 'PENDING';
   else if (now.getTime() - session.lastSeenAt.getTime() > idleMs) expired = 'IDLE';
   if (expired) {
-    await db.$transaction((tx) => revokeSession(tx, session.id, 'LOGOUT'));
+    await db.$transaction((tx) => revokeSession(tx, session.id, 'EXPIRED'));
     await appendStandaloneEvent({ action: 'auth.session.expired', details: { kind: expired }, actor });
     return null;
   }
@@ -145,8 +157,8 @@ export async function resolveSession(req: Request): Promise<SessionContext | nul
   if (user.disabledAt) invalid = 'USER_DISABLED';
   else if (roleAssignment?.revokedAt) invalid = 'ROLE_REVOKED';
   if (invalid) {
+    // revokeSession writes auth.session.revoked with the cause.
     await db.$transaction((tx) => revokeSession(tx, session.id, invalid));
-    await appendStandaloneEvent({ action: 'auth.session.revoked', details: { cause: invalid }, actor });
     return null;
   }
 

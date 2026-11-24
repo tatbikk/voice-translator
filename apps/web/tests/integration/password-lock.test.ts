@@ -82,7 +82,7 @@ describe('password attempts and locks (memo rows 3, 4, 5, 22)', () => {
       const lockedEvent = (await eventsAfter(since, 'auth.account.locked'))[0];
       expect(lockedEvent?.details.cause).toBe('PASSWORD');
 
-      const recorded = await authAttemptCount();
+      const recorded = await authAttemptCount('PASSWORD');
       const right = await attempt(client, user.email, user.password);
       const wrong = await attempt(client, user.email, wrongPassword());
       expect(right.status, describeResponse(right)).toBe(423);
@@ -92,9 +92,10 @@ describe('password attempts and locks (memo rows 3, 4, 5, 22)', () => {
       expect(retryRight).toBeGreaterThan(0);
       expect(retryRight).toBeLessThanOrEqual(15 * 60);
       expect(Math.abs(retryRight - retryWrong)).toBeLessThanOrEqual(2);
-      expect(await authAttemptCount(), 'attempts during a lock are not recorded').toBe(recorded);
+      expect(await authAttemptCount('PASSWORD'), 'attempts during a lock are not recorded').toBe(recorded);
       expect(cookieNames(right)).not.toContain(COOKIE.session);
-      expect(await outboundTo(user.id, 'SMS'), 'no code is sent during a lock').toEqual([]);
+      const codes = (await outboundTo(user.id, 'SMS')).filter((m) => /(?<!\d)\d{6}(?!\d)/.test(m.body));
+      expect(codes, 'no code is sent during a lock (the lock notice carries none)').toEqual([]);
     });
 
     it('row 3: the lock ends after its delay', async () => {
@@ -110,10 +111,11 @@ describe('password attempts and locks (memo rows 3, 4, 5, 22)', () => {
     it('row 3: a success clears the count of failures', async () => {
       const user = await createUser({ roles: ['LAWYER'] });
       const client = await visitor();
+      const locks = (await activeLockouts()).length;
       for (let i = 0; i < 4; i += 1) await attempt(client, user.email, wrongPassword());
       expect((await attempt(client, user.email, user.password)).status).toBe(200);
       for (let i = 0; i < 4; i += 1) await attempt(client, user.email, wrongPassword());
-      expect(await activeLockouts()).toEqual([]);
+      expect((await activeLockouts()).length, 'no new lock').toBe(locks);
       const again = await attempt(await visitor(), user.email, user.password);
       expect(again.status, describeResponse(again)).toBe(200);
     });
@@ -125,17 +127,17 @@ describe('password attempts and locks (memo rows 3, 4, 5, 22)', () => {
       const since = await headSeq();
       await lockByPasswords(user.email);
       const until = await lockUntil(since);
+      const other = await visitor();
       const locks = await allLockouts();
-      const attempts = await authAttemptCount();
+      const attempts = await authAttemptCount('PASSWORD');
       const sinceLock = await headSeq();
 
-      const other = await visitor();
       for (let i = 0; i < 6; i += 1) {
         const res = await attempt(other, user.email, i % 2 === 0 ? wrongPassword() : user.password);
         expect(res.status).toBe(423);
       }
       expect(await allLockouts(), 'no new lock, no lock moved').toEqual(locks);
-      expect(await authAttemptCount()).toBe(attempts);
+      expect(await authAttemptCount('PASSWORD')).toBe(attempts);
       expect((await eventsAfter(since, 'auth.account.locked')).length).toBe(1);
       expect(locks.some((l) => Math.abs(l.until.getTime() - until) < 2_000)).toBe(true);
       expect((await eventsAfter(sinceLock, 'auth.login.blocked')).length, 'each refused attempt is logged').toBe(6);

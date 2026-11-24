@@ -145,13 +145,14 @@ describe('second factor (memo row 1)', () => {
 
   it('a successful second factor resets the count: four wrong codes, success, then four more do not lock', async () => {
     const user = await createUser({ roles: ['LAWYER'] });
+    const locks = (await activeLockouts()).length;
     const first = await startLogin(user);
     for (let i = 0; i < 4; i += 1) expectRefused(await submitCode(first.client, wrongCode(first.code)), 'wrong code');
     expect((await submitCode(first.client, first.code)).status).toBe(200);
 
     const second = await startLogin(user);
     for (let i = 0; i < 4; i += 1) expectRefused(await submitCode(second.client, wrongCode(second.code)), 'wrong code');
-    expect(await activeLockouts()).toEqual([]);
+    expect((await activeLockouts()).length, 'no new lock').toBe(locks);
     const ok = await submitCode(second.client, second.code);
     expect(ok.status, describeResponse(ok)).toBe(200);
   });

@@ -1,17 +1,14 @@
 // Memo rows 3 and 4 through the interface: five wrong passwords lock the
 // account; then even the right password is refused, with a different message,
 // and no code reaches «صندوق الرسائل الصادرة». The account used is one the
-// per-role login spec does not use (the second account of a role held twice).
+// other specs never log in with (see untouchedAccount in tests/helpers/e2e.ts).
 import { expect, test, type Page } from '@playwright/test';
 import { DEMO_ACCOUNTS } from '../../src/cli/seed-data/accounts';
-import { desktopOnly, outboxCodes, passGateUi, secrets, useOwnAddress } from '../helpers/e2e';
-import { FORMS } from '../helpers/labels';
+import { desktopOnly, outboxCodes, passGateUi, secrets, untouchedAccount, useOwnAddress } from '../helpers/e2e';
+import { FORMS, ROLE_CODES_E2E } from '../helpers/labels';
 
 function lockTarget(): string | null {
-  const firstByRole = new Map<string, string>();
-  for (const account of DEMO_ACCOUNTS) if (!firstByRole.has(account.role)) firstByRole.set(account.role, account.email);
-  const used = new Set(firstByRole.values());
-  return DEMO_ACCOUNTS.find((a) => !used.has(a.email))?.email ?? null;
+  return untouchedAccount(DEMO_ACCOUNTS, ROLE_CODES_E2E)?.email ?? null;
 }
 
 const errorRegion = (page: Page) =>

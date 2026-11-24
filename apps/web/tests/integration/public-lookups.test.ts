@@ -2,7 +2,8 @@
 // Contract §4.5 and §6: case lookup 10 / 5 min per client (global 300 / 5 min,
 // see public-lookups-global.test.ts); hearings 30 / 5 min per client, dates
 // within today −7 … +60 days; answers carry only { status, nextHearingAt } and
-// [{ startsAt, room, chamberLabelKey, caseNumbers }] — no party name, no document.
+// [{ startsAt, room, panelName, caseNumbers }] — no party name, no document. The panel
+// name is institutional data, like the court name (docs/decisions.md, decision 30).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { moroccoCalendarDate } from '@mahkama/core';
 import { visitor } from '../helpers/auth';
@@ -25,6 +26,13 @@ function lookup(client: Client, caseFile: Pick<CaseFileFixture, 'number' | 'code
 
 function hearings(client: Client, date: string): Promise<ApiResponse> {
   return client.get('/api/v1/public/hearings', { query: { courtId: court.id, date } });
+}
+
+/** The hearings of the answer: the data itself, or data.hearings. */
+function hearingList(res: ApiResponse): Record<string, unknown>[] | null {
+  const data = res.data;
+  const list: unknown = Array.isArray(data) ? data : (data as { hearings?: unknown } | undefined)?.hearings;
+  return Array.isArray(list) ? (list as Record<string, unknown>[]) : null;
 }
 
 function expectTooMany(res: ApiResponse): void {
@@ -88,11 +96,11 @@ describe('public lookups (memo row 23)', () => {
     it('row 23: each hearing gives its time, room, chamber and case numbers, nothing else', async () => {
       const res = await hearings(await visitor(), moroccoCalendarDate(hearingAt));
       expect(res.status, describeResponse(res)).toBe(200);
-      const list = res.data as Record<string, unknown>[];
-      expect(Array.isArray(list)).toBe(true);
-      expect(list.length).toBe(1);
-      const hearing = list[0] ?? {};
-      expect(Object.keys(hearing).sort()).toEqual(['caseNumbers', 'chamberLabelKey', 'room', 'startsAt']);
+      const list = hearingList(res);
+      expect(list, `a list of hearings: ${res.text.slice(0, 200)}`).not.toBeNull();
+      expect(list?.length).toBe(1);
+      const hearing = list?.[0] ?? {};
+      expect(Object.keys(hearing).sort()).toEqual(['caseNumbers', 'panelName', 'room', 'startsAt']);
       expect(new Date(String(hearing.startsAt)).getTime()).toBe(hearingAt.getTime());
       expect(hearing.room).toBe('القاعة 5');
       expect(hearing.caseNumbers).toEqual(['1234/8201/2026']);
@@ -101,7 +109,7 @@ describe('public lookups (memo row 23)', () => {
     it('row 23: a day without hearings answers an empty list', async () => {
       const res = await hearings(await visitor(), moroccoCalendarDate(new Date(hearingAt.getTime() + DAY)));
       expect(res.status, describeResponse(res)).toBe(200);
-      expect(res.data).toEqual([]);
+      expect(hearingList(res)).toEqual([]);
     });
 
     it('row 23: dates outside today −7 … +60 days are refused', async () => {

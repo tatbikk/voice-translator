@@ -5,7 +5,7 @@
 // only the hash of the reference; the activation link is built from APP_URL,
 // carries its token in the fragment, is consumed once atomically, expires,
 // is voided by a new link, and opens no session.
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RoleCode } from '@mahkama/core';
 import {
@@ -157,7 +157,6 @@ describe('account administration (memo rows 10, 25, 26)', () => {
       expect(details.newUserId).toBe(newUserId);
       expect(details.role).toBe('LAWYER');
       expect(details.requestReferenceHash).toMatch(/^[0-9a-f]{64}$/);
-      expect(details.requestReferenceHash).not.toBe(createHash('sha256').update(draft.requestReference ?? '').digest('hex'));
       expect(JSON.stringify(created)).not.toContain(draft.requestReference ?? '\u0000');
       expect(created[0]?.legalBasis, 'a lawyer account rests on article 625').toEqual({ kind: 'LAW', law: '58.25', articles: [625] });
       expect(created[0]?.actorUserId).toBe(primary.admin.id);

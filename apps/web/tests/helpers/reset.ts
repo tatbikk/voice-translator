@@ -16,7 +16,7 @@ function isModuleMissing(error: unknown): boolean {
 export async function closeAppDb(): Promise<void> {
   let mod: { closeDb?: () => Promise<void> };
   try {
-    mod = (await import('@/server/db')) as unknown as { closeDb?: () => Promise<void> };
+    mod = await import('@/server/db');
   } catch (error) {
     if (isModuleMissing(error)) return; // no application pool exists yet
     throw error;
@@ -27,9 +27,9 @@ export async function closeAppDb(): Promise<void> {
 /** Drops the platform-clock cache of the application, when it exposes one. */
 export async function forgetAppClockCache(): Promise<void> {
   try {
-    const mod = (await import('@/server/clock')) as unknown as Record<string, unknown>;
+    const mod = (await import('@/server/clock')) as unknown as { invalidateClockCache?: unknown };
     const invalidate = mod.invalidateClockCache;
-    if (typeof invalidate === 'function') (invalidate as () => void)();
+    if (typeof invalidate === 'function') Reflect.apply(invalidate, undefined, []);
   } catch (error) {
     if (!isModuleMissing(error)) throw error;
   }

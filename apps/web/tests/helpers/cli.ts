@@ -1,6 +1,6 @@
 // Runs the bundled command-line tools (dist-server/*.mjs) and the Prisma CLI as
 // separate processes, the way CI and the Railway pre-deploy step run them.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { REPO_ROOT, WEB_ROOT } from './env';
 
@@ -60,4 +60,33 @@ export function migrateDeploy(env: NodeJS.ProcessEnv = process.env): void {
 /** The role-provisioning step (src/cli/db-roles.ts), run after every migrate deploy. */
 export function provisionRoles(env: NodeJS.ProcessEnv = process.env): void {
   expectSuccess('dist-server/db-roles.mjs', runBundled('db-roles', [], env));
+}
+
+export interface RunningProcess {
+  output(): string;
+  stop(): Promise<number | null>;
+}
+
+/** Starts the bundled worker (dist-server/worker.mjs) in the background, as `npm run worker` does. */
+export function startWorker(env: NodeJS.ProcessEnv = process.env): RunningProcess {
+  const child = spawn(process.execPath, [join('dist-server', 'worker.mjs')], { cwd: WEB_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const chunks: string[] = [];
+  child.stdout.on('data', (d: Buffer) => chunks.push(d.toString('utf8')));
+  child.stderr.on('data', (d: Buffer) => chunks.push(d.toString('utf8')));
+  const exited = new Promise<number | null>((resolve) => {
+    child.on('exit', (code) => {
+      resolve(code);
+    });
+  });
+  return {
+    output: () => chunks.join(''),
+    stop: async () => {
+      if (child.exitCode === null) child.kill('SIGTERM');
+      const timeout = new Promise<null>((resolve) => setTimeout(() => {
+        child.kill('SIGKILL');
+        resolve(null);
+      }, 10_000));
+      return Promise.race([exited, timeout]);
+    },
+  };
 }

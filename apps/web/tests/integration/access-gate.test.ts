@@ -102,6 +102,7 @@ describe('visitor passphrase (memo rows 7 and 24)', () => {
   it('row 7: a cookie issued before the passphrase changed is refused afterwards', async () => {
     const before = await visitor();
     expectPastGate(await gateProbe(before));
+    const original = accessCode();
 
     const changed = `changed-passphrase-${randomBytes(8).toString('hex')}`;
     trackSensitive('secret', changed);
@@ -110,7 +111,7 @@ describe('visitor passphrase (memo rows 7 and 24)', () => {
     try {
       expectGateRefusal(await gateProbe(before));
       const old = new Client();
-      expect((await passGate(old, accessCode())).status, 'the former passphrase no longer opens the gate').not.toBe(200);
+      expect((await passGate(old, original)).status, 'the former passphrase no longer opens the gate').not.toBe(200);
       expect(old.cookie(COOKIE.access)).toBeUndefined();
       after = new Client();
       expect((await passGate(after, changed)).status).toBe(200);

@@ -27,6 +27,8 @@ const hashCache = new Map<string, Promise<string>>();
 export function hashPassword(password: string): Promise<string> {
   let pending = hashCache.get(password);
   if (!pending) {
+    // Argon2id: the const enum cannot be referenced under isolatedModules (contract §1).
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-assignment
     pending = hash(password, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1, outputLen: 32 });
     hashCache.set(password, pending);
   }

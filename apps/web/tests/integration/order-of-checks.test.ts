@@ -10,7 +10,7 @@ import { accountDraft, adminSession, createAccount } from '../helpers/admin';
 import { login, visitor } from '../helpers/auth';
 import { capturingEvents, sql, type EventRow } from '../helpers/db';
 import { overrideEnv } from '../helpers/env';
-import { createCaseFile, createUser, theCourt } from '../helpers/factories';
+import { createUser } from '../helpers/factories';
 import { Client, describeResponse, type ApiResponse } from '../helpers/http';
 import { closeAppDb, useFreshDatabase } from '../helpers/reset';
 
@@ -94,30 +94,40 @@ describe('order of checks (contract §6)', () => {
     expectStepLogged(events, 'SESSION');
   });
 
-  it('step 2 before step 6: a client over the lookup limit but without the access cookie answers ACCESS_CODE_REQUIRED', async () => {
-    const court = await theCourt();
-    const caseFile = await createCaseFile({ courtId: court.id });
+  // The public lookups apply their limits inside the service shared with the
+  // pages (contract §5), so step 6 is shown on an endpoint whose limit is
+  // declared on the endpoint itself: POST /api/v1/preferences, 30 per 15 minutes per client.
+  async function exhaustPreferences(client: Client): Promise<void> {
+    for (let i = 0; i < 30; i += 1) {
+      const res = await client.post('/api/v1/preferences', { locale: 'ar' });
+      expect(res.status, `request ${String(i + 1)}: ${describeResponse(res)}`).toBe(200);
+    }
+    const over = await client.post('/api/v1/preferences', { locale: 'ar' });
+    expect({ status: over.status, code: over.code }, describeResponse(over)).toEqual({ status: 429, code: 'TOO_MANY_REQUESTS' });
+  }
+
+  it('step 2 before step 6: a client over the limit but without the access cookie answers ACCESS_CODE_REQUIRED', async () => {
     const client = await visitor();
-    const query = { courtId: court.id, number: caseFile.number, code: caseFile.code, year: caseFile.year };
-    for (let i = 0; i < 12; i += 1) await client.get('/api/v1/public/case-status', { query });
-    const overLimit = await client.get('/api/v1/public/case-status', { query });
-    expect(overLimit.status, describeResponse(overLimit)).toBe(429);
+    await exhaustPreferences(client);
     const { result: res, events } = await capturingEvents(() =>
-      client.get('/api/v1/public/case-status', { query, cookies: { '__Host-mr-access': null } }),
+      client.post('/api/v1/preferences', { locale: 'ar' }, { cookies: { '__Host-mr-access': null } }),
     );
     expectAnswer(res, 401, 'ACCESS_CODE_REQUIRED');
     expectStepLogged(events, 'GATE');
   });
 
-  it('step 6 before steps 7 and 10: a client over the lookup limit sending a malformed query answers TOO_MANY_REQUESTS', async () => {
-    const court = await theCourt();
-    const caseFile = await createCaseFile({ courtId: court.id });
+  it('step 4 before step 6: a client over the limit sending no CSRF token answers CSRF_REJECTED', async () => {
     const client = await visitor();
-    const query = { courtId: court.id, number: caseFile.number, code: caseFile.code, year: caseFile.year };
-    for (let i = 0; i < 12; i += 1) await client.get('/api/v1/public/case-status', { query });
-    const { result: res, events } = await capturingEvents(() =>
-      client.get('/api/v1/public/case-status', { query: { courtId: 'not-a-uuid', number: 'x', code: '', year: '20' } }),
-    );
+    await exhaustPreferences(client);
+    const { result: res, events } = await capturingEvents(() => client.post('/api/v1/preferences', { locale: 'ar' }, { csrf: 'none' }));
+    expectAnswer(res, 403, 'CSRF_REJECTED');
+    expectStepLogged(events, 'CSRF');
+  });
+
+  it('step 6 before step 10: a client over the limit sending an invalid body answers TOO_MANY_REQUESTS with Retry-After', async () => {
+    const client = await visitor();
+    await exhaustPreferences(client);
+    const { result: res, events } = await capturingEvents(() => client.post('/api/v1/preferences', { locale: 'xx', readingSize: 99 }));
     expectAnswer(res, 429, 'TOO_MANY_REQUESTS');
     expect(Number(res.headers.get('Retry-After')), 'Retry-After header').toBeGreaterThan(0);
     expectStepLogged(events, 'RATE');

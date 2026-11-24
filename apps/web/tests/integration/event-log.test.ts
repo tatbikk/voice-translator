@@ -165,7 +165,9 @@ describe('the event log cannot be rewritten (memo row 15)', () => {
       await Promise.all(Array.from({ length: 50 }, () => new Client({ ip: nextIp() }).get('/api/v1/notifications')));
       const rows = await events();
       expect(rows.length).toBeGreaterThanOrEqual(before + 50);
-      rows.forEach((row, index) => expect(row.seq).toBe(index + 1));
+      rows.forEach((row, index) => {
+        expect(row.seq).toBe(index + 1);
+      });
       const result = verify();
       expect(result.status, result.output.slice(-2000)).toBe(0);
       // The verified head is written to the technical log (an anchor outside the

@@ -64,8 +64,9 @@ export interface EndpointEntry {
 
 export async function loadEndpoints(): Promise<readonly EndpointEntry[]> {
   const mod = (await import('@/server/http/registry')) as unknown as { ENDPOINTS?: readonly EndpointEntry[] };
-  if (!Array.isArray(mod.ENDPOINTS)) throw new Error('@/server/http/registry does not export ENDPOINTS');
-  return mod.ENDPOINTS;
+  const endpoints = mod.ENDPOINTS;
+  if (!endpoints) throw new Error('@/server/http/registry does not export ENDPOINTS');
+  return endpoints;
 }
 
 type SegmentKind = 0 | 1 | 2 | 3; // static, dynamic, catch-all, optional catch-all
@@ -152,6 +153,8 @@ const moduleCache = new Map<string, Promise<Record<string, unknown>>>();
 export function importRouteModule(spec: string): Promise<Record<string, unknown>> {
   let pending = moduleCache.get(spec);
   if (!pending) {
+    // The specifier is a module path of the endpoint registry, never input.
+    // eslint-disable-next-line no-unsanitized/method
     pending = import(/* @vite-ignore */ spec) as Promise<Record<string, unknown>>;
     moduleCache.set(spec, pending);
   }

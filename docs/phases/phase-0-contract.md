@@ -358,7 +358,7 @@ Endpoints:
 | POST | `/api/v1/admin/accounts` | action `admin.accounts.create`, recentAuth 10 min | `{ fullName, email, phone, role, courtId?, organizationName?, requestReference (8–64) }`. The service sets `isDemo = false`, `verificationStatus` from `ProfessionalIdentityProvider`; refuses a second role for an exclusive role holder; sends the activation link (`visibleToSessionId` = the admin's session); notifies every other `SYSTEM_ADMIN`; `admin.account.created` |
 | POST | `/api/v1/admin/accounts/:id/activation` | action `admin.accounts.reissue-activation`, recentAuth 10 min | voids older tokens, sends a new link |
 | GET | `/api/v1/public/case-status` | gate | `?courtId&number&code&year` ⇒ `{ status, nextHearingAt }` only; unknown ⇒ 404 `CASE_NOT_FOUND`; limits §4.5 |
-| GET | `/api/v1/public/hearings` | gate | `?courtId&date` ⇒ `[{ startsAt, room, chamberLabelKey, caseNumbers }]`; no party name, no document; limits §4.5 |
+| GET | `/api/v1/public/hearings` | gate | `?courtId&date` ⇒ `[{ startsAt, room, panelName, caseNumbers }]` (decision 30: the panel name is institutional data); no party name, no document; limits §4.5 |
 | GET | `/api/demo/outbox` | demo `demo.outbox.view` | messages to `isDemo` recipients, plus messages whose `visibleToSessionId` is the caller's session; logged; limited |
 | POST | `/api/demo/switch-account` | demo `demo.account.switch` | `{ roleAssignmentId }`; unknown and non-demo ⇒ one 404; revokes the caller's previous session; new `ACTIVE` session with `origin = DEMO_SWITCH`, `reauthAt = null`; every later event of that session carries `viaDemoSwitch = true` |
 
@@ -417,7 +417,7 @@ Raw SQL in the migration:
 - Tests run **as the runtime role**: `UPDATE`, `DELETE`, `TRUNCATE`, `ALTER TABLE "Event" DISABLE TRIGGER USER`, `DROP TABLE "Event"` are all denied. The tamper-detection test uses the owner connection to disable the trigger deliberately, then `events:verify` must fail.
 - Local: `scripts/local-db-setup.sh` (run as the `postgres` superuser) creates `mahkama_app` and grants `mahkama` CREATEROLE if needed. CI: the Postgres service superuser runs the same steps.
 
-`CaseFile` (precursor, extended in Phase 1): `id`, `nationalRef` unique, `courtId`, `number`, `code`, `year`, `status` (`FILED`, `REGISTERED`, `RAPPORTEUR_ASSIGNED`, `IN_NOTIFICATION`, `IN_PREPARATION`, `IN_EXPERTISE`, `READY`, `IN_DELIBERATION`, `JUDGMENT_ISSUED`, `UNDER_APPEAL`, `IN_ENFORCEMENT`, `CLOSED` — labels: مودع، مسجل، معين مقرره، في التبليغ، في التجهيز، في الخبرة، جاهز، في المداولة، صدر الحكم، مطعون فيه، في التنفيذ، منته), `nextHearingId?`, `isDemo`. Unique `(courtId, number, code, year)`. `Hearing`: `courtId`, `chamberLabelKey`, `room`, `startsAt`.
+`CaseFile` (precursor, extended in Phase 1): `id`, `nationalRef` unique, `courtId`, `number`, `code`, `year`, `status` (`FILED`, `REGISTERED`, `RAPPORTEUR_ASSIGNED`, `IN_NOTIFICATION`, `IN_PREPARATION`, `IN_EXPERTISE`, `READY`, `IN_DELIBERATION`, `JUDGMENT_ISSUED`, `UNDER_APPEAL`, `IN_ENFORCEMENT`, `CLOSED` — labels: مودع، مسجل، معين مقرره، في التبليغ، في التجهيز، في الخبرة، جاهز، في المداولة، صدر الحكم، مطعون فيه، في التنفيذ، منته), `nextHearingId?`, `isDemo`. Unique `(courtId, number, code, year)`. `Hearing`: `courtId`, `panelId` (the panel's `name` is shown, decision 30), `room`, `startsAt`.
 
 ## 9. Demo tools (`src/demo`)
 

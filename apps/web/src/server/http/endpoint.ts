@@ -210,7 +210,9 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
         const fromPath = pathParams(definition.path, url.pathname) ?? {};
         const parsed = definition.params.safeParse({ ...Object.fromEntries(url.searchParams), ...fromPath });
         if (!parsed.success) {
-          const resourceRoute = definition.path.includes(':');
+          // A malformed identifier names no resource: the same 404 as an unknown one,
+          // whether it sits in the path or in the query (the demo switch target).
+          const resourceRoute = definition.path.includes(':') || definition.resource !== undefined;
           return resourceRoute
             ? await refuse('PARAMS', 404, 'NOT_FOUND')
             : await refuse('PARAMS', 422, 'INVALID_INPUT', { fields: fieldErrors(parsed.error) });
@@ -227,20 +229,24 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
             ? access.orAction
             : null;
       if (action) {
+        const authContext = { mode: env.mode, demoToolsEnabled: env.demoToolsEnabled };
+        const refuseDecision = async (reason: string) => {
+          const notFound = reason === 'NOT_FOUND' || reason === 'MODE_NOT_PERMITTED';
+          return await refuse('AUTHZ', notFound ? 404 : 403, notFound ? 'NOT_FOUND' : 'FORBIDDEN');
+        };
         let resource: Resource | undefined;
         if (definition.resource) {
+          // Whoever may not hold the action at all is refused before the resource
+          // is looked up: the answer is then the same for an existing and an
+          // unknown identifier, and reveals nothing about either.
+          const holder = authorize(subject, action, undefined, authContext);
+          if (!holder.allowed && holder.reason !== 'NOT_FOUND') return await refuseDecision(holder.reason);
           const loaded = await definition.resource(params, { session, rawBody });
           if (!loaded) return await refuse('AUTHZ', 404, 'NOT_FOUND');
           resource = loaded;
         }
-        const decision = authorize(subject, action, resource, {
-          mode: env.mode,
-          demoToolsEnabled: env.demoToolsEnabled,
-        });
-        if (!decision.allowed) {
-          const notFound = decision.reason === 'NOT_FOUND' || decision.reason === 'MODE_NOT_PERMITTED';
-          return await refuse('AUTHZ', notFound ? 404 : 403, notFound ? 'NOT_FOUND' : 'FORBIDDEN');
-        }
+        const decision = authorize(subject, action, resource, authContext);
+        if (!decision.allowed) return await refuseDecision(decision.reason);
       }
 
       // 9. Recent re-authentication. A session created by the demo switcher never carries one.
