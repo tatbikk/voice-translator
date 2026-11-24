@@ -37,6 +37,8 @@ export function RoleChoice({
                 }}
               >
                 {chooseLabel}
+                {/* The role, for screen readers: every button would otherwise have the same name. */}
+                <span className="sr-only">{` ${role.label}`}</span>
               </Button>
             )}
           </li>

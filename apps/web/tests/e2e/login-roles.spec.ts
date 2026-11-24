@@ -39,7 +39,8 @@ test.describe('login with each role (contract §13.2)', () => {
           await expect(page.getByRole('heading', { level: 1 })).toContainText(path.endsWith('/new') ? PAGE_TITLES.adminAccountsNew : PAGE_TITLES.adminAccounts);
         } else {
           expect(res?.status(), `${path} for ${role}`).toBe(404);
-          const visible = await page.locator('body').innerText();
+          // The page content: the demo tools bar («مبدل الحسابات») lies outside it.
+          const visible = await page.locator('main').innerText();
           for (const text of ADMIN_ONLY_TEXT) expect(visible, `${path} shows nothing of the administration`).not.toContain(text);
         }
       }
