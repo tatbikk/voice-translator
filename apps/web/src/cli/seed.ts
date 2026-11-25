@@ -21,6 +21,9 @@ import { appendStandaloneEvent } from '@/server/events/append';
 import { hashPassword } from '@/server/auth/passwords';
 import { enforceBuild } from '@/server/boot/build-info';
 import { seedCaseContent } from './seed-cases';
+import { seedReferredFiling } from './seed-filings';
+import { setSigningSecret } from '@/server/signature/service';
+import { DEMO_BAR, DEMO_REGISTER_ENTRIES } from './seed-data/filings';
 import {
   DEMO_CASES,
   DEMO_COURTS,
@@ -157,8 +160,8 @@ async function main(): Promise<void> {
   for (const [key, court] of Object.entries(DEMO_COURTS) as [DemoCourtKey, (typeof DEMO_COURTS)[DemoCourtKey]][]) {
     const row = await db.court.upsert({
       where: { code: court.code },
-      create: { code: court.code, name: court.name, degree: court.degree, createdAt: now },
-      update: {},
+      create: { code: court.code, name: court.name, degree: court.degree, specialty: court.specialty, createdAt: now },
+      update: { specialty: court.specialty },
     });
     courtIds[key] = row.id;
   }
@@ -193,7 +196,13 @@ async function main(): Promise<void> {
       const panelId = r.panel ? panelIds[r.panel] : null;
       const organizationId = r.organization ? organizationIds[r.organization] : null;
       const existing = await db.roleAssignment.findFirst({ where: { userId: user.id, role: r.role, courtId, panelId } });
-      if (existing) continue;
+      // The bar number and the bar of a demo lawyer (art. 77), read by the check before signature.
+      const barNumber = (DEMO_BAR.numbers as Readonly<Record<string, string>>)[demo.key];
+      const professional = barNumber ? { professionalNumber: barNumber, professionalBody: DEMO_BAR.body } : {};
+      if (existing) {
+        if (Object.keys(professional).length > 0 && !existing.professionalNumber) await db.roleAssignment.update({ where: { id: existing.id }, data: professional });
+        continue;
+      }
       await db.roleAssignment.create({
         data: {
           userId: user.id,
@@ -201,6 +210,7 @@ async function main(): Promise<void> {
           courtId,
           panelId,
           organizationId,
+          ...professional,
           verificationStatus: 'VERIFIED_SIMULATED',
           verificationSource: 'demo-seed',
           createdAt: now,
@@ -257,10 +267,31 @@ async function main(): Promise<void> {
 
   const filledCases = await seedCaseContent({ courtIds, panelIds, signingSecret: env.SEED_DEMO_PASSWORD });
 
+  // Phase 2: the simulated commercial register (written by the owner: the runtime role only reads it),
+  // the lawyers' signing secrets, and one case filed through the filing path.
+  const registers = new pg.Client({ connectionString: env.MIGRATION_DATABASE_URL });
+  await registers.connect();
+  try {
+    for (const entry of DEMO_REGISTER_ENTRIES) {
+      await registers.query(
+        `INSERT INTO "SimulatedRegistryEntry" (id, registry, key, data) VALUES (gen_random_uuid(), 'COMMERCIAL_REGISTER', $1, $2::jsonb)
+         ON CONFLICT (registry, key) DO NOTHING`,
+        [entry.key, JSON.stringify(entry.data)],
+      );
+    }
+  } finally {
+    await registers.end();
+  }
+  for (const key of ['lawyer.plaintiff', 'lawyer.defendants']) {
+    const lawyer = await db.user.findUniqueOrThrow({ where: { email: demoEmail(key) }, select: { id: true } });
+    if (!(await db.signingCredential.findUnique({ where: { userId: lawyer.id }, select: { id: true } }))) await setSigningSecret(lawyer.id, env.SEED_DEMO_PASSWORD);
+  }
+  const referredFiled = await seedReferredFiling(env.SEED_DEMO_PASSWORD);
+
   if (createdUsers > 0 || caseFiles > 0) {
     await appendStandaloneEvent({ action: 'demo.data.seeded', details: { users: createdUsers, caseFiles } });
   }
-  console.log(JSON.stringify({ level: 'info', msg: 'demo data ready', createdUsers, caseFiles, filledCases }));
+  console.log(JSON.stringify({ level: 'info', msg: 'demo data ready', createdUsers, caseFiles, filledCases, referredFiled }));
   await closeDb();
 }
 

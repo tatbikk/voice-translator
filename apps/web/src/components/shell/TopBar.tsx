@@ -12,6 +12,13 @@ import { COOKIES, readCookie } from '@/server/http/cookies';
 import { NAV_ITEM } from './nav-style';
 import { NavDisclosure } from './NavDisclosure';
 
+const SPACE_LINKS = [
+  { href: '/cases', action: 'cases.list', labelKey: 'shell.nav.cases' },
+  { href: '/filings', action: 'filing.drafts.list', labelKey: 'shell.nav.filings' },
+  { href: '/registry', action: 'registry.incoming.list', labelKey: 'shell.nav.registry' },
+  { href: '/cashier', action: 'cashier.ledger.view', labelKey: 'shell.nav.cashier' },
+] as const;
+
 function readingPreferences(req: Request): { size: number; contrast: number } {
   const match = /^s([0-2])c([01])$/.exec(readCookie(req, COOKIES.reading) ?? '');
   return { size: match ? Number(match[1]) : 0, contrast: match ? Number(match[2]) : 0 };
@@ -33,6 +40,11 @@ export async function TopBar({ context }: { context: GateContext }) {
     subject !== null &&
     authorize(subject, 'account.switch-role', undefined, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled }).allowed;
   const roleLabel = subject ? t(roleLabelKey(subject.role, context.session?.courtDegree)) : '';
+  const authContext = { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled };
+  // The entries of the user's space, each shown only when the core grants its page.
+  const spaceLinks = subject
+    ? SPACE_LINKS.filter((l) => authorize(subject, l.action, undefined, authContext).allowed)
+    : [];
   const pathname = context.path.split(/[?#]/)[0];
   const current = (href: string) => (pathname === href ? ('page' as const) : undefined);
 
@@ -60,6 +72,11 @@ export async function TopBar({ context }: { context: GateContext }) {
               <a href="/dashboard" className={NAV_ITEM} aria-current={current('/dashboard')}>
                 {t('shell.nav.dashboard')}
               </a>
+              {spaceLinks.map((l) => (
+                <a key={l.href} href={l.href} className={NAV_ITEM} aria-current={current(l.href)}>
+                  {t(l.labelKey)}
+                </a>
+              ))}
               <NotificationsBell
                 label={t('shell.notifications.label')}
                 initialUnread={unread}

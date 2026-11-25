@@ -180,16 +180,17 @@ export async function runDueJobs(handlers: JobHandlers, options: RunOptions = {}
         });
     }, options.renewEveryMs ?? JOB_POLICY.renewEveryMs);
     // The job's own time limit: past it the job is told to stop, and failed.
-    let timedOut = false;
+    // An object, not a let: the timer's callback sets it, which the type checker cannot follow.
+    const limit = { timedOut: false };
     let timer: NodeJS.Timeout | undefined;
     const deadline = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
-        timedOut = true;
+        limit.timedOut = true;
         clearInterval(renew);
         reject(new JobTimedOut(type));
       }, options.timeoutMs ?? JOB_POLICY.timeoutMs[type]);
     });
-    const jobStopping: StopCheck = () => timedOut || stopping();
+    const jobStopping: StopCheck = () => limit.timedOut || stopping();
     try {
       await Promise.race([(handlers[type] as (payload: unknown, context: JobContext) => Promise<void>)(parsed.data, { stopping: jobStopping }), deadline]);
       clearTimeout(timer);
@@ -198,7 +199,7 @@ export async function runDueJobs(handlers: JobHandlers, options: RunOptions = {}
     } catch (error) {
       clearTimeout(timer);
       clearInterval(renew);
-      if (error instanceof StopRequested && !timedOut) {
+      if (error instanceof StopRequested && !limit.timedOut) {
         // Not a failure: the job runs again after the restart.
         await finish('PENDING', { attempts: { decrement: 1 } });
         log.info('job stopped before its end', { jobId: job.id, type });

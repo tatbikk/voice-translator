@@ -7,5 +7,11 @@
   "components.identity.replacement": "منظومة التعريف الرقمي وسجلات الهيئات المهنية.",
   "components.signature.name": "التوقيع الإلكتروني",
   "components.signature.description": "يؤكد الموقع توقيعه برمزه السري، فتسجل المنصة هويته وصفته وتاريخ التوقيع وساعته وبصمة الوثيقة، وتضع عليها خاتما مرئيا نصه «توقيع تجريبي».",
-  "components.signature.replacement": "مقدم خدمات ثقة مؤهل طبقا للقانون رقم 43.20."
+  "components.signature.replacement": "مقدم خدمات ثقة مؤهل طبقا للقانون رقم 43.20.",
+  "components.payment.name": "بوابة الأداء",
+  "components.payment.description": "صفحة «أداء (محاكاة)» بثلاثة أزرار: «نجاح الأداء» و«فشل الأداء» و«إلغاء». ينتج النجاح وصل أداء ومرجع عملية وقيدا في محاسبة الصندوق، ولا تقتطع أي مبالغ.",
+  "components.payment.replacement": "بوابة أداء معتمدة لدى الخزينة.",
+  "components.commercialRegister.name": "السجل التجاري",
+  "components.commercialRegister.description": "جدول محلي بشركات نموذجية، يجيب عن رقم تقييد كامل، ويحمل كل جواب عبارة «مصدر محاكى».",
+  "components.commercialRegister.replacement": "السجل التجاري المركزي عبر منصة البيانات الرقمية للمحاكم."
 }

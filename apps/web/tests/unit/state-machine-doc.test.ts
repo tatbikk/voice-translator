@@ -20,6 +20,7 @@ const RELATIONS: Readonly<Record<string, string>> = {
   PANEL: 'من هيئته',
   COURT_STAFF: 'من محكمته',
   PROSECUTION: 'أحيل عليها',
+  COMMISSIONER: 'أحيل عليه أمام المحكمة الإدارية',
   EXPERT: 'الخبير المعين',
   LITIGANT: 'طرف قبل التبليغ الإلكتروني',
   ADMIN_PARTY: 'إدارة طرف',

@@ -10,7 +10,9 @@ import arComponents from './ar/components.json';
 import arDashboard from './ar/dashboard.json';
 import arDemo from './ar/demo.json';
 import arErrors from './ar/errors.json';
+import arFiling from './ar/filing.json';
 import arMessages from './ar/messages.json';
+import arOffices from './ar/offices.json';
 import arPublic from './ar/public.json';
 import arRoles from './ar/roles.json';
 import frCommon from './fr/common.json';
@@ -30,7 +32,9 @@ export const AR_FILES: Readonly<Record<string, Messages>> = {
   dashboard: arDashboard,
   demo: arDemo,
   errors: arErrors,
+  filing: arFiling,
   messages: arMessages,
+  offices: arOffices,
   public: arPublic,
   roles: arRoles,
 };

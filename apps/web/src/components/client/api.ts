@@ -37,6 +37,29 @@ export async function apiPost<T = Record<string, unknown>>(path: string, body: u
   }
 }
 
+/** An upload: the bytes as the body, what describes them in the query (read after authorization). */
+export async function apiPostBytes<T = Record<string, unknown>>(
+  path: string,
+  query: Readonly<Record<string, string | number | undefined>>,
+  bytes: Blob,
+): Promise<ApiResult<T>> {
+  const token = await csrfToken();
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) if (value !== undefined && value !== '') params.set(name, String(value));
+  try {
+    const res = await fetch(`${path}?${params.toString()}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-CSRF-Token': token ?? '' },
+      body: bytes,
+    });
+    return (await res.json()) as ApiResult<T>;
+  } catch {
+    return { ok: false, error: NETWORK_ERROR };
+  }
+}
+
 export async function apiGet<T = Record<string, unknown>>(path: string, options: { background?: boolean } = {}): Promise<ApiResult<T>> {
   try {
     const res = await fetch(path, {

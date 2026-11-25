@@ -41,7 +41,7 @@ function parties(cell: string): FilingCard['parties'] {
     if (!side) throw new Error(`unknown side: ${text}`);
     const kind = KINDS[text.slice(side.length + 1)];
     if (!kind) throw new Error(`unknown party kind: ${text}`);
-    return { key: `p${String(i)}`, side: SIDES[side], name: `طرف ${String(i)}`, personKind: 'LEGAL', ...kind } as FilingCard['parties'][number];
+    return { key: `p${String(i)}`, side: SIDES[side], name: `طرف ${String(i)}`, personKind: 'LEGAL', ...kind };
   });
 }
 

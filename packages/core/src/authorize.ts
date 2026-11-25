@@ -11,7 +11,7 @@ import { ACTIONS, CASE_VIEW_HOLDERS, isActionCode, type ActionRule } from './act
 import { CONDITIONS } from './conditions';
 import { conditionHolds, envelopeConditionHolds, holdsRelation, type Holder } from './procedure/conditions';
 import type { CaseSnapshot } from './procedure/snapshot';
-import type { RoleCode } from './roles';
+import { ROLES, type RoleCode } from './roles';
 import type { AuthorizationContext, Resource, Subject, UserSubject } from './subject';
 
 export type DenyReason =
@@ -61,6 +61,30 @@ export function documentVisible(
   // The signer whose turn it is sees the document he signs, not the rest of the panel's documents.
   return holdsRelation(subject, snapshot, 'NEXT_SIGNER') && (snapshot.nextSignerDocumentIds ?? []).includes(documentId);
 }
+
+/**
+ * Whether the subject sees the identity numbers and the electronic contacts of
+ * the parties of a file it knows (review P1-S-14): the court and counsel do; a
+ * litigant, an administration or another participant sees those of its own
+ * party only.
+ */
+export function seesPartyContacts(subject: UserSubject): boolean {
+  return ROLES[subject.role].accountBasis === 'INTERNAL' || CONTACT_READERS.includes(subject.role);
+}
+const CONTACT_READERS: readonly RoleCode[] = ['LAWYER', 'LAWYER_ASSISTANT'];
+
+/**
+ * Whether the subject reads the notes of the registry office to the judge (art.
+ * 619): the registry office and the court president read them all; a judge
+ * reads those addressed to him, and the rapporteur those of his file. A party
+ * and its counsel never do, nor learn that one exists.
+ */
+export function readsRegistryNotes(subject: UserSubject, snapshot: CaseSnapshot, addressedToUserId: string | null): boolean {
+  if (NOTE_READERS.includes(subject.role)) return true;
+  if (addressedToUserId !== null && addressedToUserId === subject.userId) return true;
+  return holdsRelation(subject, snapshot, 'RAPPORTEUR');
+}
+const NOTE_READERS: readonly RoleCode[] = ['CLERK_REGISTRATION', 'CHIEF_CLERK', 'COURT_PRESIDENT'];
 
 function decideCaseScoped(rule: ActionRule, subject: UserSubject, resource: Resource | undefined, context: AuthorizationContext): Decision {
   if (NEVER_CASE_CONTENT.includes(subject.role)) return deny('NOT_FOUND');

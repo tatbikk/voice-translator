@@ -29,12 +29,18 @@ export function ConfirmDialog({
   lines,
   onConfirm,
   busy,
+  children,
+  error,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lines: ConfirmLines;
   onConfirm: () => void;
   busy?: boolean;
+  /** the fields the act needs (a case type, a note, a file), above its three lines */
+  children?: ReactNode;
+  /** the refusal of the last attempt, read out when it appears */
+  error?: string | null;
 }) {
   const row = (label: string, value: string): ReactNode => (
     <div className="grid gap-1 border-b border-line py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
@@ -48,6 +54,7 @@ export function ConfirmDialog({
         <AlertDialog.Overlay className="fixed inset-0 z-40 bg-ink-950/40" />
         <AlertDialog.Content className="fixed inset-x-4 top-[10vh] z-50 mx-auto max-w-xl rounded-md border border-line bg-paper p-6 shadow-xl sm:p-7">
           <AlertDialog.Title className="font-naskh text-xl font-bold text-ink-900">{lines.title}</AlertDialog.Title>
+          {children ? <div className="mt-4">{children}</div> : null}
           <AlertDialog.Description asChild>
             <dl className="mt-4">
               {row(lines.effectLabel, lines.effect)}
@@ -55,6 +62,9 @@ export function ConfirmDialog({
               {row(lines.basisLabel, lines.basis)}
             </dl>
           </AlertDialog.Description>
+          <p aria-live="assertive" className={error ? 'mt-4 text-elapsed' : 'sr-only'}>
+            {error ?? ''}
+          </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <AlertDialog.Action asChild>
               <button

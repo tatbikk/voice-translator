@@ -35,7 +35,8 @@ const refuse = (reason: 'TYPE_MISMATCH' | 'TYPE_NOT_ACCEPTED' | 'UNSAFE', detail
 
 // Control characters, and the invisible marks that can make a name read
 // differently from what it is (direction overrides and isolates, zero-width).
-const INVISIBLE = /[\u0000-\u001f\u007f-\u009f؜​-‏‪-‮⁦-⁩﻿]/g;
+// eslint-disable-next-line no-control-regex -- the control characters are what this class removes
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 
 function lastSegment(name: string): string {
   const cleaned = name.normalize('NFC').replace(INVISIBLE, '');
@@ -220,6 +221,7 @@ function decodeXmlText(text: string): string {
 function cleanParagraph(text: string): string {
   return text
     .normalize('NFC')
+    // eslint-disable-next-line no-control-regex -- control characters are removed from the paragraphs
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '')
     .replace(/[ \t]+/g, (m) => (m.includes('\t') ? '\t' : ' '))
     .trim();

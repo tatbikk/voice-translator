@@ -1,8 +1,9 @@
 import 'server-only';
 import {
-  ROLES,
   documentVisible,
   holdsRelation,
+  readsRegistryNotes,
+  seesPartyContacts,
   type CaseSnapshot,
   type UserSubject,
 } from '@mahkama/core';
@@ -127,10 +128,11 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
   const panelSide = holdsRelation(subject, snapshot, 'PANEL') || holdsRelation(subject, snapshot, 'RAPPORTEUR');
   // Identity numbers and electronic contacts of the parties: the court and counsel
   // see them; a litigant, an administration or another participant sees its own only.
-  const seesContacts = ROLES[subject.role].accountBasis === 'INTERNAL' || subject.role === 'LAWYER' || subject.role === 'LAWYER_ASSISTANT';
+  const seesContacts = seesPartyContacts(subject);
   const ownParty = (p: { litigantUserId: string | null }) => p.litigantUserId === subject.userId;
-  const notesVisible = (n: { addressedToUserId: string | null }) =>
-    NOTE_READERS.has(subject.role) || n.addressedToUserId === subject.userId || (snapshot.rapporteurUserId !== null && snapshot.rapporteurUserId === subject.userId);
+  const notesVisible = (n: { addressedToUserId: string | null }) => readsRegistryNotes(subject, snapshot, n.addressedToUserId);
+  // A note of the registry is the court's: its very existence stays off the timeline of whoever may not read it.
+  const notesKnown = readsRegistryNotes(subject, snapshot, null) || file.notes.some((n) => notesVisible(n));
 
   const events = await db.event.findMany({
     where: { caseFileId, outcome: 'DONE' },
@@ -165,8 +167,7 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
     },
     timeline: events
       .filter((e) => timelineVisible(e.action, e.details, visibleDocumentIds, panelSide))
-      // A note of the registry is the court's: its very existence stays off the parties' timeline.
-      .filter((e) => e.action !== 'case.note.added' || NOTE_READERS.has(subject.role) || panelSide || snapshot.rapporteurUserId === subject.userId)
+      .filter((e) => e.action !== 'case.note.added' || notesKnown)
       .map((e) => ({
       seq: e.seq.toString(),
       action: e.action,
@@ -265,8 +266,6 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
   };
 }
 
-/** The registry office and the president of the court read every note of the file. */
-const NOTE_READERS: ReadonlySet<string> = new Set(['CLERK_REGISTRATION', 'CHIEF_CLERK', 'COURT_PRESIDENT']);
 const PRIVATE_ADDRESS_KINDS: ReadonlySet<string> = new Set(['ELECTRONIC', 'PHONE']);
 
 /**

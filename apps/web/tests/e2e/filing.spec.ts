@@ -69,7 +69,7 @@ async function fileModelCase(page: Page): Promise<string> {
       await block.getByLabel('الاسم').fill(party.name);
       await block.getByLabel('الموطن أو محل الإقامة').fill(party.domicile?.value ?? '');
     }
-    if (party.quality) await block.getByLabel('الصفة').fill(party.quality);
+    if (party.quality) await block.getByLabel('الصفة', { exact: true }).fill(party.quality);
     if (party.email) await block.getByLabel('البريد الإلكتروني').fill(party.email);
     if (party.representedByFiler) await block.getByLabel('أنوب عن هذا الطرف').check();
   }

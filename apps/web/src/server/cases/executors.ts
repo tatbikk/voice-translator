@@ -119,8 +119,8 @@ async function inform(
 
 const stamp: Executor<null> = {
   input: 'json',
-  async prepare(input) {
-    return z.strictObject({}).safeParse(input.body ?? {}).success ? { ok: true, value: null } : invalid('BODY');
+  prepare(input) {
+    return Promise.resolve(z.strictObject({}).safeParse(input.body ?? {}).success ? { ok: true, value: null } : invalid('BODY'));
   },
   async run({ tx, caseFileId, actor, now }) {
     await tx.caseFile.update({ where: { id: caseFileId }, data: { registrationStampedAt: now } });
@@ -158,9 +158,9 @@ const NoteBody = z.strictObject({ reason: z.enum(NOTE_REASONS), text: z.string()
 
 const noteToJudge: Executor<z.infer<typeof NoteBody>> = {
   input: 'json',
-  async prepare(input) {
+  prepare(input) {
     const parsed = NoteBody.safeParse(input.body);
-    return parsed.success ? { ok: true, value: parsed.data } : invalid('BODY');
+    return Promise.resolve(parsed.success ? { ok: true, value: parsed.data } : invalid('BODY'));
   },
   async run(context) {
     const { tx, caseFileId, subject, actor, now, value, snapshot } = context;
@@ -241,7 +241,7 @@ function filedDocument(code: string): Executor<StoredUpload> {
         actor,
       });
       await appendEvent(tx, { action: 'case.document.filed', details: { caseFileId, documentId: value.documentId, action: code }, caseFileId, actor });
-      await inform(tx, context, code, 'notifications.case.document-filed', { docType });
+      await inform(tx, context, code, 'notifications.case.document-filed', { docTypeKey: `case.docType.${docType}` });
       return { documentId: value.documentId };
     },
   };

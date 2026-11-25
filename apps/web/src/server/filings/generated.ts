@@ -198,6 +198,11 @@ export async function issuePaymentReceipt(paymentId: string): Promise<void> {
 
 // ---------------------------------------------------------------------------
 
+function depositorName(depositor: unknown): string {
+  const name = (depositor as { name?: unknown } | null)?.name;
+  return typeof name === 'string' ? name : '';
+}
+
 /** «وصل الإيداع» (study, «المرحلة الأولى»; art. 77 and 628). */
 export async function issueFilingReceipt(caseFileId: string): Promise<void> {
   const db = getDb();
@@ -224,7 +229,7 @@ export async function issueFilingReceipt(caseFileId: string): Promise<void> {
   const at = file.registeredAt ?? clock.now();
   const depositor =
     file.filingChannel === 'PAPER'
-      ? String((draft.paperDepositor as { name?: unknown } | null)?.name ?? '')
+      ? depositorName(draft.paperDepositor)
       : ((await db.user.findUnique({ where: { id: draft.ownerUserId }, select: { fullName: true } }))?.fullName ?? '');
   const bailiff = file.designatedBailiffUserId ? (await db.user.findUnique({ where: { id: file.designatedBailiffUserId }, select: { fullName: true } }))?.fullName ?? null : null;
   const filed = file.documents.filter((d) => d.docType === 'APPLICATION' || d.docType === 'APPLICATION_SOURCE' || d.docType === 'EXHIBIT');
@@ -245,8 +250,8 @@ export async function issueFilingReceipt(caseFileId: string): Promise<void> {
       depositDate: formatMoroccoDate(at),
       depositTime: formatMoroccoTime(at),
       documents: filed.map((d) => ({
-        title: d.title ?? t(`case.documents.type.${d.docType}`),
-        nature: d.declaredNature ? t(`case.documents.nature.${d.declaredNature}`) : t('documents.filingReceipt.generatedNature'),
+        title: d.title ?? t(`case.docType.${d.docType}`),
+        nature: d.declaredNature ? t(`case.nature.${d.declaredNature}`) : t('documents.filingReceipt.generatedNature'),
         hash: d.sha256,
       })),
       exhibitCount: filed.filter((d) => d.docType === 'EXHIBIT').length,

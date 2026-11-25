@@ -368,7 +368,7 @@ describe('the registry office: three buttons, and none to reject the application
     expect(forPresident?.notes.map((n) => n.text)).toEqual(['يبدو الرسم المؤدى ناقصا بالنظر إلى الطلبات.']);
     const forLawyer = await viewAs(cast.lawyer, model.caseFileId);
     expect(forLawyer?.notes).toEqual([]);
-    expect(JSON.stringify(forLawyer)).not.toContain('يبدو الرسم المؤدى ناقصا');
+    expect(JSON.stringify(forLawyer, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value))).not.toContain('يبدو الرسم المؤدى ناقصا');
     // The event records the note's existence, never its text.
     const event = (await events('case.note.added')).find((e) => e.details.caseFileId === model.caseFileId);
     expect(JSON.stringify(event?.details)).not.toContain('الرسم');

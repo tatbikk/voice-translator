@@ -32,6 +32,14 @@ export const PAGES: readonly PageMeta[] = [
   { id: 'account', path: '/account', guard: 'page', action: 'account.view-own', file: '(app)/account/page.tsx' },
   { id: 'reauth', path: '/reauth', guard: 'page', action: 'account.view-own', file: '(app)/reauth/page.tsx' },
   { id: 'case', path: '/cases/:caseId', guard: 'page', action: 'case.view', file: '(app)/cases/[caseId]/page.tsx' },
+  // Phase 2: the filing path, the simulated gateway, the registry office, the cashier, the list of files.
+  { id: 'cases', path: '/cases', guard: 'page', action: 'cases.list', file: '(app)/cases/page.tsx' },
+  { id: 'filings', path: '/filings', guard: 'page', action: 'filing.drafts.list', file: '(app)/filings/page.tsx' },
+  { id: 'filing', path: '/filings/:draftId', guard: 'page', action: 'filing.draft.read', file: '(app)/filings/[draftId]/page.tsx' },
+  { id: 'filing.receipt', path: '/filings/:draftId/receipt', guard: 'page', action: 'filing.draft.read', file: '(app)/filings/[draftId]/receipt/page.tsx' },
+  { id: 'payment', path: '/payments/:intentId', guard: 'page', action: 'payment.view', file: '(app)/payments/[intentId]/page.tsx' },
+  { id: 'registry', path: '/registry', guard: 'page', action: 'registry.incoming.list', file: '(app)/registry/page.tsx' },
+  { id: 'cashier', path: '/cashier', guard: 'page', action: 'cashier.ledger.view', file: '(app)/cashier/page.tsx' },
   { id: 'admin.accounts', path: '/admin/accounts', guard: 'page', action: 'admin.accounts.list', file: '(app)/admin/accounts/page.tsx' },
   {
     id: 'admin.accounts.new',

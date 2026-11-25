@@ -8,7 +8,7 @@
 // filed draft (26). Every refusal must leave a record in the event log.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SECURITY_POLICY } from '@mahkama/core';
-import { COMMERCIAL_PAYMENT, MODEL_CASE, MODEL_CASE_FEE_CENTS } from '../acceptance/model-case-filing.fixture';
+import { CARD_SECTIONS, COMMERCIAL_PAYMENT, MODEL_CASE, MODEL_CASE_FEE_CENTS } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
 import { capturingEvents, count, one, runtime, sql, type EventRow } from '../helpers/db';
 import { createCourt, createUser, theCourt, type TestUser } from '../helpers/factories';
@@ -121,7 +121,8 @@ describe('a draft belongs to its author alone (memo row 2)', () => {
     const res = await upload(lawyer, draftId, { kind: 'APPLICATION', name: 'maqal.pdf', bytes: pdfBytes('secret application') });
     expect(res.status, describeResponse(res)).toBe(200);
     documentId = res.data!.documentId;
-    await updateDraft(lawyer, draftId, { caseType: COMMERCIAL_PAYMENT, courtId: (await theCourt()).id, card: MODEL_CASE });
+    // A draft complete enough to be paid (decision 55): its sections attested.
+    await updateDraft(lawyer, draftId, { caseType: COMMERCIAL_PAYMENT, courtId: (await theCourt()).id, card: MODEL_CASE, attest: [...CARD_SECTIONS] });
     intentId = (await openPayment(lawyer, draftId)).intentId;
   });
 

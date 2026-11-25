@@ -6,8 +6,8 @@ import type { RoleCode } from '@mahkama/core';
 export const DEMO_EMAIL_DOMAIN = 'demo.mahkama.example';
 
 export const DEMO_COURTS = {
-  firstInstance: { code: 'demo-fi-commercial', name: 'المحكمة الابتدائية التجارية النموذجية', degree: 'FIRST_INSTANCE' },
-  appeal: { code: 'demo-ap-commercial', name: 'محكمة الاستئناف التجارية النموذجية', degree: 'APPEAL' },
+  firstInstance: { code: 'demo-fi-commercial', name: 'المحكمة الابتدائية التجارية النموذجية', degree: 'FIRST_INSTANCE', specialty: 'COMMERCIAL' },
+  appeal: { code: 'demo-ap-commercial', name: 'محكمة الاستئناف التجارية النموذجية', degree: 'APPEAL', specialty: 'COMMERCIAL' },
 } as const;
 
 export type DemoCourtKey = keyof typeof DEMO_COURTS;

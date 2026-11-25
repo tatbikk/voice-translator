@@ -23,11 +23,15 @@ export type OpenResult =
 /** Opens a payment for the draft's fee, once nothing blocks the filing (memo rows 3 and 4). */
 export async function openPayment(draft: DraftWithParts, subject: UserSubject, actor: EventActor): Promise<OpenResult> {
   const now = clock.now();
+  const refuse = async (code: 'DRAFT_INCOMPLETE' | 'NO_RULE_IN_FORCE'): Promise<OpenResult> => {
+    await appendStandaloneEvent({ action: 'filing.refused', details: { draftId: draft.id, reason: code }, actor });
+    return { ok: false, status: 409, code };
+  };
   const checks = await checksOf(draft, now);
-  if (!filingReady(checks)) return { ok: false, status: 409, code: 'DRAFT_INCOMPLETE' };
+  if (!filingReady(checks)) return refuse('DRAFT_INCOMPLETE');
   const card = parseCard(draft.card);
   const fee = await draftFee(card, draft.courtId, now).catch(() => null);
-  if (!fee) return { ok: false, status: 409, code: 'NO_RULE_IN_FORCE' };
+  if (!fee) return refuse('NO_RULE_IN_FORCE');
   const feeRuleSetId = await ruleSetId('FEES', fee.version);
   const id = randomUUID();
   await eventTransaction(async (tx) => {

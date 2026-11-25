@@ -11,7 +11,11 @@ import { Tabs, type TabItem } from '@/components/ui/Tabs';
 import { Frame } from '@/components/shell/Frames';
 import { VerifySignatures } from '@/components/case/VerifySignatures';
 import { dateTime, dirhams, longDay } from '@/components/case/format';
+import { CaseActionButton, type ActKind } from '@/components/case/CaseActionButton';
+import { dictionary } from '@/i18n/dictionary';
 import { actionViews } from '@/server/cases/actions-view';
+import { executorKind } from '@/server/cases/executors';
+import { caseTypeRules } from '@/server/rules/store';
 import { caseResource } from '@/server/cases/resources';
 import { caseView, type CaseView } from '@/server/cases/view';
 import { clock } from '@/server/clock';
@@ -22,6 +26,15 @@ export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const APPROACHING_MS = 3 * 86_400_000;
+
+/** The acts executed from the action bar (Phase 2), by the fields their window asks for. */
+const ACT_KINDS: Readonly<Record<string, ActKind>> = {
+  'case.registration.stamp': 'plain',
+  'case.registration.reclassify': 'reclassify',
+  'case.registration.note-to-judge': 'note',
+  'case.prosecution.conclusions': 'upload',
+  'case.commissioner.opinion': 'upload',
+};
 
 // «صفحة الملف» (interface book, «العناصر المشتركة»): the header, the eight
 // tabs, read-only in Phase 1, and beside them the actions the subject's role
@@ -40,6 +53,10 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
   const actions = actionViews(t, context.subject, resource, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() });
   const h = view.header;
   const numberLabel = t('common.caseNumberLabel');
+  const actDict = dictionary(context.locale, ['errors.', 'common.', 'filing.choose', 'filing.court.caseTypeOption', 'registry.', 'case.act.']);
+  const caseTypes = actions.some((a) => ACT_KINDS[a.code] === 'reclassify')
+    ? (await caseTypeRules(clock.now())).types.map((c) => ({ code: c.code, name: t(`case.type.${c.code}`) }))
+    : [];
 
   const tabs: TabItem[] = [
     { id: 'timeline', label: t('case.tabs.timeline'), content: <Timeline t={t} view={view} courtDegree={h.courtDegree} /> },
@@ -72,6 +89,21 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
           <Fact label={t('case.header.rapporteur')}>{h.rapporteurName ?? t('case.header.noRapporteur')}</Fact>
         </dl>
       </PageHeader>
+      {view.notes.length > 0 ? (
+        <section aria-labelledby="notes-title" className="card mb-8 px-5 py-5">
+          <h2 id="notes-title" className="text-xl">{t('case.notes.title')}</h2>
+          <ul className="mt-3 space-y-3">
+            {view.notes.map((n) => (
+              <li key={n.id} className="border-t border-line pt-3">
+                <p className="text-sm text-text-muted">
+                  {t(`registry.note.reasons.${n.reason}`)} — {dateTime(t, n.createdAt)}
+                </p>
+                <p className="mt-1 whitespace-pre-line">{n.text}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0">
           <Tabs items={tabs} label={t('case.tabs.label')} />
@@ -85,6 +117,25 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
             <ul className="mt-4 space-y-4">
               {actions.map((a) => (
                 <li key={a.code} className="border-t border-line pt-3">
+                  {ACT_KINDS[a.code] && executorKind(a.code) ? (
+                    <CaseActionButton
+                      caseFileId={resource.snapshot.caseFileId}
+                      code={a.code}
+                      kind={ACT_KINDS[a.code] ?? 'plain'}
+                      label={a.label}
+                      dict={actDict}
+                      caseTypes={caseTypes}
+                      currentCaseType={h.caseType}
+                      lines={{
+                        effectLabel: t('actions.confirm.effect'),
+                        effect: a.effect,
+                        notifiedLabel: t('actions.confirm.notified'),
+                        notified: a.notified,
+                        basisLabel: t('actions.confirm.legalBasis'),
+                        basis: a.legalBasis,
+                      }}
+                    />
+                  ) : (
                   <details>
                     <summary className="cursor-pointer font-semibold">{a.label}</summary>
                     <dl className="mt-2 space-y-1.5 text-sm">
@@ -112,6 +163,7 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
                       {a.awaited ? <dd className="text-text-muted">{t('case.actions.awaited')}</dd> : null}
                     </dl>
                   </details>
+                  )}
                 </li>
               ))}
             </ul>

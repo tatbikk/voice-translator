@@ -5,7 +5,8 @@
 //   2. a demo build (DEMO_BUILD=true), unless E2E_SKIP_BUILD=true (CI builds first);
 //   3. a fresh demo database: seed --reset --confirm=<name> (migrations, runtime
 //      role, demo stamp, demo data);
-//   4. `next start` on port 3100, stopped with the Playwright run.
+//   4. `next start` on port 3100 and the worker (the fixed copy of an
+//      application, the receipts), both stopped with the Playwright run.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -56,9 +57,14 @@ const runtimeEnv = { ...env };
 for (const name of ['MIGRATION_DATABASE_URL', 'APP_DB_PASSWORD', 'SEED_DEMO_PASSWORD']) Reflect.deleteProperty(runtimeEnv, name);
 const next = join(dirname(createRequire(import.meta.url).resolve('next/package.json')), 'dist', 'bin', 'next');
 const server = spawn(process.execPath, [next, 'start', '-p', '3100'], { cwd: webRoot, stdio: 'inherit', env: runtimeEnv });
+const worker = spawn(process.execPath, [join(webRoot, 'dist-server', 'worker.mjs')], { cwd: webRoot, stdio: 'inherit', env: runtimeEnv });
 const stop = (signal) => {
   server.kill(signal);
+  worker.kill(signal);
 };
+worker.on('exit', (code, signal) => {
+  if (signal === null && code !== 0) console.error(`e2e-server: the worker stopped (${String(code)})`);
+});
 process.on('SIGTERM', () => stop('SIGTERM'));
 process.on('SIGINT', () => stop('SIGINT'));
 server.on('exit', (code) => process.exit(code ?? 0));

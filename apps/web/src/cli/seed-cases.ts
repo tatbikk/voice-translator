@@ -72,7 +72,7 @@ function basisText(action: string): string {
 }
 
 /** A small, valid PDF standing for a document deposited by a party (fictitious content). */
-function depositedPdf(label: string): Uint8Array {
+export function depositedPdf(label: string): Uint8Array {
   const text = `DEMO - ${label}`.replace(/[()\\]/g, '');
   const stream = `BT /F1 14 Tf 72 760 Td (${text}) Tj ET`;
   const objects = [

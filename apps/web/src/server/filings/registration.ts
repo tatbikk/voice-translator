@@ -39,7 +39,7 @@ async function refused(draftId: string, actor: EventActor, status: number, code:
 
 /** The next number of the court's register for the year: one row per court and year, under lock. */
 async function nextNumber(tx: Tx, courtId: string, year: number): Promise<number> {
-  const rows = await tx.$queryRaw<{ n: number }[]>`
+  const rows = await tx.$queryRaw<{ n: number | bigint }[]>`
     INSERT INTO "CaseSequence" ("courtId", "year", "lastNumber")
     VALUES (${courtId}::uuid, ${year}, COALESCE((SELECT MAX("number") FROM "CaseFile" WHERE "courtId" = ${courtId}::uuid AND "year" = ${year}), 0) + 1)
     ON CONFLICT ("courtId", "year") DO UPDATE

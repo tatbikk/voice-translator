@@ -38,7 +38,8 @@ const AddressSchema = z
 
 /** An address or an agent left blank in the form is absent. */
 const blankObject = (field: string) => (value: unknown) =>
-  value !== null && typeof value === 'object' && String((value as Record<string, unknown>)[field] ?? '').trim() === '' ? undefined : value;
+  value !== null && typeof value === 'object' && isBlank((value as Record<string, unknown>)[field]) ? undefined : value;
+const isBlank = (value: unknown) => value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 const optionalAddress = z.preprocess(blankObject('value'), AddressSchema.optional());
 
 const PartySchema = z
