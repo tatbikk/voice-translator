@@ -155,3 +155,50 @@
 | `Signature` | التوقيع | `circleId`، `position`، `signerUserId`، `signerRoleAssignmentId`، `signerRole`، `documentSha256` (البصمة لحظة التوقيع)، `signedAt` (ساعة المنصة)، `provider` (`SIMULATED`)، `providerRef` |
 
 وتحسب محاولات الرمز السري في `AuthAttempt` بصنف جديد `SIGNING_SECRET`، والقفل في `Lockout`.
+
+## توسعة المرحلة 2
+
+تضاف في هجرة مؤرخة واحدة لا تكسر النسخة السابقة: جداول جديدة، وأعمدة اختيارية، وقيم جديدة في التعدادات. وكل زمن قانوني فيها من ساعة المنصة.
+
+### مشروع الإيداع
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `FilingDraft` | مشروع الإيداع قبل إيداعه | `ownerUserId` و`ownerRoleAssignmentId` (صاحبه وحده يطلع عليه)، `channel` (`ELECTRONIC` إلكتروني، `PAPER` ورقي)، `status` (`DRAFT`، `FILED`)، `courtId` (المحكمة المختارة)، `suggestedCourtId`، `caseType` (رمز من جدول أنواع القضايا)، `procedure`، `card` (بطاقة الدعوى بمخطط النواة: الأطراف، وموجز الموضوع والوقائع والأسباب، والطلبات، والتأشير على الأقسام)، `applicationMode` (`UPLOAD` تحميل، `PASTE` لصق، `SCAN` مسح)، `applicationText` (النص الملصق كما أودع)، `applicationParagraphs` (فقراته المرقمة)، `fixedCopyStatus` (`NONE`، `PENDING`، `READY`، `FAILED`)، `designatedBailiffUserId` (م 87)، `paperDepositor` (اسم المودع على الورق وصفته ورقم بطاقته)، `paperLawyerUserId`، `filedAt`، `caseFileId` (فريد) |
+| `FilingDocument` | وثائق المشروع | `draftId`، `kind` (`APPLICATION_ORIGINAL` المقال كما أودع، `APPLICATION_COPY` النسخة الثابتة، `EXHIBIT` مستند، `PAYMENT_RECEIPT` وصل الأداء)، `storageKey` (اسم مولد، فريد)، `sha256`، `byteSize`، `mediaType` (من المحتوى)، `title`، `declaredNature` (م 631)، `pageCount`، `paperOriginalLocation`، `position`، `uploadedAt`، `removedAt` (لا يحذف الصف)، `documentId` (الوثيقة في الملف بعد الإيداع، بالمفتاح نفسه في المخزن) |
+
+### الأداء
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `PaymentIntent` | عملية الأداء في البوابة | `draftId`، `purpose` (`COURT_FEE`)، `amountCents` (يحسبه الخادم)، `inputsDigest` (بصمة الطلبات والمحكمة والجدول الساري)، `breakdown`، `ruleSetId`، `method` (`ONLINE` عن بعد، `COUNTER` بالشباك)، `status` (`PENDING`، `SUCCEEDED`، `FAILED`، `CANCELLED`، `EXPIRED`)، `createdByUserId`، `expiresAt`، `completedAt`، `paymentId` (فريد) |
+| `Payment` (أعمدة مضافة) | الأداء | `caseFileId` صار اختياريا (يملأ عند التقييد)، `courtId`، `draftId`، `intentId` (فريد)، `method`. و`paidAt` وقت العملية، ناجحة كانت أو فاشلة |
+| `TreasuryEntry` (أعمدة مضافة) | قيد الصندوق | `caseFileId` صار اختياريا، `courtId`، `draftId` |
+| `FeeAssessment` (أعمدة مضافة) | الرسم المحتسب | `caseFileId` صار اختياريا، `draftId`، `inputsDigest` |
+
+ولا يحذف أداء ولا قيد صندوق، ولا يعدل منهما إلا ربطه بالملف عند التقييد (قادح في قاعدة المعطيات).
+
+### التقييد والإحالة
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `CaseSequence` | سجل المحكمة للسنة | `courtId`، `year`، `lastNumber`؛ صف واحد لكل محكمة وسنة يزاد بقفل داخل معاملة الإيداع |
+| `CaseFile` (أعمدة مضافة) | الملف المقيد | `filingChannel`، `filingDraftId` (فريد)، `filedByUserId`، `designatedBailiffUserId`، `classificationCorrectedAt`، `referredToCommissionerAt`. وقيد فريد على المحكمة والرقم والسنة؛ وقادح يمنع تعديل الرقم والسنة والمحكمة والمعرف الوطني |
+| `CaseReferral` | الإحالة التلقائية | `caseFileId`، `target` (`PROSECUTION`، `ROYAL_COMMISSIONER`)، `ground` (`PRINCIPAL_PARTY` م 18، `COMMUNICATION` م 20، `ADMINISTRATIVE_COURT` م 101)، `article`، `item`، `reasonCode`، `ruleSetId`، `createdAt`. والمراجعة التي لم تجد موجبا تدون حدثا |
+| `CaseNote` | ملاحظة مكتب التقييد إلى القاضي | `caseFileId`، `authorUserId`، `authorRole`، `reason` (`FEE_SHORTFALL` رسم ناقص، `CLASSIFICATION`، `PARTIES`، `OTHER`)، `text`، `addressedToUserId`، `createdAt`. لا تعدل ولا تحذف |
+
+### الوثائق والمراجع
+
+| الجدول | الغاية | الأعمدة الأساسية |
+| --- | --- | --- |
+| `Document` (عمود مضاف) | الوثيقة | `pageCount` (المسح الضوئي، والإيداع الورقي) |
+| `DocumentParagraph` | فقرات النسخة الثابتة المولدة من نص ملصق أو من DOCX | `documentId`، `position`، `text` |
+| `SimulatedRegistryEntry` | السجل التجاري المحاكى | `registry` (`COMMERCIAL_REGISTER`)، `key` (رقم التقييد)، `data` (الاسم، والشكل القانوني، والمقر الاجتماعي، والفرع، والممثل القانوني، والبريد)؛ يقرؤه دور التشغيل ولا يكتبه |
+| `Court` (عمود مضاف) | المحكمة | `specialty` (`GENERAL`، `COMMERCIAL`، `ADMINISTRATIVE`)؛ ومنه تشتق «محكمة إدارية» في صورة الملف |
+| `RoleAssignment` (عمودان مضافان) | الصفة | `professionalNumber` (الرقم الوطني للمحامي)، `professionalBody` (هيئته)، م 77 |
+| `CaseParty` (أعمدة مضافة) | الطرف | `publicEntityKind` (`STATE`، `LOCAL_AUTHORITY`، `PUBLIC_ESTABLISHMENT`، `OTHER_PUBLIC`، `STATE_JUDICIAL_AGENT`، `LOCAL_AUTHORITIES_AGENT`؛ م 20 و605)، `capacityStatus` (`FULL`، `INCAPABLE`، `ABSENT`؛ م 18)، `agentName` و`agentAddress` (وكيل المدعي، م 77) |
+| `PartyAddress` (قيمتان مضافتان) | العنوان | `kind`: `RESIDENCE` محل الإقامة، و`BRANCH` مقر الفرع (م 77) |
+
+### الجداول المرجعية الجديدة في `RuleSet`
+
+`CASE_TYPES` (أنواع القضايا ورموزها المفترضة وتخصص كل نوع وما يوجب منها الإحالة، س21)، و`DISTRICTS` (دوائر النفوذ)، و`REFERRALS` (الإحالات على النيابة العامة والمفوض الملكي)، و`JURISDICTION` (عتبة المادة 35). مؤرخة ومسندة كسائر الجداول، ودور التشغيل يقرؤها ولا يكتبها.
