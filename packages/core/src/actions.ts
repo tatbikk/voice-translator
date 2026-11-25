@@ -31,6 +31,20 @@ export const ACTION_CODES = [
   'demo.accounts.list',
   'demo.account.switch',
   'demo.outbox.view',
+  // Phase 2: the filing path, the simulated payment, the registry office, the
+  // cashier, the prosecution's referrals, the register lookup, the list of files.
+  'filing.drafts.list',
+  'filing.draft.read',
+  'filing.draft.edit',
+  'filing.draft.pay',
+  'filing.draft.submit',
+  'payment.view',
+  'payment.simulate',
+  'registers.commercial.lookup',
+  'registry.incoming.list',
+  'cashier.ledger.view',
+  'prosecution.referrals.list',
+  'cases.list',
 ] as const;
 
 type BaseActionCode = (typeof ACTION_CODES)[number];
@@ -114,9 +128,13 @@ export const CASE_VIEW_HOLDERS: readonly Holder[] = [
   { roles: [...JUDGES, 'PANEL_PRESIDENT', 'PANEL_MEMBER'], relations: ['PANEL'] },
   { roles: ['COURT_PRESIDENT', 'ENFORCEMENT_JUDGE', ...CLERKS], relations: ['COURT_STAFF'] },
   { roles: ['PUBLIC_PROSECUTOR'], relations: ['PROSECUTION'] },
+  { roles: ['ROYAL_COMMISSIONER'], relations: ['COMMISSIONER'] },
   { roles: ['LITIGANT'], relations: ['LITIGANT'] },
   { roles: ['PUBLIC_ADMIN_SUPERVISOR', 'PUBLIC_ADMIN_LITIGATION', 'STATE_JUDICIAL_AGENT'], relations: ['ADMIN_PARTY'] },
 ];
+
+/** The two who file: the lawyer electronically, the registry office on paper. */
+const FILERS: readonly RoleCode[] = ['LAWYER', 'CLERK_REGISTRATION'];
 
 const keys = (code: ActionCode) => ({
   labelKey: `actions.${code}.label`,
@@ -272,6 +290,122 @@ const BASE_ACTIONS: Readonly<Record<BaseActionCode, ActionRule>> = {
     confirm: false,
     holders: 'ANY_VISITOR',
     requires: ['DEMO_TOOLS_ENABLED'],
+    resourceKind: null,
+  }),
+
+  // -------------------------------------------------------------------------
+  // Phase 2. A draft is its author's alone (memo row 2); filing it needs its
+  // fee paid (row 3); a filed draft changes no more (row 26).
+  'filing.drafts.list': rule('filing.drafts.list', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(76, 628),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: [],
+    resourceKind: null,
+  }),
+  'filing.draft.read': rule('filing.draft.read', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(76, 77, 628),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: ['DRAFT_OWNED_BY_SUBJECT'],
+    resourceKind: 'filing-draft',
+  }),
+  'filing.draft.edit': rule('filing.draft.edit', {
+    level: 'HUMAN_DECISION',
+    legalBasis: lawArticles(76, 77, 631),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: ['DRAFT_OWNED_BY_SUBJECT', 'DRAFT_OPEN'],
+    resourceKind: 'filing-draft',
+  }),
+  'filing.draft.pay': rule('filing.draft.pay', {
+    level: 'HUMAN_DECISION',
+    legalBasis: lawArticles(619, 628),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: ['DRAFT_OWNED_BY_SUBJECT', 'DRAFT_OPEN', 'DRAFT_NOT_PAID'],
+    resourceKind: 'filing-draft',
+  }),
+  'filing.draft.submit': rule('filing.draft.submit', {
+    // The electronic filing is signed with the lawyer's secret (art. 76); the
+    // paper filing bears the handwritten signature of its paper original.
+    level: 'HUMAN_DECISION',
+    legalBasis: lawArticles(76, 77, 628),
+    confirm: true,
+    button: false,
+    holders: FILERS,
+    requires: ['DRAFT_OWNED_BY_SUBJECT', 'DRAFT_OPEN', 'DRAFT_PAID'],
+    resourceKind: 'filing-draft',
+  }),
+  'payment.view': rule('payment.view', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(628),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: ['INTENT_OWNED_BY_SUBJECT'],
+    resourceKind: 'payment-intent',
+  }),
+  'payment.simulate': rule('payment.simulate', {
+    level: 'HUMAN_DECISION',
+    legalBasis: lawArticles(628),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: ['INTENT_OWNED_BY_SUBJECT', 'INTENT_PENDING'],
+    resourceKind: 'payment-intent',
+  }),
+  'registers.commercial.lookup': rule('registers.commercial.lookup', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(77, 613),
+    confirm: false,
+    button: false,
+    holders: FILERS,
+    requires: [],
+    resourceKind: null,
+  }),
+  'registry.incoming.list': rule('registry.incoming.list', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(76, 628),
+    confirm: false,
+    button: false,
+    holders: ['CLERK_REGISTRATION'],
+    requires: [],
+    resourceKind: null,
+  }),
+  'cashier.ledger.view': rule('cashier.ledger.view', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(119, 619, 628),
+    confirm: false,
+    button: false,
+    holders: ['CLERK_CASHIER'],
+    requires: [],
+    resourceKind: null,
+  }),
+  'prosecution.referrals.list': rule('prosecution.referrals.list', {
+    level: 'SCRIPT',
+    legalBasis: lawArticles(18, 20, 90),
+    confirm: false,
+    button: false,
+    holders: ['PUBLIC_PROSECUTOR'],
+    requires: [],
+    resourceKind: null,
+  }),
+  'cases.list': rule('cases.list', {
+    // The list of files: whoever may open a file; each file is then shown only
+    // if the core relates the user to it (case.view).
+    level: 'SCRIPT',
+    legalBasis: lawArticles(624, 630),
+    confirm: false,
+    button: false,
+    holders: [...new Set(CASE_VIEW_HOLDERS.flatMap((h) => h.roles))],
+    requires: [],
     resourceKind: null,
   }),
 };

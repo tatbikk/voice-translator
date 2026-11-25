@@ -10,10 +10,22 @@
 import type { ActionLevel } from '../actions';
 import type { RoleCode } from '../roles';
 import type { Condition, EnvelopeCondition, Holder, Relation } from './conditions';
-import type { DeadlineCode } from './snapshot';
+import type { CaseFact, DeadlineCode } from './snapshot';
 import { statusesBetween, type CaseKind, type CaseStatus } from './states';
 
 export type ProcedureResource = 'case' | 'envelope' | 'new-filing' | 'own-contact';
+
+/** Who is informed of an act (the second line of its confirmation window, made executable; review P1-A-05). */
+export type NotifyTarget =
+  /** the judge or counsellor rapporteur, once assigned */
+  | 'RAPPORTEUR'
+  /** the rapporteur, or before his assignment the president of the court */
+  | 'RAPPORTEUR_OR_PRESIDENT'
+  /** the lawyers of the parties */
+  | 'COUNSEL';
+
+/** The kinds of document an act adds to the file. */
+export type FiledDocumentType = 'PROSECUTION_CONCLUSIONS' | 'COMMISSIONER_OPINION';
 
 export interface ProcedureAction {
   readonly code: string;
@@ -33,6 +45,14 @@ export interface ProcedureAction {
   readonly changesState: boolean;
   readonly nextStatus: CaseStatus | null;
   readonly opens: readonly DeadlineCode[];
+  /** effects (review P1-A-05): the facts the act establishes */
+  readonly sets: readonly CaseFact[];
+  /** the time limits the act closes */
+  readonly closes: readonly DeadlineCode[];
+  /** who is informed of it */
+  readonly notifies: readonly NotifyTarget[];
+  /** the document it adds to the file */
+  readonly files: FiledDocumentType | null;
 }
 
 type Definition = Partial<Omit<ProcedureAction, 'code' | 'station' | 'statuses' | 'holders' | 'articles'>> &
@@ -63,13 +83,15 @@ const at = (station: number, code: string, definition: Definition) => table.push
 
 at(2, 'case.registration.stamp', {
   statuses: ['REGISTERED'], holders: [staff('CLERK_REGISTRATION')], when: [{ notFact: 'REGISTRATION_STAMPED' }],
-  articles: [76, 628], awaited: true,
+  articles: [76, 628], awaited: true, sets: ['REGISTRATION_STAMPED'],
 });
 at(2, 'case.registration.reclassify', {
   statuses: ['REGISTERED'], holders: [staff('CLERK_REGISTRATION')], when: [{ notFact: 'REGISTRATION_STAMPED' }], articles: [628],
+  notifies: ['RAPPORTEUR', 'COUNSEL'],
 });
 at(2, 'case.registration.note-to-judge', {
   statuses: between('REGISTERED', 'READY'), holders: [staff('CLERK_REGISTRATION')], articles: [619],
+  notifies: ['RAPPORTEUR_OR_PRESIDENT'],
 });
 at(2, 'case.prosecution.view', {
   statuses: between('REGISTERED', 'READY'), holders: [h(['PUBLIC_PROSECUTOR'], 'PROSECUTION')], articles: [18, 20],
@@ -77,10 +99,11 @@ at(2, 'case.prosecution.view', {
 });
 at(2, 'case.prosecution.conclusions', {
   statuses: between('REGISTERED', 'READY'), holders: [h(['PUBLIC_PROSECUTOR'], 'PROSECUTION')], articles: [21],
+  files: 'PROSECUTION_CONCLUSIONS', notifies: ['RAPPORTEUR', 'COUNSEL'],
 });
 at(2, 'case.commissioner.opinion', {
-  statuses: between('REGISTERED', 'READY'), holders: [h(['ROYAL_COMMISSIONER'])], when: [{ administrativeCourt: true }],
-  articles: [101, 107],
+  statuses: between('REGISTERED', 'READY'), holders: [h(['ROYAL_COMMISSIONER'], 'COMMISSIONER')], when: [{ administrativeCourt: true }],
+  articles: [101, 107], files: 'COMMISSIONER_OPINION', notifies: ['RAPPORTEUR', 'COUNSEL'],
 });
 
 // ---------------------------------------------------------------------------
@@ -562,4 +585,8 @@ export const PROCEDURE_ACTIONS: readonly ProcedureAction[] = table.map(([code, s
   changesState: d.changesState ?? true,
   nextStatus: d.nextStatus ?? null,
   opens: d.opens ?? [],
+  sets: d.sets ?? [],
+  closes: d.closes ?? [],
+  notifies: d.notifies ?? [],
+  files: d.files ?? null,
 }));

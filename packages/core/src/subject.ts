@@ -49,6 +49,25 @@ export type Resource =
   | { readonly kind: 'envelope'; readonly snapshot: EnvelopeSnapshot }
   /** a filing not yet made (Phase 2) */
   | { readonly kind: 'new-filing' }
+  /**
+   * A filing draft (Phase 2): its author alone may see it. Electronic drafts
+   * belong to a lawyer, paper drafts to a registry clerk of the draft's court.
+   * `paid` is true when a successful payment covers the draft's current claims.
+   */
+  | {
+      readonly kind: 'filing-draft';
+      readonly ownerUserId: string;
+      readonly channel: 'ELECTRONIC' | 'PAPER';
+      readonly courtId: string | null;
+      readonly status: 'DRAFT' | 'FILED';
+      readonly paid: boolean;
+    }
+  /** a payment opened on the simulated gateway (Phase 2), by its owner */
+  | {
+      readonly kind: 'payment-intent';
+      readonly ownerUserId: string;
+      readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
+    }
   /** the litigant's own contact details (Phase 3) */
   | { readonly kind: 'own-contact'; readonly userId: string };
 

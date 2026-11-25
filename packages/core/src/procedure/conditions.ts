@@ -19,6 +19,8 @@ export type Relation =
   | 'COURT_STAFF'
   /** the prosecution, once the file was referred to it */
   | 'PROSECUTION'
+  /** the royal commissioner, once a copy of the application was handed to him (art. 101) */
+  | 'COMMISSIONER'
   /** the expert appointed in the file */
   | 'EXPERT'
   /** a party with its own account that accepted electronic service */
@@ -129,6 +131,14 @@ export function holdsRelation(subject: UserSubject, snapshot: CaseSnapshot, rela
       return subject.courtId !== null && subject.courtId === snapshot.courtId;
     case 'PROSECUTION':
       return subject.courtId === snapshot.courtId && snapshot.facts.includes('REFERRED_TO_PROSECUTION');
+    case 'COMMISSIONER':
+      return (
+        subject.role === 'ROYAL_COMMISSIONER' &&
+        subject.courtId !== null &&
+        subject.courtId === snapshot.courtId &&
+        snapshot.administrativeCourt &&
+        snapshot.facts.includes('REFERRED_TO_COMMISSIONER')
+      );
     case 'EXPERT':
       return snapshot.expertUserId === user;
     case 'LITIGANT':

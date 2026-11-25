@@ -8,6 +8,7 @@ import type { CaseKind, CaseStatus } from './states';
 export const CASE_FACTS = [
   'REGISTRATION_STAMPED',
   'REFERRED_TO_PROSECUTION',
+  'REFERRED_TO_COMMISSIONER',
   'HEARING_SET',
   'HEARING_UPCOMING',
   'HEARING_IN_SESSION',

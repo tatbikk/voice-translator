@@ -1,0 +1,137 @@
+// «بطاقة الدعوى» (study, «المرحلة الأولى»; interface book, «واجهة المحامي»): the
+// structured form of the statements art. 77 requires, filled by hand in
+// Phase 2 (prompt). The server validates every card against this schema and
+// never trusts the interface's validation. The lawyer's own statements (name,
+// national number, bar, e-mail) come from the account, not from the card.
+import { z } from 'zod';
+import { CAPACITY_STATUSES, PUBLIC_ENTITY_KINDS } from './rules';
+
+/** The four sections the depositor attests «مطابق للمقال» (study). */
+export const CARD_SECTIONS = ['PLAINTIFFS', 'DEFENDANTS', 'SUMMARY', 'CLAIMS'] as const;
+export type CardSection = (typeof CARD_SECTIONS)[number];
+
+export const CARD_SIDES = ['PLAINTIFF', 'DEFENDANT', 'GUARANTOR'] as const;
+export const PERSON_KINDS = ['NATURAL', 'LEGAL', 'PUBLIC'] as const;
+export const CLAIM_NATURE_CODES = ['DEBT', 'DAMAGES', 'LEGAL_INTEREST', 'PROVISIONAL_ENFORCEMENT', 'COSTS', 'OTHER'] as const;
+
+export const CARD_LIMITS = {
+  parties: 50,
+  claims: 50,
+  summaryChars: 20_000,
+} as const;
+
+/** An empty field of a form is an absent statement. */
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), schema.optional());
+
+const text = (max: number) => z.string().trim().min(1).max(max);
+const key = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/);
+
+const AddressSchema = z
+  .object({
+    value: text(300),
+    /** a locality of the districts table (rules/districts.json), by its code */
+    locality: optional(z.string().regex(/^[a-z][a-z0-9-]{1,40}$/)),
+    source: z.enum(['DECLARED', 'COMMERCIAL_REGISTER']),
+  })
+  .strict();
+
+/** An address or an agent left blank in the form is absent. */
+const blankObject = (field: string) => (value: unknown) =>
+  value !== null && typeof value === 'object' && String((value as Record<string, unknown>)[field] ?? '').trim() === '' ? undefined : value;
+const optionalAddress = z.preprocess(blankObject('value'), AddressSchema.optional());
+
+const PartySchema = z
+  .object({
+    key,
+    side: z.enum(CARD_SIDES),
+    personKind: z.enum(PERSON_KINDS),
+    name: text(200),
+    /** the party's capacity in the suit (art. 77: «صفة») */
+    quality: optional(text(200)),
+    /** national identity card of a natural person, or what stands for it; a company's trade register number */
+    idNumber: optional(text(60)),
+    legalForm: optional(text(120)),
+    legalRepresentative: optional(text(200)),
+    publicEntityKind: optional(z.enum(PUBLIC_ENTITY_KINDS)),
+    capacityStatus: optional(z.enum(CAPACITY_STATUSES)),
+    domicile: optionalAddress,
+    residence: optionalAddress,
+    registeredOffice: optionalAddress,
+    branch: optionalAddress,
+    email: optional(z.string().trim().max(200).pipe(z.email())),
+    phone: optional(z.string().trim().regex(/^\+?[0-9][0-9 ]{5,19}$/)),
+    /** the plaintiff's agent and his domicile (art. 77) */
+    agent: z.preprocess(blankObject('name'), z.object({ name: text(200), address: optional(text(300)) }).strict().optional()),
+    /** the filing lawyer acts for this party */
+    representedByFiler: z.boolean().optional(),
+  })
+  .strict();
+
+const ClaimSchema = z
+  .object({
+    key,
+    nature: z.enum(CLAIM_NATURE_CODES),
+    /** centimes; null for a claim without a fixed amount */
+    amountCents: z.number().int().min(0).max(100_000_000_000_000).nullable(),
+    description: optional(text(500)),
+  })
+  .strict();
+
+export const FilingCardSchema = z
+  .object({
+    parties: z.array(PartySchema).max(CARD_LIMITS.parties),
+    summary: z.string().trim().max(CARD_LIMITS.summaryChars),
+    claims: z.array(ClaimSchema).max(CARD_LIMITS.claims),
+  })
+  .strict()
+  .superRefine((card, ctx) => {
+    for (const [field, items] of [
+      ['parties', card.parties],
+      ['claims', card.claims],
+    ] as const) {
+      const seen = new Set<string>();
+      for (const [index, item] of items.entries()) {
+        if (seen.has(item.key)) ctx.addIssue({ code: 'custom', path: [field, index, 'key'], message: 'duplicate key' });
+        seen.add(item.key);
+      }
+    }
+  });
+
+export type FilingCard = z.infer<typeof FilingCardSchema>;
+export type CardParty = FilingCard['parties'][number];
+export type CardClaim = FilingCard['claims'][number];
+export type CardAddress = z.infer<typeof AddressSchema>;
+
+export const EMPTY_CARD: FilingCard = { parties: [], summary: '', claims: [] };
+
+/** The part of the card a section attests: its digest is kept with the attestation. */
+export function sectionContent(card: FilingCard, section: CardSection): unknown {
+  switch (section) {
+    case 'PLAINTIFFS':
+      return card.parties.filter((p) => p.side === 'PLAINTIFF');
+    case 'DEFENDANTS':
+      return card.parties.filter((p) => p.side !== 'PLAINTIFF');
+    case 'SUMMARY':
+      return card.summary;
+    case 'CLAIMS':
+      return card.claims;
+  }
+}
+
+/** The claims as the fee engine reads them. */
+export function feeClaims(card: FilingCard): { nature: CardClaim['nature']; amountCents: number | null }[] {
+  return card.claims.map((c) => ({ nature: c.nature, amountCents: c.amountCents }));
+}
+
+/** JSON with sorted keys, so that a digest does not depend on the order of fields. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}

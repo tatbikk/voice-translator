@@ -68,7 +68,7 @@ function describeReferrals(list: ReturnType<typeof referralsFor>): string {
 }
 
 describe('automatic referrals in plain language', () => {
-  for (const [caseText, court = '', code = '', partiesCell = '', expected = ''] of rows('referrals.md', 'الإحالة عند التقييد')) {
+  for (const [caseText = '', court = '', code = '', partiesCell = '', expected = ''] of rows('referrals.md', 'الإحالة عند التقييد')) {
     it(caseText, () => {
       const specialty = SPECIALTIES[court as keyof typeof SPECIALTIES];
       const found = referralsFor({ courtSpecialty: specialty, caseType: typeOf(code), parties: parties(partiesCell), rules: referralRules });
@@ -78,7 +78,7 @@ describe('automatic referrals in plain language', () => {
 });
 
 describe('the judicial agent warning in plain language (art. 605)', () => {
-  for (const [caseText, code = '', partiesCell = '', claimsCell = '', expected = ''] of rows('referrals.md', 'التنبيه إلى إدخال الوكيل القضائي (م 605)')) {
+  for (const [caseText = '', code = '', partiesCell = '', claimsCell = '', expected = ''] of rows('referrals.md', 'التنبيه إلى إدخال الوكيل القضائي (م 605)')) {
     it(caseText, () => {
       const card: FilingCard = { parties: parties(partiesCell), summary: 'موجز', claims: claims(claimsCell) };
       const checks = preSignatureChecks({

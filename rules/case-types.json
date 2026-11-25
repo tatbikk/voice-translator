@@ -1,0 +1,22 @@
+[
+  {
+    "version": "2026-08-23.1",
+    "validFrom": "2026-08-23",
+    "validTo": null,
+    "source": "رموز أنواع القضايا مفترضة لبيئة العرض (docs/open-questions.md، س21)؛ تخصص المحاكم الابتدائية التجارية من المادة 35 من القانون رقم 58.25، وما تكون فيه النيابة العامة طرفا أصليا من المادة 18، وما يستثنى من إدخال الوكيل القضائي للمملكة من المادة 605 (القضايا الضريبية وإدارة أملاك الدولة)",
+    "types": [
+      { "code": "8201", "specialty": "COMMERCIAL", "articles": [35], "flags": [], "prosecution": null },
+      { "code": "8202", "specialty": "COMMERCIAL", "articles": [35], "flags": [], "prosecution": null },
+      { "code": "8203", "specialty": "COMMERCIAL", "articles": [35], "flags": [], "prosecution": null },
+      { "code": "8204", "specialty": "COMMERCIAL", "articles": [35], "flags": [], "prosecution": null },
+      { "code": "8205", "specialty": "COMMERCIAL", "articles": [35], "flags": [], "prosecution": null },
+      { "code": "1201", "specialty": "GENERAL", "articles": [], "flags": [], "prosecution": null },
+      { "code": "1601", "specialty": "GENERAL", "articles": [18], "flags": [], "prosecution": { "ground": "PRINCIPAL_PARTY", "article": 18, "item": 2 } },
+      { "code": "1701", "specialty": "GENERAL", "articles": [18], "flags": [], "prosecution": { "ground": "PRINCIPAL_PARTY", "article": 18, "item": 3 } },
+      { "code": "1801", "specialty": "GENERAL", "articles": [18], "flags": [], "prosecution": { "ground": "PRINCIPAL_PARTY", "article": 18, "item": 4 } },
+      { "code": "4001", "specialty": "ADMINISTRATIVE", "articles": [], "flags": [], "prosecution": null },
+      { "code": "9101", "specialty": "ADMINISTRATIVE", "articles": [605], "flags": ["TAX"], "prosecution": null },
+      { "code": "9102", "specialty": "ADMINISTRATIVE", "articles": [605], "flags": ["STATE_DOMAIN"], "prosecution": null }
+    ]
+  }
+]

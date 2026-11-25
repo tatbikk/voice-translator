@@ -10,7 +10,13 @@ export type ConditionCode =
   | 'TARGET_IS_DEMO_ACCOUNT'
   | 'TARGET_NOT_ACTIVATED'
   | 'TARGET_NOT_DISABLED'
-  | 'DEMO_MODE';
+  | 'DEMO_MODE'
+  | 'DRAFT_OWNED_BY_SUBJECT'
+  | 'DRAFT_OPEN'
+  | 'DRAFT_PAID'
+  | 'DRAFT_NOT_PAID'
+  | 'INTENT_OWNED_BY_SUBJECT'
+  | 'INTENT_PENDING';
 
 export type ConditionFailure = 'NOT_FOUND' | 'CONDITION_NOT_MET' | 'MODE_NOT_PERMITTED';
 
@@ -50,5 +56,37 @@ export const CONDITIONS: Readonly<Record<ConditionCode, ConditionDefinition>> = 
     // The page «مكونات بيئة العرض» exists in the demo environment only.
     onFail: 'MODE_NOT_PERMITTED',
     test: (_subject, _resource, context) => context.mode === 'demo',
+  },
+  DRAFT_OWNED_BY_SUBJECT: {
+    // A filing draft is its author's alone (Phase 2 memo, row 2): a lawyer's
+    // electronic draft, or a registry clerk's paper draft at the clerk's court.
+    // Anyone else meets a draft that does not exist.
+    onFail: 'NOT_FOUND',
+    test: (subject, resource) => {
+      if (subject.kind !== 'user' || resource?.kind !== 'filing-draft' || resource.ownerUserId !== subject.userId) return false;
+      if (resource.channel === 'ELECTRONIC') return subject.role === 'LAWYER';
+      return subject.role === 'CLERK_REGISTRATION' && subject.courtId !== null && subject.courtId === resource.courtId;
+    },
+  },
+  DRAFT_OPEN: {
+    onFail: 'CONDITION_NOT_MET',
+    test: (_subject, resource) => resource?.kind === 'filing-draft' && resource.status === 'DRAFT',
+  },
+  DRAFT_PAID: {
+    // «لا يتم الإيداع بلا أداء» (prompt, «الأداء»; Phase 2 memo, row 3).
+    onFail: 'CONDITION_NOT_MET',
+    test: (_subject, resource) => resource?.kind === 'filing-draft' && resource.paid,
+  },
+  DRAFT_NOT_PAID: {
+    onFail: 'CONDITION_NOT_MET',
+    test: (_subject, resource) => resource?.kind === 'filing-draft' && !resource.paid,
+  },
+  INTENT_OWNED_BY_SUBJECT: {
+    onFail: 'NOT_FOUND',
+    test: (subject, resource) => subject.kind === 'user' && resource?.kind === 'payment-intent' && resource.ownerUserId === subject.userId,
+  },
+  INTENT_PENDING: {
+    onFail: 'CONDITION_NOT_MET',
+    test: (_subject, resource) => resource?.kind === 'payment-intent' && resource.status === 'PENDING',
   },
 };

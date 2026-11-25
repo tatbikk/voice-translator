@@ -5,6 +5,7 @@
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+const MIB = 1024 * 1024;
 
 export const SECURITY_POLICY = {
   password: { maxFailures: 5, windowMs: 15 * MINUTE, lockMs: 15 * MINUTE },
@@ -45,6 +46,29 @@ export const SECURITY_POLICY = {
   demoEndpoints: { perClient: { max: 60, windowMs: MINUTE } },
   preferencesPerClient: { max: 30, windowMs: 15 * MINUTE },
   body: { maxBytes: 16 * 1024 },
+  /**
+   * Phase 2 (decision 62; Phase 2 memo, rows 13 and 15): uploads are raw bytes,
+   * read after authorization and cut at the limit of their place; the type is
+   * read from the content. These are security values, not legal rules (س37).
+   */
+  uploads: {
+    applicationMaxBytes: 10 * MIB,
+    exhibitMaxBytes: 15 * MIB,
+    scanMaxBytes: 20 * MIB,
+    conclusionsMaxBytes: 10 * MIB,
+    draftMaxDocuments: 40,
+    draftMaxTotalBytes: 150 * MIB,
+    perSession: { max: 120, windowMs: HOUR },
+    docx: { maxEntries: 1000, maxEntryBytes: 30 * MIB, maxTotalBytes: 60 * MIB },
+    titleMaxChars: 150,
+  },
+  /** the pasted application (JSON, read after authorization) */
+  applicationText: { maxBytes: 1024 * 1024, maxChars: 200_000, maxParagraphs: 5_000 },
+  /** the case card and the other bodies of the filing path */
+  filingBody: { maxBytes: 128 * 1024 },
+  /** a payment opened on the simulated gateway expires after this time */
+  paymentIntent: { ttlMs: 30 * MINUTE },
+  registerLookup: { perSession: { max: 60, windowMs: 15 * MINUTE } },
   fields: { passwordMin: 12, passwordMax: 128, email: 254, name: 120, phone: 32, requestReferenceMin: 8, requestReferenceMax: 64 },
   /** maxWaiting: hashing calls queued behind the running ones; past it the call fails (503, review S-03) */
   argon2: { concurrency: 4, maxWaiting: 32, memoryCost: 19456, timeCost: 2, parallelism: 1, outputLen: 32 },

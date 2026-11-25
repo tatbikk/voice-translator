@@ -15,6 +15,12 @@ const roleCode = z.string().regex(/^[A-Z_]{2,40}$/);
 
 const detailsOf = <T extends z.ZodRawShape>(shape: T) => z.strictObject(shape);
 
+/** The kinds of dated rule tables (rules/*.json). */
+export const RULE_KINDS = ['TIME_LIMITS', 'FEES', 'HOLIDAYS', 'INTEREST', 'CASE_TYPES', 'DISTRICTS', 'REFERRALS', 'JURISDICTION'] as const;
+
+const channel = z.enum(['ELECTRONIC', 'PAPER']);
+const draftDocumentKind = z.enum(['APPLICATION_ORIGINAL', 'APPLICATION_COPY', 'EXHIBIT', 'PAYMENT_RECEIPT']);
+
 export const EVENT_TYPES = {
   'access.code.accepted': { outcome: 'DONE', details: detailsOf({}) },
   'access.code.rejected': { outcome: 'DENIED', details: detailsOf({}) },
@@ -121,7 +127,7 @@ export const EVENT_TYPES = {
   },
   'rules.loaded': {
     outcome: 'DONE',
-    details: detailsOf({ kind: z.enum(['TIME_LIMITS', 'FEES', 'HOLIDAYS', 'INTEREST']), version: code, contentSha256: hash }),
+    details: detailsOf({ kind: z.enum(RULE_KINDS), version: code, contentSha256: hash }),
   },
   'document.stored': {
     outcome: 'DONE',
@@ -154,6 +160,69 @@ export const EVENT_TYPES = {
     details: detailsOf({ documentId: id, valid: count, changed: count }),
   },
   'case.action.not-executed': { outcome: 'DENIED', details: detailsOf({ action: code }) },
+
+  // Phase 2: the filing path. Details never hold the card's content: names,
+  // numbers and addresses stay in the draft and the file (memo row 25).
+  'filing.draft.created': { outcome: 'DONE', details: detailsOf({ draftId: id, channel }) },
+  'filing.draft.updated': {
+    outcome: 'DONE',
+    details: detailsOf({
+      draftId: id,
+      fields: z.array(z.enum(['CASE_TYPE', 'COURT', 'LOCALITY', 'CARD', 'ATTESTATION', 'BAILIFF', 'DEPOSITOR', 'LAWYER', 'APPLICATION_MODE'])).max(9),
+    }),
+  },
+  'filing.application.pasted': { outcome: 'DONE', details: detailsOf({ draftId: id, paragraphs: count, characters: count }) },
+  'filing.document.uploaded': {
+    outcome: 'DONE',
+    details: detailsOf({ draftId: id, documentId: id, kind: draftDocumentKind, mediaType: code, sha256: hash, byteSize: count }),
+  },
+  'filing.document.updated': { outcome: 'DONE', details: detailsOf({ draftId: id, documentId: id, removed: z.boolean() }) },
+  'filing.fixed-copy.prepared': { outcome: 'DONE', details: detailsOf({ draftId: id, documentId: id, sha256: hash, paragraphs: count }) },
+  /** a request of the filing path refused for its content, not its access (the access refusals are access.denied) */
+  'filing.refused': { outcome: 'DENIED', details: detailsOf({ draftId: id.nullable(), reason: code }) },
+  'filing.submitted': { outcome: 'DONE', details: detailsOf({ draftId: id, caseFileId: id, channel }) },
+  'filing.receipt.issued': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id }) },
+  'payment.intent.opened': {
+    outcome: 'DONE',
+    details: detailsOf({ intentId: id, draftId: id, amountCents: count, method: z.enum(['ONLINE', 'COUNTER']), ruleVersion: code }),
+  },
+  'payment.succeeded': { outcome: 'DONE', details: detailsOf({ intentId: id, paymentId: id, amountCents: count, operationRef: code }) },
+  'payment.failed': { outcome: 'DONE', details: detailsOf({ intentId: id, paymentId: id }) },
+  'payment.cancelled': { outcome: 'DONE', details: detailsOf({ intentId: id, paymentId: id }) },
+  'payment.expired': { outcome: 'DONE', details: detailsOf({ intentId: id }) },
+  'payment.receipt.issued': { outcome: 'DONE', details: detailsOf({ draftId: id, paymentId: id, documentId: id }) },
+  'registers.commercial.looked-up': { outcome: 'DONE', details: detailsOf({ found: z.boolean() }) },
+  'case.registered': {
+    outcome: 'DONE',
+    details: detailsOf({ caseFileId: id, draftId: id, number: count, code: count, year: count, channel }),
+  },
+  /** recorded even when no referral is due (study, «المرحلة الثانية») */
+  'case.referrals.reviewed': {
+    outcome: 'DONE',
+    details: detailsOf({
+      caseFileId: id,
+      ruleVersion: code,
+      referrals: z
+        .array(
+          z.strictObject({
+            target: z.enum(['PROSECUTION', 'ROYAL_COMMISSIONER']),
+            ground: z.enum(['PRINCIPAL_PARTY', 'COMMUNICATION', 'ADMINISTRATIVE_COURT']),
+            article: count,
+            item: count.nullable(),
+          }),
+        )
+        .max(5),
+    }),
+  },
+  'case.registration.stamped': { outcome: 'DONE', details: detailsOf({ caseFileId: id }) },
+  'case.registration.reclassified': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromCode: count, toCode: count }) },
+  'case.note.added': {
+    outcome: 'DONE',
+    details: detailsOf({ caseFileId: id, noteId: id, reason: z.enum(['FEE_SHORTFALL', 'CLASSIFICATION', 'PARTIES', 'OTHER']) }),
+  },
+  'case.document.filed': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id, action: code }) },
+  /** an executor found the file changed since its authorization (a race), or the input invalid */
+  'case.action.refused': { outcome: 'DENIED', details: detailsOf({ caseFileId: id, action: code, reason: code }) },
   /** a procedural act of the file (from Phase 2, by its executor; in the demo data, the seeded history) */
   'case.transition.recorded': {
     outcome: 'DONE',

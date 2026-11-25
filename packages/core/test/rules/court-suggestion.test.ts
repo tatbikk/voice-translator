@@ -23,7 +23,7 @@ const LOCALITIES: Record<string, string> = {
 };
 
 describe('court suggestion in plain language', () => {
-  for (const [caseText, code = '', locality = '', amount = '', expectedCourt = '', exceeded = ''] of rows('court-suggestion.md', 'حالات اختبار اقتراح المحكمة')) {
+  for (const [caseText = '', code = '', locality = '', amount = '', expectedCourt = '', exceeded = ''] of rows('court-suggestion.md', 'حالات اختبار اقتراح المحكمة')) {
     it(caseText, () => {
       const suggestion = suggestCourt({
         caseType: caseTypes.types.find((t) => t.code === code) ?? null,

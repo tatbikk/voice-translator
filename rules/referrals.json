@@ -1,0 +1,33 @@
+[
+  {
+    "version": "2026-08-23.1",
+    "validFrom": "2026-08-23",
+    "validTo": null,
+    "source": "القانون رقم 58.25: المادة 18 (تكون النيابة العامة طرفا أصليا في القضايا المتعلقة بعديمي الأهلية وناقصيها والغائبين والمفقودين، الحالة 4؛ وتبلغ إليها بمجرد تقييدها)، والمادة 20 (تبلغ إلى النيابة العامة بمجرد تقييدها القضايا المتعلقة بالدولة أو بالجماعات الترابية ومجموعاتها أو بالمؤسسات العمومية أو بأي شخص آخر من أشخاص القانون العام، الحالة 1)، والمادة 101 (تسلم نسخة من المقال إلى المفوض الملكي للدفاع عن القانون والحق أمام المحاكم الابتدائية الإدارية والأقسام المتخصصة في القضاء الإداري)، والمادة 605 (إدخال الوكيل القضائي للمملكة، والوكيل القضائي للجماعات الترابية: س29)",
+    "prosecution": {
+      "principalParty": { "article": 18, "capacityStatuses": { "INCAPABLE": 4, "ABSENT": 4 } },
+      "communication": { "article": 20, "publicEntityKinds": { "STATE": 1, "LOCAL_AUTHORITY": 1, "PUBLIC_ESTABLISHMENT": 1, "OTHER_PUBLIC": 1 } }
+    },
+    "royalCommissioner": { "article": 101, "specialties": ["ADMINISTRATIVE"] },
+    "judicialAgents": [
+      {
+        "article": 605,
+        "paragraph": 1,
+        "debtorKinds": ["STATE", "PUBLIC_ESTABLISHMENT", "OTHER_PUBLIC"],
+        "agentKind": "STATE_JUDICIAL_AGENT",
+        "claimNatures": ["DEBT", "DAMAGES"],
+        "exemptFlags": ["TAX", "STATE_DOMAIN"],
+        "uncertain": false
+      },
+      {
+        "article": 605,
+        "paragraph": 2,
+        "debtorKinds": ["LOCAL_AUTHORITY"],
+        "agentKind": "LOCAL_AUTHORITIES_AGENT",
+        "claimNatures": ["DEBT", "DAMAGES"],
+        "exemptFlags": [],
+        "uncertain": true
+      }
+    ]
+  }
+]

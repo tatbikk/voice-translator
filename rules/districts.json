@@ -1,0 +1,13 @@
+[
+  {
+    "version": "2026-08-23.1",
+    "validFrom": "2026-08-23",
+    "validTo": null,
+    "source": "دوائر نفوذ مفترضة لمحكمتي بيئة العرض، لاقتراح المحكمة من موطن المدعى عليه (المادة 66 من القانون رقم 58.25) أو من مقر الشركة المضمن في السجل التجاري (المادة 613). وتحددها في التشغيل الفعلي نصوص التنظيم القضائي",
+    "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna", "rabat"],
+    "districts": [
+      { "courtCode": "demo-fi-commercial", "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna"] },
+      { "courtCode": "demo-ap-commercial", "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna"] }
+    ]
+  }
+]
