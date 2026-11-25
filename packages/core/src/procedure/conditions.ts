@@ -79,16 +79,30 @@ export type EnvelopeCondition =
 
 const RAPPORTEUR_ROLES: readonly RoleCode[] = ['JUDGE_RAPPORTEUR', 'JUDGE_IN_CHARGE', 'COUNSELLOR_RAPPORTEUR'];
 
-export function deadlineState(deadlines: readonly RunningDeadline[], code: DeadlineCode, partyId: string | null, now: Date): 'OPEN' | 'ELAPSED' | 'ABSENT' {
+export function deadlineState(
+  deadlines: readonly RunningDeadline[],
+  code: DeadlineCode,
+  partyId: string | null,
+  now: Date,
+): 'OPEN' | 'ELAPSED' | 'CLOSED' | 'ABSENT' {
   const matching = deadlines.filter((d) => d.code === code && d.partyId === partyId);
   if (matching.length === 0) return 'ABSENT';
-  return matching.some((d) => d.endsAt.getTime() > now.getTime()) ? 'OPEN' : 'ELAPSED';
+  const states = matching.map((d) => {
+    const status = d.status ?? 'RUNNING';
+    if (status === 'ELAPSED') return 'ELAPSED';
+    if (status === 'MET' || status === 'CLOSED') return 'CLOSED';
+    return d.endsAt.getTime() > now.getTime() ? 'OPEN' : 'ELAPSED';
+  });
+  if (states.includes('OPEN')) return 'OPEN';
+  if (states.includes('ELAPSED')) return 'ELAPSED';
+  return 'CLOSED';
 }
 
-function deadlineMatches(actual: 'OPEN' | 'ELAPSED' | 'ABSENT', wanted: DeadlineState): boolean {
+function deadlineMatches(actual: 'OPEN' | 'ELAPSED' | 'CLOSED' | 'ABSENT', wanted: DeadlineState): boolean {
   if (wanted === 'OPEN') return actual === 'OPEN';
   if (wanted === 'ELAPSED') return actual === 'ELAPSED';
-  return actual !== 'ELAPSED';
+  // NOT_ELAPSED: open, or not started yet; a limit met or closed grants nothing more.
+  return actual === 'OPEN' || actual === 'ABSENT';
 }
 
 /** The parties the subject acts for: those it represents, or its own. */

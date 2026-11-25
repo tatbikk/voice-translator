@@ -48,11 +48,18 @@ export function knowsCase(subject: UserSubject, snapshot: CaseSnapshot): boolean
 }
 
 /** Whether a document of the given visibility may be shown to the subject. */
-export function documentVisible(subject: UserSubject, snapshot: CaseSnapshot, visibility: 'CASE' | 'PANEL' | 'JUDGE'): boolean {
+export function documentVisible(
+  subject: UserSubject,
+  snapshot: CaseSnapshot,
+  visibility: 'CASE' | 'PANEL' | 'JUDGE',
+  documentId: string,
+): boolean {
   if (visibility === 'CASE') return true;
   const judge = holdsRelation(subject, snapshot, 'RAPPORTEUR');
   if (visibility === 'JUDGE') return judge;
-  return judge || holdsRelation(subject, snapshot, 'PANEL') || holdsRelation(subject, snapshot, 'NEXT_SIGNER');
+  if (judge || holdsRelation(subject, snapshot, 'PANEL')) return true;
+  // The signer whose turn it is sees the document he signs, not the rest of the panel's documents.
+  return holdsRelation(subject, snapshot, 'NEXT_SIGNER') && (snapshot.nextSignerDocumentIds ?? []).includes(documentId);
 }
 
 function decideCaseScoped(rule: ActionRule, subject: UserSubject, resource: Resource | undefined, context: AuthorizationContext): Decision {
@@ -79,7 +86,7 @@ function decideCaseScoped(rule: ActionRule, subject: UserSubject, resource: Reso
     // document its visibility. A document one may not see does not exist for him.
     const holders = rule.caseHolders ?? [];
     if (!holders.some((h) => holds(subject, snapshot, h))) return deny('NOT_FOUND');
-    if (resource.kind === 'case-document' && !documentVisible(subject, snapshot, resource.visibility)) return deny('NOT_FOUND');
+    if (resource.kind === 'case-document' && !documentVisible(subject, snapshot, resource.visibility, resource.documentId)) return deny('NOT_FOUND');
     return { allowed: true, rule };
   }
   if (!context.now) throw new Error('authorize: platform time is required for a case file');

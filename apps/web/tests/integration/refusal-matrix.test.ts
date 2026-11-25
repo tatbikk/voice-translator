@@ -189,7 +189,7 @@ const EXPECTED_ACCESS: Readonly<Record<string, { kinds: readonly string[]; actio
   'POST /api/v1/admin/accounts/:id/activation': { kinds: ['action'], action: 'admin.accounts.reissue-activation' },
   'GET /api/v1/public/case-status': { kinds: ['gate'] },
   'GET /api/v1/public/hearings': { kinds: ['gate'] },
-  'GET /api/v1/cases/:caseId/available-actions': { kinds: ['action'], action: 'case.view' },
+  'GET /api/v1/cases/:caseId/available-actions': { kinds: ['action'], action: 'case.actions.list' },
   'POST /api/v1/cases/:caseId/actions/:action': { kinds: ['named-action'] },
   'GET /api/v1/cases/:caseId/documents/:documentId/file': { kinds: ['action'], action: 'case.document.read' },
   'GET /api/v1/cases/:caseId/documents/:documentId/signatures': { kinds: ['action'], action: 'case.document.read' },
@@ -432,7 +432,7 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
     });
 
     it('reaches only the reading of a case file, and the action endpoint that executes nothing (Phase 1, memo row 9)', () => {
-      const reads = ['case.view', 'case.document.read'];
+      const reads = ['case.view', 'case.actions.list', 'case.document.read'];
       for (const endpoint of ENDPOINTS) {
         const action = endpoint.access.action ?? '';
         if (action.startsWith('case.')) expect(reads, endpoint.id).toContain(action);

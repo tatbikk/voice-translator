@@ -362,6 +362,9 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
     'registration-receipt',
     t('documents.title.registration-receipt'),
     {
+      filingName: appeal ? DEMO_TEXTS.appealTitle : DEMO_TEXTS.applicationTitle,
+      firstInstance: appeal ? [] : [{}],
+      appeal: appeal ? [{}] : [],
       depositor: counselName,
       depositDate: formatMoroccoDate(registeredAt),
       depositTime: formatMoroccoTime(registeredAt),
@@ -497,12 +500,12 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
         panelName: file.panelName,
         pronouncementDate: pronounced ? formatMoroccoDate(pronouncedAt) : hearingDay,
         plaintiff: first.name,
-        plaintiffCounsel: counselName,
         defendants,
-        defendantsQuality: content.defendantsQuality ?? '',
-        facts: DEMO_TEXTS.facts.map((text) => ({ text })),
-        reasoning: DEMO_TEXTS.reasoning.map((text) => ({ text })),
-        operative: DEMO_TEXTS.operative.map((text) => ({ text })),
+        plaintiffQuality: content.judgment?.plaintiffQuality ?? '',
+        defendantsQuality: content.judgment?.defendantsQuality ?? '',
+        facts: (content.judgment?.facts ?? []).map((text) => ({ text })),
+        reasoning: (content.judgment?.reasoning ?? []).map((text) => ({ text })),
+        operative: (content.judgment?.operative ?? []).map((text) => ({ text })),
       },
       signers,
       pronounced ? 'CASE' : 'PANEL',
@@ -574,7 +577,9 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
 
 function dirhamsText(cents: bigint): string {
   const whole = (cents / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return t('case.amount', { amount: `${whole},${(cents % 100n).toString().padStart(2, '0')}` });
+  // Centimes only when there are some (glossary rule 7: «486.000 درهم»).
+  const fraction = cents % 100n;
+  return t('case.amount', { amount: fraction === 0n ? whole : `${whole},${fraction.toString().padStart(2, '0')}` });
 }
 
 /** Fills every demo case file not yet filled; returns how many were filled. */

@@ -166,7 +166,12 @@ export async function signDocument(input: SignerRef & { circleId: string; secret
 
   const record = await signatureProvider().sign({ documentSha256: currentSha, signerUserId: next.userId, signerRole: next.role, at: clock.now() });
   const completed = outcome.circle.status === 'COMPLETED';
-  await eventTransaction(async (tx) => {
+  const recorded = await eventTransaction(async (tx) => {
+    // The circle is locked and read again: a concurrent signature or voiding wins (review P1-S-04).
+    const locked = await tx.$queryRaw<{ status: string; signed: bigint }[]>`
+      SELECT c.status, (SELECT count(*) FROM "Signature" s WHERE s."circleId" = c.id) AS signed
+        FROM "SignatureCircle" c WHERE c.id = ${circle.id}::uuid FOR UPDATE`;
+    if (locked[0]?.status !== 'OPEN' || Number(locked[0].signed) !== state.signedCount) return false;
     await tx.signature.create({
       data: {
         circleId: circle.id,
@@ -193,10 +198,12 @@ export async function signDocument(input: SignerRef & { circleId: string; secret
       caseFileId,
       actor: input.actor ?? null,
     });
+    if (completed) {
+      await appendEvent(tx, { action: 'signature.circle.completed', details: { circleId: circle.id, documentId: circle.documentId }, caseFileId, actor: input.actor ?? null });
+    }
+    return true;
   });
-  if (completed) {
-    await appendStandaloneEvent({ action: 'signature.circle.completed', details: { circleId: circle.id, documentId: circle.documentId }, caseFileId, actor: input.actor ?? null });
-  }
+  if (!recorded) return refuse('CIRCLE_CLOSED');
   return { ok: true, completed, stampKey: record.simulated ? SIMULATED_STAMP_KEY : 'signature.stamp.qualified' };
 }
 

@@ -21,6 +21,15 @@ export const GET = defineEndpoint({
     if (!doc) return notFound();
     const stored = await documentBytes(doc);
     if (!stored) return fail(503, 'UNAVAILABLE');
+    if (stored.sha256 !== doc.sha256) {
+      await appendStandaloneEvent({
+        action: 'document.integrity.failed',
+        details: { documentId: doc.id, currentSha256: stored.sha256 },
+        caseFileId: doc.caseFileId,
+        actor: session?.actor ?? null,
+      });
+      return fail(503, 'UNAVAILABLE');
+    }
     await appendStandaloneEvent({
       action: 'document.downloaded',
       details: { documentId: doc.id },

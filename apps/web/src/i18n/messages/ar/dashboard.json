@@ -6,7 +6,7 @@
   "dashboard.empty.awaitingAction": "لا يوجد إجراء في انتظاركم.",
   "dashboard.empty.approachingDeadlines": "لا يوجد أجل يقترب.",
   "dashboard.empty.newSinceLastLogin": "لا يوجد جديد منذ آخر دخول.",
-  "dashboard.roleLine": "{role}، {space}",
+  "dashboard.roleLine": "الصفة التي تعملون بها: {role}",
   "dashboard.previousLogin": "آخر دخول: {date} على الساعة {time}.",
   "dashboard.firstLogin": "هذا أول دخول إلى الحساب.",
   "dashboard.chain.broken": "كشف التحقق الدوري خللا في سلسلة سجل الأحداث. يتعين فحصه قبل أي إجراء آخر.",
@@ -32,5 +32,6 @@
   "account.verification": "التحقق من الصفة",
   "account.switchRole": "تبديل الصفة",
   "account.demoAccount": "حساب من حسابات العرض",
-  "dashboard.deadline.lastDay": "آخر يوم: {day}"
+  "dashboard.deadline.lastDay": "آخر يوم: {day}",
+  "dashboard.box.headingLabel": "{title}، العدد: {count}"
 }

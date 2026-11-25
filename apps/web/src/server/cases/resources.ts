@@ -16,5 +16,5 @@ export async function documentResource(caseFileId: string, documentId: string, n
   const doc = await getDb().document.findFirst({ where: { id: documentId, caseFileId }, select: { visibility: true } });
   if (!doc) return null;
   const snapshot = await caseSnapshot(caseFileId, now);
-  return snapshot ? { kind: 'case-document', snapshot, visibility: doc.visibility } : null;
+  return snapshot ? { kind: 'case-document', snapshot, visibility: doc.visibility, documentId } : null;
 }

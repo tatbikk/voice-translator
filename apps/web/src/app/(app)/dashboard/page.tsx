@@ -1,4 +1,4 @@
-import { ROLES, formatMoroccoDate, formatMoroccoTime, roleLabelKey } from '@mahkama/core';
+import { formatMoroccoDate, formatMoroccoTime, roleLabelKey } from '@mahkama/core';
 import { translator } from '@/i18n/translate';
 import { Box } from '@/components/ui/Box';
 import { NotificationItem } from '@/components/ui/NotificationItem';
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     <Frame context={context}>
       <PageHeader
         title={t('screens.dashboard')}
-        kicker={t('dashboard.roleLine', { role: roleText, space: t(`spaces.${ROLES[subject.role].space}`) })}
+        kicker={t('dashboard.roleLine', { role: roleText })}
       >
         <p className="mt-2 text-sm text-text-muted">
           {data.previousLoginAt
@@ -52,6 +52,7 @@ export default async function DashboardPage() {
           id="awaiting"
           title={t('dashboard.boxes.awaitingAction')}
           count={data.waiting.length}
+          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.awaitingAction'), count: data.waiting.length })}
           emptyText={t('dashboard.empty.awaitingAction')}
         >
           <ul className="space-y-3">
@@ -71,6 +72,7 @@ export default async function DashboardPage() {
           id="deadlines"
           title={t('dashboard.boxes.approachingDeadlines')}
           count={data.deadlines.length}
+          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.approachingDeadlines'), count: data.deadlines.length })}
           emptyText={t('dashboard.empty.approachingDeadlines')}
         >
           <ul className="space-y-3">
@@ -94,6 +96,7 @@ export default async function DashboardPage() {
           id="new"
           title={t('dashboard.boxes.newSinceLastLogin')}
           count={data.newSinceLastLogin.length}
+          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.newSinceLastLogin'), count: data.newSinceLastLogin.length })}
           emptyText={t('dashboard.empty.newSinceLastLogin')}
         >
           <ul className="space-y-3">

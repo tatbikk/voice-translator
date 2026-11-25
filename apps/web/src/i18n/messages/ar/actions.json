@@ -42,6 +42,7 @@
   "actions.basis.articles.two": "المادتان {articles} من القانون رقم 58.25",
   "actions.basis.articles.many": "المواد {articles} من القانون رقم 58.25",
   "actions.case.view.label": "الاطلاع على الملف",
-  "actions.events.chain-status.view.label": "حالة سلسلة سجل الأحداث",
-  "actions.environment.view.label": "مكونات بيئة العرض"
+  "actions.case.actions.list.label": "الاطلاع على الإجراءات المتاحة",
+  "actions.events.chain-status.view.label": "الاطلاع على حالة سلسلة سجل الأحداث",
+  "actions.environment.view.label": "الاطلاع على مكونات بيئة العرض"
 }

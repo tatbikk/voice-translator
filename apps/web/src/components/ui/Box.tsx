@@ -7,21 +7,26 @@ export function Box({
   title,
   count,
   emptyText,
+  headingLabel,
   children,
 }: {
   id: string;
   title: string;
   count: number;
   emptyText: string;
+  /** what a screen reader hears for the heading: the title with its count spelled out (I-09) */
+  headingLabel: string;
   children?: ReactNode;
 }) {
   const headingId = `${id}-title`;
   return (
     <section aria-labelledby={headingId} className="card flex flex-col">
       <h2 id={headingId} className="flex items-center justify-between gap-3 border-b border-line px-5 py-4 text-lg">
-        <span>{title}</span>
+        <span className="sr-only">{headingLabel}</span>
+        <span aria-hidden="true">{title}</span>
         {/* A filled circle when something waits in the box. */}
         <span
+          aria-hidden="true"
           className={
             'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 font-sans text-sm font-semibold tabular-nums ' +
             (count > 0 ? 'bg-ink-800 text-white' : 'bg-ink-100 text-ink-800')

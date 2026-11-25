@@ -149,6 +149,12 @@ export interface RunningDeadline {
   /** the party the time limit runs against, or null for the file */
   readonly partyId: string | null;
   readonly endsAt: Date;
+  /**
+   * The status stored with the limit (default RUNNING, read against endsAt).
+   * A limit recorded ELAPSED stays elapsed; one MET or CLOSED is neither open
+   * nor elapsed, and grants nothing (review P1-S-02).
+   */
+  readonly status?: 'RUNNING' | 'MET' | 'ELAPSED' | 'CLOSED';
 }
 
 export interface CaseSnapshot {
@@ -166,6 +172,8 @@ export interface CaseSnapshot {
   readonly deadlines: readonly RunningDeadline[];
   /** who must sign the judgment now (the open circle's next signer) */
   readonly nextSignerUserIds: readonly string[];
+  /** the documents whose open circle waits for one of nextSignerUserIds (review P1-S-03) */
+  readonly nextSignerDocumentIds?: readonly string[];
   /** who must sign the hearing minutes now */
   readonly minutesNextSignerUserIds: readonly string[];
   /** banks holding a garnishment of this enforcement file */

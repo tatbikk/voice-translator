@@ -33,8 +33,14 @@ export interface DemoCaseContent {
   readonly panel: 'fiFirst' | 'fiSecond' | 'apFirst';
   readonly parties: readonly DemoParty[];
   readonly claims: readonly DemoClaim[];
-  /** «ينوب عنها … بصفتها مدعى عليها», agreed with the number of defendants (judgment only) */
-  readonly defendantsQuality?: string;
+  /** the generated judgment's texts, agreed with the parties of the file (judgment only) */
+  readonly judgment?: {
+    readonly plaintiffQuality: string;
+    readonly defendantsQuality: string;
+    readonly facts: readonly string[];
+    readonly reasoning: readonly string[];
+    readonly operative: readonly string[];
+  };
 }
 
 const sarl = 'شركة ذات مسؤولية محدودة';
@@ -48,8 +54,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: null,
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة حاء للبناء', legalForm: sarl, address: 'الدار البيضاء، زنقة النموذج، رقم 12', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة طاء للتجهيز', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 40', addressSource: 'DECLARED' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة حاء زاي للبناء', legalForm: sarl, address: 'الدار البيضاء، زنقة النموذج، رقم 12', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة طاء ياء للتجهيز', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 40', addressSource: 'DECLARED' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 125_000 },
@@ -64,8 +70,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة ياء للتوزيع', legalForm: sa, address: 'الدار البيضاء، زنقة المثال، رقم 3', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'NATURAL', name: 'السيد ثاء دال', address: 'المحمدية، حي النموذج، رقم 7', addressSource: 'DECLARED' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة ياء دال للتوزيع', legalForm: sa, address: 'الدار البيضاء، زنقة المثال، رقم 3', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'NATURAL', name: 'السيد خاء زاي', address: 'المحمدية، حي النموذج، رقم 7', addressSource: 'DECLARED' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 92_000 },
@@ -79,8 +85,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiSecond',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة لام للنسيج', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 18', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة ميم للخدمات', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 55', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة لام هاء للنسيج', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 18', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة ميم واو للخدمات', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 55', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 210_000 },
@@ -94,8 +100,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة نون للأغذية', legalForm: sa, address: 'الدار البيضاء، شارع المثال، رقم 9', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة سين للتبريد', legalForm: sarl, address: 'برشيد، المنطقة الصناعية النموذجية، رقم 2', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة نون زاي للأغذية', legalForm: sa, address: 'الدار البيضاء، شارع المثال، رقم 9', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة سين هاء للتبريد', legalForm: sarl, address: 'برشيد، المنطقة الصناعية النموذجية، رقم 2', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 340_000 },
@@ -109,11 +115,20 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiSecond',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة عين للمعادن', legalForm: sa, address: 'الدار البيضاء، زنقة النموذج، رقم 30', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة فاء للتصدير', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 71', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة عين دال للمعادن', legalForm: sa, address: 'الدار البيضاء، زنقة النموذج، رقم 30', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة فاء زاي للتصدير', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 71', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
     ],
     claims: [{ party: 'p', category: 'PRINCIPAL', nature: 'DAMAGES', dirhams: 150_000 }],
-    defendantsQuality: 'ينوب عنها الأستاذ هاء، بصفتها مدعى عليها',
+    judgment: {
+      plaintiffQuality: 'تنوب عنها الأستاذة دال، بصفتها مدعية',
+      defendantsQuality: 'ينوب عنها الأستاذ هاء، بصفتها مدعى عليها',
+      facts: [
+        'تقدمت المدعية بمقال افتتاحي تعرض فيه أنها أبرمت مع المدعى عليها عقد توريد أخلت هذه الأخيرة بالتزاماتها الناشئة عنه، والتمست الحكم لها بتعويض قدره 150.000 درهم.',
+        'وأجابت المدعى عليها بمذكرة نازعت فيها في الإخلال وفي مقدار التعويض، وأدلى الطرفان بمستنداتهما، وحجزت القضية للمداولة.',
+      ],
+      reasoning: ['حيث ثبت للمحكمة من عقد التوريد والمراسلات المدلى بها أن المدعى عليها أخلت بالتزامها بالتوريد في الأجل المتفق عليه، وأن هذا الإخلال ألحق بالمدعية ضررا يستحق التعويض.'],
+      operative: ['حكمت المحكمة علنيا ابتدائيا وحضوريا بأداء المدعى عليها لفائدة المدعية تعويضا قدره 150.000 درهم، وتحميلها المصاريف.'],
+    },
   },
   {
     number: 980,
@@ -122,8 +137,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة صاد للأثاث', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 14', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة قاف للتجارة', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 88', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة صاد واو للأثاث', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 14', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة قاف هاء للتجارة', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 88', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
       { key: 'g', side: 'GUARANTOR', personKind: 'NATURAL', name: 'السيد جيم', address: 'الدار البيضاء، حي المثال، رقم 5', addressSource: 'DECLARED', counsel: 'lawyer.defendants', litigant: true },
     ],
     claims: [
@@ -131,7 +146,16 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
       { party: 'p', category: 'PRINCIPAL', nature: 'LEGAL_INTEREST', dirhams: null },
       { party: 'p', category: 'PRINCIPAL', nature: 'COSTS', dirhams: null },
     ],
-    defendantsQuality: 'ينوب عنهما الأستاذ هاء، بصفتهما مدعى عليهما',
+    judgment: {
+      plaintiffQuality: 'تنوب عنها الأستاذة دال، بصفتها مدعية',
+      defendantsQuality: 'ينوب عنهما الأستاذ هاء، بصفتهما مدعى عليهما',
+      facts: [
+        'تقدمت المدعية بمقال افتتاحي تعرض فيه أنها وردت للمدعى عليها الأولى أثاثا مكتبيا بقيت فواتيره دون أداء، وأن المدعى عليه الثاني كفلها في أداء ديونها، والتمست الحكم عليهما بالتضامن بأداء أصل الدين مع الفوائد القانونية والمصاريف.',
+        'وأجاب المدعى عليهما بمذكرة نازعا فيها في جزء من المبلغ، وأدلى الأطراف بمستنداتهم، وحجزت القضية للمداولة.',
+      ],
+      reasoning: ['حيث ثبت للمحكمة من الفواتير وسندات التسليم المدلى بها أن المدعى عليها الأولى توصلت بالبضاعة ولم تثبت أداء ثمنها، وأن المدعى عليه الثاني ملزم بأدائه بحكم كفالته.'],
+      operative: ['حكمت المحكمة علنيا ابتدائيا وحضوريا بأداء المدعى عليهما بالتضامن لفائدة المدعية أصل الدين مع الفوائد القانونية من تاريخ الطلب، وتحميلهما المصاريف.'],
+    },
   },
   {
     number: 312,
@@ -140,8 +164,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'counsellor.rapporteur',
     panel: 'apFirst',
     parties: [
-      { key: 'a', side: 'APPELLANT', personKind: 'LEGAL', name: 'شركة راء للتأمين', legalForm: sa, address: 'الرباط، شارع النموذج، رقم 6', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
-      { key: 'r', side: 'RESPONDENT', personKind: 'LEGAL', name: 'شركة شين للنقل', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 21', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'a', side: 'APPELLANT', personKind: 'LEGAL', name: 'شركة راء واو للتأمين', legalForm: sa, address: 'الرباط، شارع النموذج، رقم 6', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'r', side: 'RESPONDENT', personKind: 'LEGAL', name: 'شركة شين دال للنقل', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 21', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
     ],
     claims: [{ party: 'a', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 150_000 }],
   },
@@ -161,11 +185,5 @@ export const DEMO_TEXTS = {
   nameJoiner: ' و',
   summons: 'باستدعاء الأطراف لجلسة {date}، وتبليغ نسخة من المقال الافتتاحي إلى المدعى عليه، مع الإشارة إلى وجوب تقديم مذكرات الدفاع والمستندات قبل الجلسة.',
   expertise: 'بإجراء خبرة حسابية يعهد بها إلى الخبير السيد تاء، لتحديد المبالغ المؤداة فعلا ورصيد الحساب بين الطرفين.',
-  deposit: 'وبإيداع مبلغ 8.000,00 درهم بصندوق المحكمة من طرف المدعية داخل أجل خمسة عشر يوما من تاريخ تبليغ هذا الأمر.',
-  facts: [
-    'تقدمت المدعية بمقال افتتاحي تعرض فيه أنها وردت للمدعى عليها بضاعة بقيت فواتيرها دون أداء، والتمست الحكم بأداء أصل الدين مع الفوائد القانونية والمصاريف.',
-    'وأجابت المدعى عليها بمذكرة نازعت فيها في جزء من المبلغ، وأدلى الطرفان بمستنداتهما، وحجزت القضية للمداولة.',
-  ],
-  reasoning: ['حيث ثبت للمحكمة من الفواتير وسندات التسليم المدلى بها أن المدعى عليها توصلت بالبضاعة ولم تثبت أداء ثمنها.'],
-  operative: ['تحكم المحكمة علنيا ابتدائيا وحضوريا بأداء المدعى عليها لفائدة المدعية أصل الدين مع الفوائد القانونية من تاريخ الطلب، وتحميلها المصاريف.'],
+  deposit: 'وبإيداع مبلغ 8.000 درهم بصندوق المحكمة من طرف المدعية داخل أجل خمسة عشر يوما من تاريخ تبليغ هذا الأمر.',
 } as const;

@@ -44,10 +44,10 @@ export const DASHBOARD = {
 /** The case page (study «العناصر المشتركة», interface book). */
 export const CASE_PAGE = {
   tabs: ['الخط الزمني', 'الوثائق', 'الأطراف', 'الطلبات', 'التبليغات', 'الآجال', 'الأداءات', 'المقررات'] as const, // study, the eight tabs
-  actionsTitle: 'الإجراءات المتاحة', // build prompt, «الإجراءات المتاحة»
+  actionsTitle: 'شريط الإجراءات', // study «شريط للإجراءات», glossary case.actionBar
   dispatch: 'تنفيذ', // study, «واجهة كتابة الضبط» (envelopes ready)
   challengeDeadline: 'أجل طلب تجريح الخبير', // case.deadlines.rule.EXPERT_CHALLENGE
-  download: 'تحميل',
+  download: 'تنزيل', // linguistic review P1-L-02
 } as const;
 
 /** Top bar (contract §7). */

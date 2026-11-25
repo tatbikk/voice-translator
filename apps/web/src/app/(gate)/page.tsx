@@ -23,7 +23,7 @@ export default async function HomePage() {
       <section aria-labelledby="home-title" className="border-b border-line bg-paper">
         <div className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
           <h1 id="home-title" className="text-[2.25rem] leading-[1.35] sm:text-5xl sm:leading-[1.3]">
-            {t('common.platformName')}
+            {t('home.heading')}
           </h1>
           <div aria-hidden="true" className="mt-5 h-0.5 w-16 bg-ink-800" />
           <p className="mt-6 max-w-3xl text-lg leading-[1.95] sm:text-xl sm:leading-[1.9]">{t('home.intro')}</p>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  deadlineState,
   ACTION_CODES,
   ACTIONS,
   ROLE_CODES,
@@ -75,7 +76,8 @@ const passingResource: Partial<Record<string, Resource>> = {
     role: 'LAWYER',
   },
   'case.view': counselledCase,
-  'case.document.read': { ...counselledCase, kind: 'case-document', visibility: 'CASE' },
+  'case.actions.list': counselledCase,
+  'case.document.read': { ...counselledCase, kind: 'case-document', visibility: 'CASE', documentId: OTHER_ID },
   'demo.account.switch': { kind: 'demo-account', userId: OTHER_ID, isDemo: true },
 };
 
@@ -92,6 +94,7 @@ const EXPECTED: Record<(typeof ACTION_CODES)[number], readonly RoleCode[] | type
   'admin.accounts.create': ['SYSTEM_ADMIN'],
   'admin.accounts.reissue-activation': ['SYSTEM_ADMIN'],
   'case.view': ['LAWYER'],
+  'case.actions.list': ['LAWYER'],
   'case.document.read': ['LAWYER'],
   'events.chain-status.view': ['SYSTEM_ADMIN'],
   'environment.view': ALL,
@@ -286,5 +289,22 @@ describe('legal basis of account creation (Law 58.25)', () => {
     for (const role of ROLE_CODES) {
       expect(['INTERNAL', 'PROFESSIONAL', 'PUBLIC_PERSON', 'PRIVATE_PERSON']).toContain(ROLES[role].accountBasis);
     }
+  });
+});
+
+describe('stored time-limit status (review P1-S-02)', () => {
+  const future = new Date(Date.now() + 86_400_000);
+  const past = new Date(Date.now() - 86_400_000);
+  const now = new Date();
+  it('keeps a limit recorded ELAPSED elapsed, even before its end', () => {
+    expect(deadlineState([{ code: 'APPEAL', partyId: 'p', endsAt: future, status: 'ELAPSED' }], 'APPEAL', 'p', now)).toBe('ELAPSED');
+  });
+  it('reads a running limit against its end', () => {
+    expect(deadlineState([{ code: 'APPEAL', partyId: 'p', endsAt: future }], 'APPEAL', 'p', now)).toBe('OPEN');
+    expect(deadlineState([{ code: 'APPEAL', partyId: 'p', endsAt: past, status: 'RUNNING' }], 'APPEAL', 'p', now)).toBe('ELAPSED');
+  });
+  it('treats a limit met or closed as neither open nor absent', () => {
+    expect(deadlineState([{ code: 'APPEAL', partyId: 'p', endsAt: future, status: 'MET' }], 'APPEAL', 'p', now)).toBe('CLOSED');
+    expect(deadlineState([], 'APPEAL', 'p', now)).toBe('ABSENT');
   });
 });

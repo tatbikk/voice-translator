@@ -128,6 +128,8 @@ export const EVENT_TYPES = {
     details: detailsOf({ documentId: id, sha256: hash, byteSize: count, generated: z.boolean(), docType: code }),
   },
   'document.downloaded': { outcome: 'DONE', details: detailsOf({ documentId: id }) },
+  /** the stored bytes no longer have the document's hash: nothing is served (review P1-S-11) */
+  'document.integrity.failed': { outcome: 'FAILED', details: detailsOf({ documentId: id, currentSha256: hash }) },
   'document.generation.failed': { outcome: 'FAILED', details: detailsOf({ template: code, errorClass: code }) },
   'signature.secret.set': { outcome: 'DONE', details: detailsOf({ userId: id }) },
   'signature.circle.opened': {

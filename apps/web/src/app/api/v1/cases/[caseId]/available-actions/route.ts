@@ -15,7 +15,7 @@ export const GET = defineEndpoint({
   id: 'cases.available-actions',
   method: 'GET',
   path: '/api/v1/cases/:caseId/available-actions',
-  access: { kind: 'action', action: 'case.view' },
+  access: { kind: 'action', action: 'case.actions.list' },
   params: z.strictObject({ caseId: z.uuid() }),
   resource: (params) => caseResource(params.caseId, clock.now()),
   handler: ({ req, subject, resource }) => {

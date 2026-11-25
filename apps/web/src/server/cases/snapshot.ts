@@ -37,7 +37,8 @@ export async function caseSnapshot(caseFileId: string, now: Date, options: { sum
         orderBy: { position: 'asc' },
         include: { representations: { where: { endedAt: null }, select: { lawyerUserId: true } } },
       },
-      timeLimits: { where: { status: 'RUNNING' }, select: { ruleCode: true, partyId: true, endsAt: true } },
+      // Every limit with its stored status: one recorded ELAPSED must not read as absent (review P1-S-02).
+      timeLimits: { select: { ruleCode: true, partyId: true, endsAt: true, status: true } },
       investigations: { orderBy: { createdAt: 'desc' }, take: 1, select: { expertUserId: true } },
       decisions: { select: { kind: true, pronouncedAt: true, final: true, provisionalEnforcement: true, signatureCircleId: true } },
       documents: { where: { generated: false, channel: 'ELECTRONIC' }, take: 1, select: { id: true } },
@@ -62,6 +63,7 @@ export async function caseSnapshot(caseFileId: string, now: Date, options: { sum
   // The judgment and its signature circle.
   const judgment = file.decisions.find((d) => d.kind === 'JUDGMENT' || d.kind === 'APPELLATE_DECISION');
   let nextSignerUserIds: string[] = [];
+  let nextSignerDocumentIds: string[] = [];
   if (judgment) {
     if (judgment.pronouncedAt) facts.add('JUDGMENT_PRONOUNCED');
     if (judgment.final) facts.add('DECISION_FINAL');
@@ -69,14 +71,19 @@ export async function caseSnapshot(caseFileId: string, now: Date, options: { sum
     if (judgment.signatureCircleId) {
       const circle = await db.signatureCircle.findUnique({
         where: { id: judgment.signatureCircleId },
-        select: { status: true, signers: true, _count: { select: { signatures: true } } },
+        select: { status: true, signers: true, documentId: true, _count: { select: { signatures: true } } },
       });
-      if (circle?.status === 'COMPLETED') facts.add('SIGNATURES_COMPLETE');
+      const signerCount = Array.isArray(circle?.signers) ? circle.signers.length : Number.POSITIVE_INFINITY;
+      // Complete only with every signature present, whatever the stored status says (review P1-S-04).
+      if (circle?.status === 'COMPLETED' && circle._count.signatures >= signerCount) facts.add('SIGNATURES_COMPLETE');
       if (circle?.status === 'OPEN') {
         facts.add('SIGNATURE_CIRCLE_OPEN');
         const signers = circle.signers as unknown as { userId: string }[];
         const next = signers[circle._count.signatures];
-        if (next) nextSignerUserIds = [next.userId];
+        if (next) {
+          nextSignerUserIds = [next.userId];
+          nextSignerDocumentIds = [circle.documentId];
+        }
       }
     }
   }
@@ -105,8 +112,9 @@ export async function caseSnapshot(caseFileId: string, now: Date, options: { sum
     }),
     deadlines: file.timeLimits
       .filter((t) => DEADLINE_SET.has(t.ruleCode))
-      .map((t) => ({ code: t.ruleCode as DeadlineCode, partyId: t.partyId, endsAt: t.endsAt })),
+      .map((t) => ({ code: t.ruleCode as DeadlineCode, partyId: t.partyId, endsAt: t.endsAt, status: t.status })),
     nextSignerUserIds,
+    nextSignerDocumentIds,
     minutesNextSignerUserIds: [],
     garnisheeOrganizationIds: file.enforcement.map((e) => e.organizationId).filter((o): o is string => o !== null),
     summonsCodeHolderUserIds: options.summonsCodeHolder ? [options.summonsCodeHolder.userId] : [],

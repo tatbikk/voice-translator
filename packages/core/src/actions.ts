@@ -24,6 +24,7 @@ export const ACTION_CODES = [
   'admin.accounts.create',
   'admin.accounts.reissue-activation',
   'case.view',
+  'case.actions.list',
   'case.document.read',
   'events.chain-status.view',
   'environment.view',
@@ -202,6 +203,19 @@ const BASE_ACTIONS: Readonly<Record<BaseActionCode, ActionRule>> = {
     button: false,
     holders: CASE_VIEW_HOLDERS.flatMap((h) => h.roles),
     caseHolders: CASE_VIEW_HOLDERS,
+    requires: [],
+    resourceKind: 'case',
+  }),
+  'case.actions.list': rule('case.actions.list', {
+    // «الإجراءات المتاحة» over the interface (review P1-A-03): whoever may open
+    // the file, and those the file knows through a mission of their own, the
+    // expert and the garnishee bank, who act in it without seeing the whole file.
+    level: 'SCRIPT',
+    legalBasis: lawArticles(624, 630),
+    confirm: false,
+    button: false,
+    holders: [...CASE_VIEW_HOLDERS.flatMap((h) => h.roles), 'EXPERT', 'GARNISHEE_BANK'],
+    caseHolders: [...CASE_VIEW_HOLDERS, { roles: ['EXPERT'], relations: ['EXPERT'] }, { roles: ['GARNISHEE_BANK'], relations: ['GARNISHEE'] }],
     requires: [],
     resourceKind: 'case',
   }),

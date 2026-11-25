@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ACTIONS } from '@mahkama/core';
 import { caseResource } from '@/server/cases/resources';
 import { clock } from '@/server/clock';
 import { appendStandaloneEvent } from '@/server/events/append';
@@ -10,14 +11,15 @@ import { fail } from '@/server/http/responses';
 // an action the state or the role does not allow is refused (and recorded),
 // whoever sends it and however. The action's execution is registered with its
 // screen, from Phase 2 on; until then an allowed action is answered that it is
-// not executed from this route (decision 45).
+// not executed from this route (decision 46).
 export const POST = defineEndpoint({
   id: 'cases.action',
   method: 'POST',
   path: '/api/v1/cases/:caseId/actions/:action',
   access: { kind: 'named-action', prefix: 'case.' },
   params: z.strictObject({ caseId: z.uuid(), action: z.string().regex(/^[a-z][a-z0-9.-]{2,80}$/) }),
-  actionFrom: (params) => params.action,
+  // Only a procedural act is named here; an access (case.view…) is unknown on this route (review P1-A-14).
+  actionFrom: (params) => (ACTIONS[params.action]?.procedure ? params.action : 'unknown'),
   resource: (params) => caseResource(params.caseId, clock.now()),
   body: z.strictObject({}),
   handler: async ({ params, session, action }) => {
