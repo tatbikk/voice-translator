@@ -61,20 +61,20 @@ async function fileModelCase(page: Page): Promise<string> {
   for (const [index, party] of MODEL_CASE.parties.entries()) {
     if (index > 0) await page.getByRole('button', { name: FILING.addParty }).click();
     const block = page.getByRole('group', { name: new RegExp(`الطرف ${String(index + 1)}`) });
-    await block.getByLabel('الصفة في الدعوى').selectOption(party.side);
+    await block.getByLabel('مركز الطرف في الدعوى').selectOption(party.side);
     await block.getByLabel('نوع الشخص').selectOption(party.personKind);
     if (party.idNumber?.startsWith('RC-')) {
       await block.getByLabel(FILING.registerNumber).fill(party.idNumber);
       await block.getByRole('button', { name: FILING.lookupRegister }).click();
-      await expect(block.getByText(FILING.simulatedSource)).toBeVisible();
+      await expect(block.getByText(FILING.simulatedSource, { exact: true })).toBeVisible();
       await expect(block.getByLabel('الاسم')).toHaveValue(party.name);
     } else {
       await block.getByLabel('الاسم').fill(party.name);
       await block.getByLabel('الموطن أو محل الإقامة').fill(party.domicile?.value ?? '');
     }
-    if (party.quality) await block.getByLabel('الصفة', { exact: true }).fill(party.quality);
+    if (party.quality) await block.getByLabel('صفة الطرف').fill(party.quality);
     if (party.email) await block.getByLabel('البريد الإلكتروني').fill(party.email);
-    if (party.representedByFiler) await block.getByLabel('أنوب عن هذا الطرف').check();
+    if (party.representedByFiler) await block.getByLabel('ينوب المحامي المودع عن هذا الطرف').check();
   }
   await page.getByLabel('موجز الموضوع والوقائع والأسباب').fill(MODEL_CASE.summary);
   for (const [index, claim] of MODEL_CASE.claims.entries()) {
@@ -149,7 +149,8 @@ test.describe('the filing and the registration (Phase 2)', () => {
     await page.getByRole('link', { name: /صفحة الملف/ }).click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.caseFile);
     await expect(page.locator('main')).toContainText('مقيد');
-    await expect(page.locator('main')).toContainText(/راجع النظام الإحالات/);
+    // The model case calls for no referral, and the file says so (study, «ولم يجد موجبا للإحالة»).
+    await expect(page.locator('main')).toContainText('مراجعة الإحالات الواجبة: لم يوجد موجب للإحالة');
   });
 
   test('the registry finds three buttons and none to reject, stamps the file, and files a paper application', async ({ page, context }) => {
@@ -185,6 +186,47 @@ test.describe('the filing and the registration (Phase 2)', () => {
     await page.getByLabel(FILING.originalLocation).fill('خزانة مكتب التقييد، الرف 2');
     await page.getByRole('button', { name: FILING.save }).click();
     await expect(page.getByRole('heading', { level: 2, name: FILING.steps[1] })).toBeVisible();
+    await next(page, 2);
+
+    // 3. The card the clerk authenticates with the depositor: typed by hand.
+    const plaintiff = page.getByRole('group', { name: /الطرف 1/ });
+    await plaintiff.getByLabel('مركز الطرف في الدعوى').selectOption('PLAINTIFF');
+    await plaintiff.getByLabel('نوع الشخص').selectOption('NATURAL');
+    await plaintiff.getByLabel('الاسم').fill('السيد عين');
+    await page.getByRole('button', { name: FILING.addParty }).click();
+    const defendant = page.getByRole('group', { name: /الطرف 2/ });
+    await defendant.getByLabel('مركز الطرف في الدعوى').selectOption('DEFENDANT');
+    await defendant.getByLabel('الاسم').fill('شركة غين للخدمات');
+    await page.getByLabel('موجز الموضوع والوقائع والأسباب').fill('يطالب المدعي بثمن خدمات أداها للمدعى عليها ولم تؤده.');
+    const claim = page.getByRole('group', { name: /الطلب 1/ });
+    await claim.getByLabel('طبيعة الطلب').selectOption('DEBT');
+    await claim.getByLabel('المبلغ بالدرهم').fill('20000');
+    for (const box of await page.getByRole('checkbox', { name: FILING.conforms }).all()) await box.check();
+    await page.getByRole('button', { name: FILING.save }).click();
+    await next(page, 3);
+    await next(page, 4);
+
+    // 5. The depositor first, then the fee at the court's counter (decision 60).
+    await page.getByLabel('اسم المودع').fill('السيد فاء');
+    await page.getByRole('button', { name: FILING.save }).click();
+    await expect(page.getByRole('button', { name: FILING.pay })).toBeEnabled();
+    await page.getByRole('button', { name: FILING.pay }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.payment);
+    await page.getByRole('button', { name: FILING.succeed }).click();
+    await expect(page.getByRole('heading', { name: FILING.paymentReceipt })).toBeVisible();
+    await page.getByRole('link', { name: FILING.backToDraft }).click();
+
+    // 6. The clerk authenticates the card and hands over the receipt: no electronic signature (decision 59).
+    await expect(page.getByRole('heading', { level: 2, name: FILING.steps[5] })).toBeVisible();
+    await page.getByRole('button', { name: FILING.paperFile }).click();
+    await dialogOf(page).getByRole('button', { name: FORMS.account.confirm }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.receipt);
+    await expect(page.locator('main')).toContainText(/\d+\/8201\/\d{4}/);
+
+    // The clerk lists the paper drafts, and is offered no button he does not hold.
+    await page.goto('/filings');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.filings);
+    await expect(page.getByRole('button', { name: FILING.newCase })).toHaveCount(0);
   });
 
   test('the cashier sees the incoming payment and its match with the claims', async ({ page, context }) => {
@@ -207,6 +249,7 @@ test.describe('the filing and the registration (Phase 2)', () => {
     const referrals = page.getByRole('region', { name: OFFICES.referrals });
     await expect(referrals).toBeVisible();
     await expect(referrals.getByRole('heading', { name: OFFICES.communication })).toBeVisible();
+    await expect(referrals.getByRole('link', { name: OFFICES.viewCase }).first()).toBeVisible();
     const link = referrals.getByRole('link').first();
     await link.click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.caseFile);

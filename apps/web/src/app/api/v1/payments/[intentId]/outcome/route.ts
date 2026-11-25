@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SECURITY_POLICY } from '@mahkama/core';
 import { defineEndpoint } from '@/server/http/endpoint';
 import { fail, notFound, ok } from '@/server/http/responses';
 import { callerOf } from '@/server/filings/http';
@@ -14,6 +15,7 @@ export const POST = defineEndpoint({
   access: { kind: 'action', action: 'payment.simulate' },
   params: z.strictObject({ intentId: z.uuid() }),
   resource: (p) => intentResource(p.intentId),
+  rateLimit: (_client, session) => ({ key: `filing-writes:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.filing.writesPerSession }),
   body: z.strictObject({ outcome: z.enum(['SUCCEEDED', 'FAILED', 'CANCELLED']) }),
   handler: async ({ params: p, body, session }) => {
     const caller = callerOf(session);

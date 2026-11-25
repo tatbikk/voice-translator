@@ -16,6 +16,7 @@ import { clock } from '@/server/clock';
 import { CaseNumber } from '@/components/ui/CaseNumber';
 import { longDay } from '@/components/case/format';
 import type { Metadata } from 'next';
+import { buttonClass } from '@/components/ui/Button';
 import { screenMetadata } from '@/server/page-metadata';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.dashboard');
@@ -155,6 +156,10 @@ function ReferralList({ t, title, rows }: { t: Translator; title: string; rows: 
               <span className="block text-text-muted">
                 {t(`prosecution.reason.${r.reasonCode}`)} — {t(r.item ? 'prosecution.basisItem' : 'prosecution.basis', { article: r.article, item: r.item ?? '' })}
               </span>
+              {/* The study's button: «الاطلاع على الملف» (audit G083). */}
+              <a href={`/cases/${r.caseFileId}`} className={buttonClass('secondary', 'mt-2')}>
+                {t('actions.case.prosecution.view.label')}
+              </a>
             </li>
           ))}
         </ul>

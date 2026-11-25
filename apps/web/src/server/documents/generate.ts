@@ -108,12 +108,16 @@ export class DocumentGenerationError extends Error {
 }
 
 /** Prints the document to PDF in an isolated, offline browser. */
-export async function generatePdf(input: GenerateInput): Promise<Uint8Array> {
+export async function generatePdf(input: GenerateInput, signal?: AbortSignal): Promise<Uint8Array> {
   const pageText = input.pageLabel.replace('{page}', '<span class="pageNumber"></span>').replace('{pages}', '<span class="totalPages"></span>');
-  return printPdf(documentHtml(input), {
-    headerHtml: headerFooter(input.environmentLine ? escapeLine(input.environmentLine) : ''),
-    footerHtml: headerFooter(pageText),
-  });
+  return printPdf(
+    documentHtml(input),
+    {
+      headerHtml: headerFooter(input.environmentLine ? escapeLine(input.environmentLine) : ''),
+      footerHtml: headerFooter(pageText),
+    },
+    signal,
+  );
 }
 
 /**
@@ -122,8 +126,9 @@ export async function generatePdf(input: GenerateInput): Promise<Uint8Array> {
  * worker. Exported for the test that gives it a page full of outbound
  * references (review P1-S-15); the platform calls it through generatePdf only.
  */
-export async function printPdf(html: string, margins: { readonly headerHtml: string; readonly footerHtml: string }): Promise<Uint8Array> {
+export async function printPdf(html: string, margins: { readonly headerHtml: string; readonly footerHtml: string }, signal?: AbortSignal): Promise<Uint8Array> {
   const { chromium } = await import('playwright-core');
+  if (signal?.aborted) throw new DocumentGenerationError('launch');
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
   try {
     const executablePath = getEnv().pdfBrowserPath ?? undefined;
@@ -135,7 +140,11 @@ export async function printPdf(html: string, margins: { readonly headerHtml: str
     log.error('pdf browser launch failed', errorFields(error));
     throw new DocumentGenerationError('launch');
   }
+  // A job past its time limit closes its browser: printing stops there (review P2-S-15).
+  const closeOnAbort = () => void browser.close().catch(() => undefined);
+  signal?.addEventListener('abort', closeOnAbort, { once: true });
   try {
+    if (signal?.aborted) throw new DocumentGenerationError('render');
     const context = await browser.newContext({ javaScriptEnabled: false, offline: true, acceptDownloads: false, serviceWorkers: 'block' });
     await context.route('**/*', (route) => route.abort());
     const page = await context.newPage();
@@ -153,7 +162,8 @@ export async function printPdf(html: string, margins: { readonly headerHtml: str
     log.error('pdf render failed', errorFields(error));
     throw new DocumentGenerationError('render');
   } finally {
-    await browser.close();
+    signal?.removeEventListener('abort', closeOnAbort);
+    await browser.close().catch(() => undefined);
   }
 }
 

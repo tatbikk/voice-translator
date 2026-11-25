@@ -233,6 +233,31 @@ export function docxBytes(
 }
 
 /** A DOCX whose document part inflates far beyond the archive limit while declaring a small size. */
+/** A DOCX whose document part is the given XML, with optional parts beside it (review P2-S-01, P2-S-03). */
+export function docxFromXml(xml: string, options: { extraEntries?: readonly ZipEntry[]; documentRels?: string; duplicateDocument?: boolean } = {}): Uint8Array {
+  const entries: ZipEntry[] = [
+    { name: '[Content_Types].xml', data: bytes(CONTENT_TYPES()) },
+    { name: '_rels/.rels', data: bytes(ROOT_RELS) },
+    { name: 'word/document.xml', data: bytes(xml) },
+  ];
+  if (options.documentRels) entries.push({ name: 'word/_rels/document.xml.rels', data: bytes(options.documentRels) });
+  if (options.duplicateDocument) entries.push({ name: 'word/document.xml', data: bytes(documentXml(['نص آخر'])) });
+  entries.push(...(options.extraEntries ?? []));
+  return zipBytes(entries);
+}
+
+/** The relationships part of a document, with one relationship of the given type and target. */
+export function documentRels(type: string, target: string, external: boolean): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${type}" Target="${target}"${external ? ' TargetMode="External"' : ''}/>
+</Relationships>`;
+}
+
+/** The XML wrapper of a document part around a raw body. */
+export const wordXml = (body: string) =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`;
+
 export function docxBomb(inflatedBytes: number): Uint8Array {
   const filler = new Uint8Array(inflatedBytes).fill(0x20);
   return zipBytes([

@@ -16,6 +16,7 @@ export const POST = defineEndpoint({
   access: { kind: 'action', action: 'filing.draft.submit' },
   params: z.strictObject({ draftId: z.uuid() }),
   resource: (p) => draftResource(p.draftId),
+  rateLimit: (_client, session) => ({ key: `filing-writes:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.filing.writesPerSession }),
   body: z.strictObject({ secret: z.string().min(1).max(SECURITY_POLICY.fields.passwordMax).optional() }),
   handler: ({ params: p, body, session }) =>
     withDraft(p.draftId, session, async (draft, caller) => {

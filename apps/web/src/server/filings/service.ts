@@ -2,6 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
+  stripInvisible,
   CARD_SECTIONS,
   FilingCardSchema,
   SECURITY_POLICY,
@@ -18,6 +19,7 @@ import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor }
 import type { ErrorCode } from '../http/responses';
 import { enqueue } from '../jobs/queue';
 import { asJson } from '../json';
+import { commercialRegister } from '../registers/commercial';
 import { caseTypeRules, districtRules } from '../rules/store';
 import { docxParagraphs, inspectUpload, isArchiveRefusal, pastedParagraphs, uploadTitle, type UploadType } from '../uploads/inspect';
 import {
@@ -61,13 +63,18 @@ async function lockOpenDraft(tx: Tx, draftId: string): Promise<boolean> {
 
 // ---------------------------------------------------------------------------
 
-export async function createDraft(subject: UserSubject, channel: 'ELECTRONIC' | 'PAPER', actor: EventActor): Promise<string> {
+export async function createDraft(subject: UserSubject, channel: 'ELECTRONIC' | 'PAPER', actor: EventActor): Promise<Outcome<string>> {
   const id = randomUUID();
-  await eventTransaction(async (tx) => {
+  const created = await eventTransaction(async (tx) => {
+    // An account holds a bounded number of open drafts (review P2-S-07); the event log's lock serializes the count.
+    const open = await tx.filingDraft.count({ where: { ownerUserId: subject.userId, status: 'DRAFT' } });
+    if (open >= SECURITY_POLICY.filing.maxOpenDrafts) return false;
     await tx.filingDraft.create({ data: { id, ...newDraftData(subject, channel) } });
     await appendEvent(tx, { action: 'filing.draft.created', details: { draftId: id, channel }, actor });
+    return true;
   });
-  return id;
+  if (!created) return refused(null, actor, 409, 'DRAFT_LIMIT');
+  return done(id);
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +113,35 @@ function cardFieldErrors(error: z.ZodError): Record<string, string> {
   return fields;
 }
 
+const ADDRESS_FIELDS = ['domicile', 'residence', 'registeredOffice', 'branch'] as const;
+const sameText = (a: string, b: string) => stripInvisible(a).replace(/\s+/g, ' ').trim() === stripInvisible(b).replace(/\s+/g, ' ').trim();
+
+/**
+ * The source «السجل التجاري» is the server's to give, never the browser's
+ * (review P2-A-08): an address keeps it only when the register answers, for the
+ * company's number, that very address as its registered office or its branch.
+ * Any other address claimed from the register is kept as declared.
+ */
+async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
+  const parties = await Promise.all(
+    card.parties.map(async (party) => {
+      const claimed = ADDRESS_FIELDS.filter((field) => party[field]?.source === 'COMMERCIAL_REGISTER');
+      if (claimed.length === 0) return party;
+      const entry =
+        party.personKind === 'LEGAL' && party.idNumber ? await commercialRegister().lookup(party.idNumber).catch(() => null) : null;
+      const next = { ...party };
+      for (const field of claimed) {
+        const address = party[field];
+        if (!address) continue;
+        const given = field === 'registeredOffice' ? entry?.registeredOffice : field === 'branch' ? entry?.branch : null;
+        if (!given || !sameText(given, address.value)) next[field] = { ...address, source: 'DECLARED' };
+      }
+      return next;
+    }),
+  );
+  return { ...card, parties };
+}
+
 export async function updateDraft(draft: DraftWithParts, subject: UserSubject, body: UpdateDraftInput, actor: EventActor): Promise<Outcome> {
   const now = clock.now();
   const invalid = (field: string) => refused(draft.id, actor, 422, 'INVALID_INPUT', { [field]: 'errors.field.invalid' });
@@ -118,7 +154,7 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   if (body.card !== undefined) {
     const parsed = FilingCardSchema.safeParse(body.card);
     if (!parsed.success) return refused(draft.id, actor, 422, 'INVALID_INPUT', cardFieldErrors(parsed.error));
-    card = parsed.data;
+    card = await withRegisterSources(parsed.data);
     // Once paid, the claims the fee was computed on do not change (decision 57).
     if (locked && !sameClaims(card, current)) return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');
     data.card = asJson(card);
@@ -150,6 +186,10 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
     if (body.bailiffUserId !== null && !(await bailiffsOf(courtId)).some((b) => b.userId === body.bailiffUserId)) return invalid('bailiffUserId');
     data.designatedBailiffUserId = body.bailiffUserId;
     changed.push('BAILIFF');
+  } else if (courtId !== draft.courtId && draft.designatedBailiffUserId && !(await bailiffsOf(courtId)).some((b) => b.userId === draft.designatedBailiffUserId)) {
+    // The bailiff designated works in the district of the former court only (art. 87, review P2-S-08).
+    data.designatedBailiffUserId = null;
+    changed.push('BAILIFF');
   }
   if (body.paperDepositor !== undefined) {
     if (draft.channel !== 'PAPER') return invalid('paperDepositor');
@@ -175,10 +215,20 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   }
   data.updatedAt = now;
 
+  // A payment opened on other claims or another court covers nothing: it lapses now,
+  // before the page offers to complete it (audit G025).
+  const feeInputsChanged = !sameClaims(card, current) || courtId !== draft.courtId;
   const applied = await eventTransaction(async (tx) => {
     if (!(await lockOpenDraft(tx, draft.id))) return false;
     await tx.filingDraft.update({ where: { id: draft.id }, data });
     await appendEvent(tx, { action: 'filing.draft.updated', details: { draftId: draft.id, fields: changed.length ? changed.join(':') : 'ATTESTATION' }, actor });
+    if (feeInputsChanged) {
+      const pending = await tx.paymentIntent.findMany({ where: { draftId: draft.id, status: 'PENDING' }, select: { id: true } });
+      for (const intent of pending) {
+        await tx.paymentIntent.update({ where: { id: intent.id }, data: { status: 'EXPIRED', completedAt: now } });
+        await appendEvent(tx, { action: 'payment.expired', details: { intentId: intent.id }, actor });
+      }
+    }
     return true;
   });
   if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
@@ -218,7 +268,7 @@ export const UploadParams = z
     draftId: uuid,
     kind: z.enum(['APPLICATION', 'EXHIBIT']),
     name: z.string().min(1).max(255),
-    title: z.string().trim().max(SECURITY_POLICY.uploads.titleMaxChars).optional(),
+    title: z.string().transform(stripInvisible).pipe(z.string().trim().max(SECURITY_POLICY.uploads.titleMaxChars)).optional(),
     nature: z.enum(['ORIGINAL', 'CERTIFIED_COPY', 'PHOTOCOPY']).optional(),
     pages: z.coerce.number().int().min(1).max(10_000).optional(),
     location: z.string().trim().min(1).max(200).optional(),
@@ -249,6 +299,9 @@ export async function uploadDocument(
   const inspected = inspectUpload(bytes, { declaredName: meta.name, accept: policy.accept });
   if (!inspected.ok) return refused(draft.id, actor, REFUSAL_STATUS[inspected.reason], REFUSAL_CODES[inspected.reason]);
   if (documentLimitReached(draft, bytes.byteLength)) return refused(draft.id, actor, 409, 'DRAFT_DOCUMENT_LIMIT');
+  // What the draft ever stored counts, removed documents included: an upload-and-remove loop stops (review P2-S-07).
+  const stored = await getDb().filingDocument.aggregate({ where: { draftId: draft.id, generated: false }, _sum: { byteSize: true } });
+  if ((stored._sum.byteSize ?? 0) + bytes.byteLength > SECURITY_POLICY.uploads.draftMaxStoredBytes) return refused(draft.id, actor, 409, 'DRAFT_DOCUMENT_LIMIT');
 
   const application = meta.kind === 'APPLICATION';
   let paragraphs: string[] | null = null;
@@ -323,7 +376,7 @@ export async function uploadDocument(
 
 export const UpdateDocumentBody = z
   .object({
-    title: z.string().trim().min(1).max(SECURITY_POLICY.uploads.titleMaxChars).optional(),
+    title: z.string().transform(stripInvisible).pipe(z.string().trim().min(1).max(SECURITY_POLICY.uploads.titleMaxChars)).optional(),
     nature: z.enum(['ORIGINAL', 'CERTIFIED_COPY', 'PHOTOCOPY']).nullable().optional(),
     pageCount: z.number().int().min(1).max(10_000).nullable().optional(),
     location: z.string().trim().min(1).max(200).nullable().optional(),
@@ -367,11 +420,17 @@ export async function updateDocument(draft: DraftWithParts, documentId: string, 
 export async function draftDocumentFile(
   draft: DraftWithParts,
   documentId: string,
+  actor: EventActor,
 ): Promise<{ bytes: Uint8Array; mediaType: string; title: string | null } | 'NOT_FOUND' | 'INTEGRITY'> {
   const doc = draft.documents.find((d) => d.id === documentId) ?? (await getDb().filingDocument.findFirst({ where: { id: documentId, draftId: draft.id } }));
   if (!doc) return 'NOT_FOUND';
   const bytes = await documentStore().get(doc.storageKey);
   if (!bytes) return 'NOT_FOUND';
-  if (sha256Hex(bytes) !== doc.sha256) return 'INTEGRITY';
+  // Each download is recorded, as on the file (decision 47, audit G100); and a changed copy too.
+  if (sha256Hex(bytes) !== doc.sha256) {
+    await appendStandaloneEvent({ action: 'document.integrity.failed', details: { documentId: doc.id, currentSha256: sha256Hex(bytes) }, actor });
+    return 'INTEGRITY';
+  }
+  await appendStandaloneEvent({ action: 'document.downloaded', details: { documentId: doc.id }, actor });
   return { bytes, mediaType: doc.mediaType, title: doc.title };
 }

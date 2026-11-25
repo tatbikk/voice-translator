@@ -6,9 +6,9 @@
 // and the other rows of the memo that concern the draft: filing twice (6),
 // the signing secret (19, 20), the bailiff (21), the paper filing (24), a
 // filed draft (26). Every refusal must leave a record in the event log.
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { SECURITY_POLICY } from '@mahkama/core';
-import { CARD_SECTIONS, COMMERCIAL_PAYMENT, MODEL_CASE, MODEL_CASE_FEE_CENTS } from '../acceptance/model-case-filing.fixture';
+import { CARD_SECTIONS, COMMERCIAL_PAYMENT, MODEL_CASE, MODEL_CASE_FEE_CENTS, PUBLIC_ESTABLISHMENT, withParties } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
 import { capturingEvents, count, one, runtime, sql, type EventRow } from '../helpers/db';
 import { createCourt, createUser, theCourt, type TestUser } from '../helpers/factories';
@@ -73,6 +73,13 @@ async function as(name: keyof Cast): Promise<Client> {
   }
   return client;
 }
+
+// One lawyer session files many drafts across this file: each test starts with
+// its upload window empty, so that the hourly limit, tested on its own below
+// («the limits of a draft…»), does not stand in for the refusal a test looks for.
+beforeEach(async () => {
+  await sql(`DELETE FROM "RateLimitHit" WHERE key LIKE 'uploads:%'`);
+});
 
 const deniedEvents = (events: readonly EventRow[]) => events.filter((e) => e.action === 'access.denied');
 const refusalEvents = (events: readonly EventRow[]) => events.filter((e) => e.action === 'access.denied' || e.action === 'filing.refused');
@@ -310,7 +317,13 @@ describe('no filing without payment (memo rows 3, 4, 5, 27)', () => {
     }
     const draftId = await prepareDraft(lawyer);
     const { intentId } = await openPayment(lawyer, draftId);
-    await sql(`UPDATE "PaymentIntent" SET "expiresAt" = now() - interval '1 minute' WHERE id = $1`, [intentId]);
+    // Thirty minutes pass (the intent's amount and expiry are guarded: the guard is set aside for this arrangement only).
+    await sql(`ALTER TABLE "PaymentIntent" DISABLE TRIGGER payment_intent_guard`);
+    try {
+      await sql(`UPDATE "PaymentIntent" SET "expiresAt" = now() - interval '1 minute' WHERE id = $1`, [intentId]);
+    } finally {
+      await sql(`ALTER TABLE "PaymentIntent" ENABLE TRIGGER payment_intent_guard`);
+    }
     await expectRefused(() => settle(lawyer, intentId, 'SUCCEEDED'), 403, 'FORBIDDEN');
     await expectRefused(() => submit(lawyer, draftId, { secret }), 403, 'FORBIDDEN');
   });
@@ -337,6 +350,23 @@ describe('no filing without payment (memo rows 3, 4, 5, 27)', () => {
     const before = await caseFiles();
     await expectRefused(() => submit(lawyer, draftId, { secret }), 403, 'FORBIDDEN');
     expect(await caseFiles()).toBe(before);
+  });
+
+  it('records no second payment for a draft already paid or filed, whatever intent is presented (review P2-S-10)', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    const first = await payDraft(lawyer, draftId);
+    // A second pending intent, written behind the API, for the same draft.
+    const second = '00000000-0000-4000-8000-0000000000a2';
+    await sql(
+      `INSERT INTO "PaymentIntent" (id, "draftId", purpose, "amountCents", "inputsDigest", breakdown, "ruleSetId", method, status, "createdByUserId", "createdAt", "expiresAt")
+       SELECT $2::uuid, "draftId", purpose, "amountCents", "inputsDigest", breakdown, "ruleSetId", method, 'PENDING', "createdByUserId", now(), now() + interval '20 minutes'
+         FROM "PaymentIntent" WHERE id = $1`,
+      [first, second],
+    );
+    await expectRefused(() => settle(lawyer, second, 'SUCCEEDED'), 409, 'PAYMENT_ALREADY_COMPLETED');
+    expect(await count('SELECT count(*) FROM "Payment" WHERE "draftId" = $1', [draftId])).toBe(1);
+    expect(await count('SELECT count(*) FROM "TreasuryEntry" WHERE "draftId" = $1', [draftId])).toBe(1);
   });
 
   it('completes a payment once: a second click, or two at once, leave one payment and one treasury entry', async () => {
@@ -367,6 +397,25 @@ describe('no filing without payment (memo rows 3, 4, 5, 27)', () => {
     await expect(runtime().query('UPDATE "Payment" SET "amountCents" = 1 WHERE "draftId" = $1', [draftId])).rejects.toThrow();
     await expect(runtime().query('UPDATE "TreasuryEntry" SET "amountCents" = 1 WHERE "draftId" = $1', [draftId])).rejects.toThrow();
   });
+
+  it('keeps the fee assessed and the payment opened as they were computed (review P2-S-14)', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    await payDraft(lawyer, draftId);
+    for (const statement of [
+      'UPDATE "FeeAssessment" SET "totalCents" = 1 WHERE "draftId" = $1',
+      'UPDATE "FeeAssessment" SET "inputsDigest" = repeat(\'0\', 64) WHERE "draftId" = $1',
+      'UPDATE "FeeAssessment" SET breakdown = \'{}\'::jsonb WHERE "draftId" = $1',
+      'DELETE FROM "FeeAssessment" WHERE "draftId" = $1',
+      'UPDATE "PaymentIntent" SET "amountCents" = 1 WHERE "draftId" = $1',
+      'UPDATE "PaymentIntent" SET "inputsDigest" = repeat(\'0\', 64) WHERE "draftId" = $1',
+      // a completed payment does not go back to pending
+      'UPDATE "PaymentIntent" SET status = \'PENDING\' WHERE "draftId" = $1 AND status = \'SUCCEEDED\'',
+      'DELETE FROM "PaymentIntent" WHERE "draftId" = $1',
+    ]) {
+      await expect(runtime().query(statement, [draftId]), statement).rejects.toThrow();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -381,6 +430,28 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     expect([a.status, b.status].filter((s) => s === 200), `${describeResponse(a)} / ${describeResponse(b)}`).toHaveLength(1);
     expect([403, 409]).toContain([a, b].find((r) => r.status !== 200)!.status);
     expect(await caseFiles()).toBe(before + 1);
+  });
+
+  it('builds the file from the draft as it stands under the lock: an edit racing the filing never leaves a referral or a check behind (review P2-A-01)', async () => {
+    const lawyer = await as('lawyer');
+    const withPublic = withParties(MODEL_CASE, [PUBLIC_ESTABLISHMENT]);
+    for (let round = 0; round < 4; round += 1) {
+      const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+      await payDraft(lawyer, draftId);
+      const [filed] = await Promise.all([
+        submit(lawyer, draftId, { secret }),
+        updateDraft(lawyer.clone(), draftId, { card: withPublic, attest: [...CARD_SECTIONS] }),
+      ]);
+      if (filed.status !== 200) {
+        expect([403, 409]).toContain(filed.status);
+        continue;
+      }
+      const caseFileId = filed.data!.caseFileId;
+      const publicParties = await count(`SELECT count(*) FROM "CaseParty" WHERE "caseFileId" = $1 AND "publicEntityKind" = 'PUBLIC_ESTABLISHMENT'`, [caseFileId]);
+      const referrals = await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1 AND target = 'PROSECUTION' AND article = 20`, [caseFileId]);
+      // The parties registered and the referrals recorded come from one and the same reading of the draft.
+      expect(referrals > 0, `round ${String(round)}`).toBe(publicParties > 0);
+    }
   });
 
   it('refuses any change to a filed draft', async () => {
@@ -470,9 +541,106 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     expect(warning?.article).toBe(77);
     expect(view.checks.filter((c) => c.level === 'BLOCKING')).toEqual([]);
   });
+
+  it('keeps an address «from the commercial register» only when the register gives it (review P2-A-08)', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await createDraft(lawyer);
+    const registerAddress = (card: Record<string, unknown>, key: string) =>
+      ((card.parties as Record<string, unknown>[]).find((p) => p.key === key)?.registeredOffice as { source: string } | undefined)?.source;
+    // The register's own address for the company's number stays the register's.
+    const saved = await updateDraft(lawyer, draftId, { card: MODEL_CASE });
+    expect(saved.status, describeResponse(saved)).toBe(200);
+    const stored = await one<{ card: Record<string, unknown> }>(`SELECT card FROM "FilingDraft" WHERE id = $1`, [draftId]);
+    expect(registerAddress(stored.card, 'baa')).toBe('COMMERCIAL_REGISTER');
+    // Another address, or a number the register does not know, said to come from it, is kept as declared and warned about.
+    const forged = {
+      ...MODEL_CASE,
+      parties: MODEL_CASE.parties.map((p) =>
+        p.key === 'baa'
+          ? { ...p, registeredOffice: { value: 'مدينة أخرى، عنوان لا يعرفه السجل', locality: 'casablanca', source: 'COMMERCIAL_REGISTER' } }
+          : p.key === 'alif'
+            ? { ...p, idNumber: 'RC-UNKNOWN-9999' }
+            : p,
+      ),
+    };
+    expect((await updateDraft(lawyer, draftId, { card: forged })).status).toBe(200);
+    const after = await one<{ card: Record<string, unknown> }>(`SELECT card FROM "FilingDraft" WHERE id = $1`, [draftId]);
+    expect(registerAddress(after.card, 'baa')).toBe('DECLARED');
+    expect(registerAddress(after.card, 'alif')).toBe('DECLARED');
+    const view = await getDraft(lawyer, draftId);
+    expect(view.checks.filter((c) => c.code === 'REGISTER_ADDRESS_MISSING').map((c) => c.partyKey).sort()).toEqual(['alif', 'baa']);
+  });
 });
 
 // ---------------------------------------------------------------------------
+
+describe('the limits of a draft and of an account hold, whatever is removed (review P2-S-07)', () => {
+  it('counts the documents removed from a draft toward the storage it may use', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await createDraft(lawyer);
+    // What earlier uploads stored and their removal left behind.
+    const stored = SECURITY_POLICY.uploads.draftMaxStoredBytes;
+    await sql(
+      `INSERT INTO "FilingDocument" (id, "draftId", kind, "storageKey", sha256, "byteSize", "mediaType", title, generated, "uploadedAt", "removedAt")
+       VALUES (gen_random_uuid(), $1::uuid, 'EXHIBIT', 'drafts/' || $1::text || '/' || gen_random_uuid(), repeat('a', 64), $2, 'application/pdf', 'x', false, now(), now())`,
+      [draftId, stored],
+    );
+    await expectRefused(() => upload(lawyer, draftId, { kind: 'EXHIBIT', name: 'one-more.pdf', bytes: pdfBytes('one more'), nature: 'ORIGINAL' }), 409, 'DRAFT_DOCUMENT_LIMIT');
+  });
+
+  it('refuses an upload beyond the hourly window of the session, and stores nothing', async () => {
+    const user = await createUser({ roles: ['LAWYER'], label: 'many-uploads' });
+    const client = await login(user);
+    await client.csrf();
+    const draftId = await createDraft(client);
+    const [session] = await sql<{ id: string }>(`SELECT id FROM "Session" WHERE "userId" = $1::uuid ORDER BY "createdAt" DESC LIMIT 1`, [user.id]);
+    const rule = SECURITY_POLICY.uploads.perSession;
+    await sql(
+      `INSERT INTO "RateLimitHit" (id, key, at) SELECT gen_random_uuid(), $1, now() FROM generate_series(1, $2)`,
+      [`uploads:session:${session?.id ?? 'none'}`, rule.max],
+    );
+    const before = await storedObjects();
+    await expectRefused(() => upload(client, draftId, { kind: 'EXHIBIT', name: 'over.pdf', bytes: pdfBytes('over'), nature: 'ORIGINAL' }), 429, 'TOO_MANY_REQUESTS');
+    expect(await storedObjects()).toBe(before);
+  });
+
+  it('refuses a new draft to an account that already holds the most open drafts it may', async () => {
+    const lawyer = await createUser({ roles: ['LAWYER'], label: 'many-drafts' });
+    const client = await login(lawyer);
+    await client.csrf();
+    const max = SECURITY_POLICY.filing.maxOpenDrafts;
+    await sql(
+      `INSERT INTO "FilingDraft" (id, "ownerUserId", "ownerRoleAssignmentId", channel, card, attestations, "createdAt", "updatedAt")
+       SELECT gen_random_uuid(), $1, $2, 'ELECTRONIC', '{"parties":[],"summary":"","claims":[]}'::jsonb, '{}'::jsonb, now(), now() FROM generate_series(1, $3)`,
+      [lawyer.id, lawyer.roleAssignmentId, max],
+    );
+    await expectRefused(() => client.post('/api/v1/filings', {}), 409, 'DRAFT_LIMIT');
+  });
+});
+
+describe('the filing lawyer acts for the plaintiff only (review P2-S-02)', () => {
+  it('refuses a card on which the lawyer acts for the defendant or the guarantor, and registers no such counsel', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await createDraft(lawyer);
+    for (const key of ['baa', 'jim']) {
+      const card = { ...MODEL_CASE, parties: MODEL_CASE.parties.map((p) => (p.key === key ? { ...p, representedByFiler: true } : p)) };
+      await expectRefused(() => updateDraft(lawyer, draftId, { card }), 422, 'INVALID_INPUT');
+    }
+    // Written into the draft behind the API, the card is refused at filing, and no counsel is registered for the other side.
+    const filed = await prepareDraft(lawyer, { exhibits: 1 });
+    await payDraft(lawyer, filed);
+    await sql(
+      `UPDATE "FilingDraft" SET card = jsonb_set(card, '{parties,1,representedByFiler}', 'true'::jsonb) WHERE id = $1`,
+      [filed],
+    );
+    const before = await caseFiles();
+    const res = await submit(lawyer, filed, { secret });
+    // The card no longer reads as a card, so no fee it calls for is covered: the
+    // refusal comes at authorization (unpaid) or at the checks, never a filing.
+    expect([403, 409, 422], describeResponse(res)).toContain(res.status);
+    expect(await caseFiles()).toBe(before);
+  });
+});
 
 describe('the paper filing is the registry clerk’s, at his court (memo row 24)', () => {
   it('refuses the paper filing to a lawyer, a cashier and the administrator', async () => {

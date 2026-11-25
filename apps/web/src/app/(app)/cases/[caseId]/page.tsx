@@ -15,7 +15,7 @@ import { CaseActionButton, type ActKind } from '@/components/case/CaseActionButt
 import { dictionary } from '@/i18n/dictionary';
 import { actionViews } from '@/server/cases/actions-view';
 import { executorKind } from '@/server/cases/executors';
-import { caseTypeRules } from '@/server/rules/store';
+import { caseTypesOfCourt } from '@/server/offices/registry';
 import { caseResource } from '@/server/cases/resources';
 import { caseView, type CaseView } from '@/server/cases/view';
 import { clock } from '@/server/clock';
@@ -55,7 +55,7 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
   const numberLabel = t('common.caseNumberLabel');
   const actDict = dictionary(context.locale, ['errors.', 'common.', 'filing.choose', 'filing.court.caseTypeOption', 'registry.', 'case.act.']);
   const caseTypes = actions.some((a) => ACT_KINDS[a.code] === 'reclassify')
-    ? (await caseTypeRules(clock.now())).types.map((c) => ({ code: c.code, name: t(`case.type.${c.code}`) }))
+    ? (await caseTypesOfCourt(resource.snapshot.courtId, clock.now())).map((c) => ({ code: c.code, name: t(`case.type.${c.code}`) }))
     : [];
 
   const tabs: TabItem[] = [
@@ -83,7 +83,8 @@ export default async function CasePage({ params }: { params: Promise<{ caseId: s
           <Fact label={t('case.header.panel')}>{h.panelName ?? '—'}</Fact>
           <Fact label={t('case.header.type')}>{h.caseType ? t(`case.type.${h.caseType}`) : t('case.type.unknown')}</Fact>
           <Fact label={t('case.header.status')}>
-            <strong>{t(statusLabelKey(h.status as Parameters<typeof statusLabelKey>[0]))}</strong>
+            {/* The study's wording for a file just registered: «مقيد، في انتظار تعيين القاضي المقرر». */}
+            <strong>{h.status === 'REGISTERED' && h.rapporteurName === null ? t('case.status.awaitingRapporteur') : t(statusLabelKey(h.status as Parameters<typeof statusLabelKey>[0]))}</strong>
           </Fact>
           <Fact label={t('case.header.nextHearing')}>{h.nextHearing ? dateTime(t, h.nextHearing) : t('case.header.noHearing')}</Fact>
           <Fact label={t('case.header.rapporteur')}>{h.rapporteurName ?? t('case.header.noRapporteur')}</Fact>
@@ -205,7 +206,7 @@ function Timeline({ t, view, courtDegree }: { t: Translator; view: CaseView; cou
           {view.timeline.map((e) => (
             <tr key={e.seq} className={TABLE.row}>
               <td className={TABLE.td}>{dateTime(t, e.occurredAt)}</td>
-              <th scope="row" className={TABLE.rowHeader}>{timelineLabel(t, e.action, e.detailAction)}</th>
+              <th scope="row" className={TABLE.rowHeader}>{e.referrals === 0 ? t('case.timeline.event.case.referrals.none') : timelineLabel(t, e.action, e.detailAction)}</th>
               <td className={TABLE.td}>{e.actorRole ? t(roleLabelKey(e.actorRole as RoleCode, courtDegree)) : t('case.timeline.system')}</td>
               <td className={TABLE.td}>{e.articles.length > 0 ? basisText(t, e.articles) : t('case.timeline.noBasis')}</td>
             </tr>
@@ -272,7 +273,7 @@ function Documents({ t, view }: { t: Translator; view: CaseView }) {
                 ) : (
                   <>
                     {t('case.documents.signatures', { count: d.signatures })}
-                    {d.simulated ? <span className="ms-2 border border-line-strong px-1.5 text-sm">{t('case.documents.simulatedStamp')}</span> : null}
+                    {d.simulated || d.simulatedSignature ? <span className="ms-2 border border-line-strong px-1.5 text-sm">{t('case.documents.simulatedStamp')}</span> : null}
                   </>
                 )}
               </td>

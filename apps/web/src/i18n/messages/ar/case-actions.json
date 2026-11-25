@@ -4,7 +4,7 @@
   "actions.case.registration.stamp.notified": "لا يبلغ به أحد، ويظهر في الخط الزمني للملف.",
   "actions.case.registration.reclassify.label": "تصحيح التصنيف",
   "actions.case.registration.reclassify.effect": "يصحح رمز نوع القضية في الملف دون مساس بمقالها.",
-  "actions.case.registration.reclassify.notified": "القاضي المقرر ومحامو الأطراف.",
+  "actions.case.registration.reclassify.notified": "محامو الأطراف، ومن تجب الإحالة عليه بالتصنيف الجديد.",
   "actions.case.registration.note-to-judge.label": "ملاحظة إلى القاضي",
   "actions.case.registration.note-to-judge.effect": "توجه ملاحظة مكتب التقييد إلى القاضي المقرر، أو إلى رئيس المحكمة قبل تعيينه، ولا يطلع عليها الأطراف.",
   "actions.case.registration.note-to-judge.notified": "القاضي المقرر، أو رئيس المحكمة قبل تعيينه.",

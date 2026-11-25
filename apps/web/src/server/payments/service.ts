@@ -7,7 +7,7 @@ import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor }
 import { asJson } from '../json';
 import { enqueue } from '../jobs/queue';
 import { ruleSetId } from '../rules/store';
-import { checksOf, draftFee, parseCard, type DraftWithParts } from '../filings/drafts';
+import { checksOf, draftFee, feeDigest, intentVersion, parseCard, type DraftWithParts } from '../filings/drafts';
 import { paymentGateway, type GatewayOutcome } from './gateway';
 
 // Payments of the filing path (prompt, «الأداء»): the platform computes the
@@ -95,6 +95,10 @@ export type SettleOutcome =
 /** Records the outcome the payer chose on «أداء (محاكاة)»: once, under the intent's lock (memo row 5). */
 export async function settlePayment(intentId: string, subject: UserSubject, chosen: GatewayOutcome, actor: EventActor): Promise<SettleOutcome> {
   const outcome = await eventTransaction(async (tx) => {
+    // The draft first, then the intent: the order of every transaction that holds both.
+    const owner = await tx.paymentIntent.findUnique({ where: { id: intentId }, select: { draftId: true } });
+    if (!owner) return null;
+    await tx.$queryRaw`SELECT id FROM "FilingDraft" WHERE id = ${owner.draftId}::uuid FOR UPDATE`;
     const locked = await tx.$queryRaw<{ status: string; expiresAt: Date }[]>`
       SELECT status::text AS status, "expiresAt" FROM "PaymentIntent" WHERE id = ${intentId}::uuid FOR UPDATE`;
     const row = locked[0];
@@ -105,14 +109,27 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
       await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
       return null;
     }
-    const intent = await tx.paymentIntent.findUniqueOrThrow({ where: { id: intentId }, include: { draft: { select: { id: true, courtId: true, card: true } } } });
+    const intent = await tx.paymentIntent.findUniqueOrThrow({ where: { id: intentId }, select: { draftId: true, amountCents: true, method: true, breakdown: true, inputsDigest: true, ruleSetId: true } });
+    // Read under the draft's lock: its claims and court cannot change while the payment is recorded.
+    const draft = await tx.filingDraft.findUniqueOrThrow({ where: { id: intent.draftId }, select: { id: true, courtId: true, card: true, status: true } });
+    // A draft is paid once (review P2-S-10): not again once paid or filed, whatever intent is presented.
+    const paidBefore = await tx.paymentIntent.count({ where: { draftId: intent.draftId, status: 'SUCCEEDED', id: { not: intentId } } });
+    // The claims or the court changed since the payment was opened: it covers nothing any more,
+    // and is not recorded as paid (audit G025).
+    const stale = intent.inputsDigest !== feeDigest(parseCard(draft.card), draft.courtId, intentVersion(intent));
+    if (draft.status !== 'DRAFT' || paidBefore > 0 || stale) {
+      // The intent lapses: nothing is asked of the gateway, nothing is recorded as paid.
+      await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
+      await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
+      return null;
+    }
     const result = await paymentGateway().settle({ intentId, amountCents: intent.amountCents, chosen, at: now });
     const paymentId = randomUUID();
     await tx.payment.create({
       data: {
         id: paymentId,
         caseFileId: null,
-        courtId: intent.draft.courtId,
+        courtId: draft.courtId,
         draftId: intent.draftId,
         intentId,
         method: intent.method,
@@ -128,7 +145,7 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
     if (result.status === 'SUCCEEDED') {
       // «قيد في محاسبة الصندوق», and the fee as it was paid.
       await tx.treasuryEntry.create({
-        data: { courtId: intent.draft.courtId, draftId: intent.draftId, paymentId, direction: 'IN', amountCents: intent.amountCents, purpose: 'COURT_FEE', at: now },
+        data: { courtId: draft.courtId, draftId: intent.draftId, paymentId, direction: 'IN', amountCents: intent.amountCents, purpose: 'COURT_FEE', at: now },
       });
       const breakdown = intent.breakdown as { totalCents?: number };
       await tx.feeAssessment.create({

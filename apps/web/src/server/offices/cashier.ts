@@ -1,6 +1,8 @@
 import 'server-only';
 import { authorize, type AuthorizationContext, type UserSubject } from '@mahkama/core';
 import { getDb } from '../db';
+import { parseCard } from '../filings/drafts';
+import { feeCalledFor } from './fees';
 
 // «الصندوق» (study, «واجهة كتابة الضبط»): the payments that came in at the
 // cashier's court and their match with the fee of the claims, and apart the
@@ -15,7 +17,7 @@ export interface LedgerPayment {
   readonly operationRef: string;
   readonly purpose: string;
   readonly caseFile: { readonly id: string; readonly number: number; readonly code: number; readonly year: number } | null;
-  /** the fee computed for the claims the payment covers; null when none was recorded */
+  /** the fee the claims call for, computed again from them on the day of the payment; null when it cannot be */
   readonly assessedCents: bigint | null;
 }
 
@@ -29,7 +31,9 @@ const LIMIT = 100;
 export async function cashierLedger(subject: UserSubject, context: AuthorizationContext): Promise<Ledger> {
   if (!authorize(subject, 'cashier.ledger.view', undefined, context).allowed || !subject.courtId) return { payments: [], deposits: [] };
   const rows = await getDb().payment.findMany({
-    where: { OR: [{ courtId: subject.courtId }, { caseFile: { courtId: subject.courtId } }] },
+    // What the cashier keeps is what came in: a failed or cancelled attempt books nothing
+    // in the cashier («لا يقيد في الصندوق شيء», audit G029); it stays on the draft and in the log.
+    where: { status: 'SUCCEEDED', OR: [{ courtId: subject.courtId }, { caseFile: { courtId: subject.courtId } }] },
     orderBy: { paidAt: 'desc' },
     take: LIMIT,
     select: {
@@ -41,15 +45,19 @@ export async function cashierLedger(subject: UserSubject, context: Authorization
       operationRef: true,
       purpose: true,
       draftId: true,
-      caseFile: { select: { id: true, number: true, code: true, year: true } },
-      intent: { select: { inputsDigest: true } },
+      caseFile: { select: { id: true, number: true, code: true, year: true, claims: { where: { category: 'PRINCIPAL' }, select: { nature: true, amountCents: true } } } },
+      intent: { select: { draft: { select: { card: true } } } },
     },
   });
-  const draftIds = rows.map((r) => r.draftId).filter((id): id is string => id !== null);
-  const fees = draftIds.length > 0 ? await getDb().feeAssessment.findMany({ where: { draftId: { in: draftIds } }, select: { draftId: true, inputsDigest: true, totalCents: true } }) : [];
-  const assessed = (r: (typeof rows)[number]) =>
-    fees.find((f) => f.draftId === r.draftId && f.inputsDigest === r.intent?.inputsDigest)?.totalCents ?? null;
-  const view = (r: (typeof rows)[number]): LedgerPayment => ({
+  // «مطابقتها للطلبات»: the fee the claims call for, from the file's claims once filed, from the draft's before.
+  const called = await Promise.all(
+    rows.map((r) =>
+      r.purpose !== 'COURT_FEE'
+        ? Promise.resolve(null)
+        : feeCalledFor(r.caseFile ? r.caseFile.claims : r.intent ? parseCard(r.intent.draft.card).claims : [], r.paidAt),
+    ),
+  );
+  const view = (r: (typeof rows)[number], index: number): LedgerPayment => ({
     id: r.id,
     paidAt: r.paidAt,
     amountCents: r.amountCents,
@@ -57,11 +65,12 @@ export async function cashierLedger(subject: UserSubject, context: Authorization
     status: r.status,
     operationRef: r.operationRef,
     purpose: r.purpose,
-    caseFile: r.caseFile,
-    assessedCents: assessed(r),
+    caseFile: r.caseFile ? { id: r.caseFile.id, number: r.caseFile.number, code: r.caseFile.code, year: r.caseFile.year } : null,
+    assessedCents: called[index] ?? null,
   });
+  const all = rows.map(view);
   return {
-    payments: rows.filter((r) => r.purpose === 'COURT_FEE').map(view),
-    deposits: rows.filter((r) => r.purpose !== 'COURT_FEE').map(view),
+    payments: all.filter((p) => p.purpose === 'COURT_FEE'),
+    deposits: all.filter((p) => p.purpose !== 'COURT_FEE'),
   };
 }

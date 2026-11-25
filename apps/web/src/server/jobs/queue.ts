@@ -66,7 +66,14 @@ export class JobTimedOut extends Error {
 export interface JobContext {
   /** true once the worker has been asked to stop: a long job ends early (throw StopRequested) */
   readonly stopping: StopCheck;
+  /** aborted when the job runs past its time limit: what it started (a browser) is closed (review P2-S-15) */
+  readonly signal: AbortSignal;
+  /** the job's last attempt: a failure now is final, and the handler records it (review P2-A-05) */
+  readonly lastAttempt: boolean;
 }
+
+/** How long a timed-out job is given to close what it started before the next one runs. */
+const ABORT_GRACE_MS = 15_000;
 
 export type JobType = keyof typeof JOB_TYPES;
 export type JobHandlers = {
@@ -182,23 +189,34 @@ export async function runDueJobs(handlers: JobHandlers, options: RunOptions = {}
     // The job's own time limit: past it the job is told to stop, and failed.
     // An object, not a let: the timer's callback sets it, which the type checker cannot follow.
     const limit = { timedOut: false };
+    const abort = new AbortController();
     let timer: NodeJS.Timeout | undefined;
     const deadline = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         limit.timedOut = true;
         clearInterval(renew);
+        abort.abort(new JobTimedOut(type));
         reject(new JobTimedOut(type));
       }, options.timeoutMs ?? JOB_POLICY.timeoutMs[type]);
     });
     const jobStopping: StopCheck = () => limit.timedOut || stopping();
+    const context: JobContext = { stopping: jobStopping, signal: abort.signal, lastAttempt: job.attempts >= JOB_POLICY.maxAttempts };
+    const running = (handlers[type] as (payload: unknown, context: JobContext) => Promise<void>)(parsed.data, context);
     try {
-      await Promise.race([(handlers[type] as (payload: unknown, context: JobContext) => Promise<void>)(parsed.data, { stopping: jobStopping }), deadline]);
+      await Promise.race([running, deadline]);
       clearTimeout(timer);
       clearInterval(renew);
       await finish('DONE');
     } catch (error) {
       clearTimeout(timer);
       clearInterval(renew);
+      if (limit.timedOut) {
+        // Told to stop, the handler closes what it started; the job is not
+        // tried again while it still runs (review P2-S-15).
+        let grace: NodeJS.Timeout | undefined;
+        await Promise.race([running.catch(() => undefined), new Promise<void>((resolve) => (grace = setTimeout(resolve, ABORT_GRACE_MS)))]);
+        clearTimeout(grace);
+      }
       if (error instanceof StopRequested && !limit.timedOut) {
         // Not a failure: the job runs again after the restart.
         await finish('PENDING', { attempts: { decrement: 1 } });

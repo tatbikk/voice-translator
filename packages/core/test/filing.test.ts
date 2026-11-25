@@ -143,6 +143,30 @@ describe('the case card (art. 77)', () => {
     expect(FilingCardSchema.safeParse({ ...MODEL, parties: [{ ...MODEL.parties[0]!, email: 'not an address' }] }).success).toBe(false);
   });
 
+  it('lets the filing lawyer act for a plaintiff only, never for the other side (review P2-S-02)', () => {
+    const plaintiff = MODEL.parties.find((p) => p.side === 'PLAINTIFF')!;
+    const others = MODEL.parties.filter((p) => p.side !== 'PLAINTIFF');
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [{ ...plaintiff, representedByFiler: true }, ...others] }).success).toBe(true);
+    for (const other of others) {
+      const card = { ...MODEL, parties: [plaintiff, ...others.map((p) => (p.key === other.key ? { ...p, representedByFiler: true } : p))] };
+      expect(FilingCardSchema.safeParse(card).success, other.side).toBe(false);
+    }
+  });
+
+  it('keeps no invisible or direction-overriding character in the card, which would make a name read otherwise (review P2-S-11)', () => {
+    const rlo = String.fromCodePoint(0x202e);
+    const zwsp = String.fromCodePoint(0x200b);
+    const plaintiff = MODEL.parties.find((p) => p.side === 'PLAINTIFF')!;
+    const parsed = FilingCardSchema.parse({
+      ...MODEL,
+      parties: [{ ...plaintiff, name: `شركة${rlo} ألف${zwsp}`, quality: `مدعية${String.fromCodePoint(0x2066)}` }, ...MODEL.parties.filter((p) => p !== plaintiff)],
+      summary: `سطر أول${rlo}\nسطر ثان`,
+    });
+    expect(parsed.parties[0]?.name).toBe('شركة ألف');
+    expect(parsed.parties[0]?.quality).toBe('مدعية');
+    expect(parsed.summary).toBe('سطر أول\nسطر ثان');
+  });
+
   it('names the four sections the depositor attests «مطابق للمقال»', () => {
     expect([...CARD_SECTIONS]).toEqual(['PLAINTIFFS', 'DEFENDANTS', 'SUMMARY', 'CLAIMS']);
   });

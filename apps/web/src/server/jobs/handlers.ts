@@ -14,7 +14,7 @@ export const JOB_HANDLERS: JobHandlers = {
   'security.throttle-summaries': async () => {
     await flushThrottleSummaries();
   },
-  'filing.fixed-copy': (payload) => prepareFixedCopy(payload.draftId, payload.textDigest),
-  'payment.receipt': (payload) => issuePaymentReceipt(payload.paymentId),
-  'filing.receipt': (payload) => issueFilingReceipt(payload.caseFileId),
+  'filing.fixed-copy': (payload, context) => prepareFixedCopy(payload.draftId, payload.textDigest, context),
+  'payment.receipt': (payload, context) => issuePaymentReceipt(payload.paymentId, context),
+  'filing.receipt': (payload, context) => issueFilingReceipt(payload.caseFileId, context),
 };

@@ -14,6 +14,8 @@ export const POST = defineEndpoint({
   access: { kind: 'action', action: 'filing.draft.edit' },
   params: z.strictObject({ draftId: z.uuid() }),
   resource: (p) => draftResource(p.draftId),
+  // Each paste has the worker print a fixed copy: a tighter limit (review P2-S-07).
+  rateLimit: (_client, session) => ({ key: `filing-pastes:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.filing.pastesPerSession }),
   bodyLimitBytes: SECURITY_POLICY.applicationText.maxBytes,
   body: z.strictObject({ text: z.string().min(1).max(SECURITY_POLICY.applicationText.maxChars) }),
   handler: ({ params: p, body, session }) =>

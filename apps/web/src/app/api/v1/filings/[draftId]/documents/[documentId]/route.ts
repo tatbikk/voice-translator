@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SECURITY_POLICY } from '@mahkama/core';
 import { defineEndpoint } from '@/server/http/endpoint';
 import { notFound } from '@/server/http/responses';
 import { draftResource } from '@/server/filings/drafts';
@@ -14,6 +15,7 @@ export const POST = defineEndpoint({
   access: { kind: 'action', action: 'filing.draft.edit' },
   params: z.strictObject({ draftId: z.uuid(), documentId: z.uuid() }),
   resource: (p) => draftResource(p.draftId),
+  rateLimit: (_client, session) => ({ key: `filing-writes:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.filing.writesPerSession }),
   body: UpdateDocumentBody,
   handler: ({ params: p, body, session }) =>
     withDraft(p.draftId, session, async (draft, caller) => {

@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { filingReady, moroccoDay, referralsFor, type CardParty, type Referral, type UserSubject } from '@mahkama/core';
+import { filingReady, lawArticles, moroccoDay, referralsFor, type CardParty, type LegalBasis, type Referral, type ReferralRuleSet, type UserSubject } from '@mahkama/core';
 import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getEnv } from '../config/env';
@@ -81,7 +81,13 @@ function subjectOf(summary: string): string | null {
   return `${(space > 80 ? cut.slice(0, space) : cut).trim()}…`;
 }
 
-const groundsText = (referrals: readonly Referral[]) =>
+/** The grounds of the referrals as the event records them (one code, «NONE» when none is due). */
+/** The articles the referral review applies, read from the rule set itself (arts. 18, 20 and 101 today). */
+export function referralArticles(rules: ReferralRuleSet): LegalBasis {
+  return lawArticles(...[...new Set([rules.prosecution.principalParty.article, rules.prosecution.communication.article, rules.royalCommissioner.article])].sort((a, b) => a - b));
+}
+
+export const groundsText = (referrals: readonly Referral[]) =>
   referrals.length === 0 ? 'NONE' : referrals.map((r) => [r.target, r.ground, r.article, r.item ?? 0].join('/')).join(':');
 
 export async function submitDraft(draftId: string, subject: UserSubject, secret: string | null, actor: EventActor): Promise<SubmitOutcome> {
@@ -115,7 +121,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     getDb().court.findUniqueOrThrow({ where: { id: draft.courtId }, select: { id: true, code: true, specialty: true } }),
   ]);
   if (!caseType) return refused(draftId, actor, 409, 'DRAFT_INCOMPLETE');
-  const referrals = referralsFor({ courtSpecialty: court.specialty, caseType, parties: card.parties, rules });
+  if (card.parties.length === 0) return refused(draftId, actor, 409, 'DRAFT_INCOMPLETE');
   const referralRuleSetId = await ruleSetId('REFERRALS', rules.version);
   const env = getEnv();
   const year = Number(moroccoDay(now).slice(0, 4));
@@ -129,6 +135,18 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     const intent = coveringIntent(fresh, freshCard, fresh.intents);
     const payment = intent?.payment ?? null;
     if (!intent || !payment) return { ok: false, status: 409, code: 'DRAFT_INCOMPLETE' };
+    // Everything the file is built from is read again under the lock (review P2-A-01): the
+    // court and the case type the number and the referrals rest on, the copy signed, the checks.
+    if (fresh.courtId !== draft.courtId || fresh.caseType !== draft.caseType) return { ok: false, status: 409, code: 'DRAFT_CHANGED' };
+    const freshCopy = fresh.documents.find((d) => d.kind === 'APPLICATION_COPY');
+    if (!freshCopy || freshCopy.id !== copy.id || freshCopy.sha256 !== copy.sha256) return { ok: false, status: 409, code: 'DOCUMENT_CHANGED' };
+    if (!filingReady(await checksOf(fresh, now))) return { ok: false, status: 409, code: 'DRAFT_INCOMPLETE' };
+    // The bailiff designated is still one of the court's district (art. 87, review P2-S-08).
+    if (fresh.designatedBailiffUserId) {
+      const bailiff = await tx.roleAssignment.findFirst({ where: { userId: fresh.designatedBailiffUserId, role: 'BAILIFF', courtId: fresh.courtId, revokedAt: null }, select: { id: true } });
+      if (!bailiff) return { ok: false, status: 409, code: 'DRAFT_CHANGED' };
+    }
+    const referrals = referralsFor({ courtSpecialty: court.specialty, caseType, parties: freshCard.parties, rules });
 
     // 5. The register: the next number, the national identifier (decision 53).
     const number = await nextNumber(tx, court.id, year);
@@ -139,6 +157,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     const commissioner = referrals.some((r) => r.target === 'ROYAL_COMMISSIONER');
     const paperLawyer = fresh.channel === 'PAPER' ? fresh.paperLawyerUserId : null;
     const filer = fresh.channel === 'ELECTRONIC' ? fresh.ownerUserId : paperLawyer;
+    const marksCounsel = freshCard.parties.some((p) => p.side === 'PLAINTIFF' && p.representedByFiler === true);
     await tx.caseFile.create({
       data: {
         id: caseFileId,
@@ -186,7 +205,10 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
           addresses: { create: addressesOf(party, now) },
         },
       });
-      if (filer && party.representedByFiler) {
+      // Counsel of the filing is a plaintiff's only (review P2-S-02; the card's schema refuses it on another side).
+      // On paper, the lawyer the clerk picked from the roster acts for the plaintiffs the card marks,
+      // or for every plaintiff when it marks none (decision 59).
+      if (filer && party.side === 'PLAINTIFF' && (party.representedByFiler === true || (paperLawyer !== null && !marksCounsel))) {
         await tx.representation.create({ data: { partyId: id, lawyerUserId: filer, startedAt: now } });
       }
     }
@@ -275,7 +297,12 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     await tx.filingDraft.update({ where: { id: draftId }, data: { status: 'FILED', filedAt: now, caseFileId, updatedAt: now } });
     await appendEvent(tx, { action: 'filing.submitted', details: { draftId, caseFileId, channel: fresh.channel }, caseFileId, actor });
     await appendEvent(tx, { action: 'case.registered', details: { caseFileId, draftId, number, code, year, channel: fresh.channel }, caseFileId, actor });
-    await appendEvent(tx, { action: 'case.referrals.reviewed', details: { caseFileId, ruleVersion: rules.version, referrals: referrals.length, grounds: groundsText(referrals) }, caseFileId });
+    await appendEvent(tx, {
+      action: 'case.referrals.reviewed',
+      details: { caseFileId, ruleVersion: rules.version, referrals: referrals.length, grounds: groundsText(referrals) },
+      caseFileId,
+      legalBasis: referralArticles(rules),
+    });
 
     // 11. Who is informed: the filer, and whoever the file is referred to.
     const params = { number: `${String(number)}/${String(code)}/${String(year)}` };

@@ -50,7 +50,7 @@ export default async function CasesPage() {
                   </th>
                   <td className={TABLE.td}>{r.parties.join(t('filing.listSeparator'))}</td>
                   <td className={TABLE.td}>{r.caseType ? t(`case.type.${r.caseType}`) : t('case.type.unknown')}</td>
-                  <td className={TABLE.td}>{t(statusLabelKey(r.status as Parameters<typeof statusLabelKey>[0]))}</td>
+                  <td className={TABLE.td}>{r.awaitingRapporteur ? t('case.status.awaitingRapporteur') : t(statusLabelKey(r.status as Parameters<typeof statusLabelKey>[0]))}</td>
                   <td className={TABLE.td}>{r.nextHearing ? dateTime(t, r.nextHearing) : '—'}</td>
                 </tr>
               ))}

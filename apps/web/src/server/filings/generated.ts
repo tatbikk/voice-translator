@@ -46,18 +46,34 @@ function input(template: TemplateName, header: Omit<GenerateInput['header'], 'lo
   };
 }
 
-const draftRef = (draftId: string) => draftId.slice(0, 8).toUpperCase();
+/** The draft's reference on its documents: digits only (no Latin letter in a document, review P2-L-21). */
+const draftRef = (draftId: string) => String(Number.parseInt(draftId.slice(0, 8), 16)).padStart(10, '0');
+
+function depositorName(depositor: unknown): string {
+  const name = (depositor as { name?: unknown } | null)?.name;
+  return typeof name === 'string' ? name : '';
+}
 
 async function courtName(courtId: string | null): Promise<string> {
   if (!courtId) return t('documents.registry');
   return (await getDb().court.findUnique({ where: { id: courtId }, select: { name: true } }))?.name ?? t('documents.registry');
 }
 
-async function printOrRecord(template: TemplateName, generate: GenerateInput, caseFileId: string | null): Promise<Uint8Array | null> {
+/** How a document job prints: its stop signal, and whether a failure is final. */
+export interface PrintContext {
+  readonly signal?: AbortSignal;
+  readonly lastAttempt: boolean;
+}
+
+/**
+ * A failed print is thrown back to the queue, which tries it again within its
+ * attempts; only the last failure is recorded and ends the job (review P2-A-05).
+ */
+async function printOrRecord(template: TemplateName, generate: GenerateInput, caseFileId: string | null, context: PrintContext): Promise<Uint8Array | null> {
   try {
-    return await generatePdf(generate);
+    return await generatePdf(generate, context.signal);
   } catch (error) {
-    if (error instanceof DocumentGenerationError) {
+    if (error instanceof DocumentGenerationError && context.lastAttempt) {
       await appendStandaloneEvent({ action: 'document.generation.failed', details: { template, errorClass: error.stage }, caseFileId });
       return null;
     }
@@ -68,7 +84,7 @@ async function printOrRecord(template: TemplateName, generate: GenerateInput, ca
 // ---------------------------------------------------------------------------
 
 /** The fixed copy of the application, for the paragraphs whose digest the job carries. */
-export async function prepareFixedCopy(draftId: string, textDigest: string): Promise<void> {
+export async function prepareFixedCopy(draftId: string, textDigest: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
   const draft = await getDb().filingDraft.findUnique({ where: { id: draftId }, select: { id: true, status: true, courtId: true, applicationParagraphs: true, fixedCopyStatus: true } });
   if (!draft || draft.status !== 'DRAFT') return;
   const paragraphs = Array.isArray(draft.applicationParagraphs) ? draft.applicationParagraphs.filter((p): p is string => typeof p === 'string') : [];
@@ -85,7 +101,7 @@ export async function prepareFixedCopy(draftId: string, textDigest: string): Pro
     },
     { intro: t('documents.fixedCopy.intro'), paragraphs: paragraphs.map((text, i) => ({ n: i + 1, text })) },
   );
-  const bytes = await printOrRecord('application-copy', generate, null);
+  const bytes = await printOrRecord('application-copy', generate, null, context);
   if (!bytes) {
     await getDb().filingDraft.updateMany({ where: { id: draftId, status: 'DRAFT' }, data: { fixedCopyStatus: 'FAILED', updatedAt: clock.now() } });
     return;
@@ -124,7 +140,7 @@ export async function prepareFixedCopy(draftId: string, textDigest: string): Pro
 // ---------------------------------------------------------------------------
 
 /** «وصل الأداء» of a successful payment, kept with the draft and joining the file on registration. */
-export async function issuePaymentReceipt(paymentId: string): Promise<void> {
+export async function issuePaymentReceipt(paymentId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
   const payment = await getDb().payment.findUnique({
     where: { id: paymentId },
     select: { id: true, status: true, amountCents: true, operationRef: true, paidAt: true, method: true, draftId: true, courtId: true, caseFileId: true, payerUserId: true, receiptDocumentId: true },
@@ -132,7 +148,15 @@ export async function issuePaymentReceipt(paymentId: string): Promise<void> {
   if (!payment || payment.status !== 'SUCCEEDED' || !payment.draftId || payment.receiptDocumentId) return;
   const draftId = payment.draftId;
   if (await getDb().filingDocument.findFirst({ where: { draftId, kind: 'PAYMENT_RECEIPT' }, select: { id: true } })) return;
-  const payer = payment.payerUserId ? (await getDb().user.findUnique({ where: { id: payment.payerUserId }, select: { fullName: true } }))?.fullName ?? '' : '';
+  // At the court's cash desk the payer is the depositor, never the clerk who recorded the
+  // payment (art. 628; decision 60; review P2-L-04): the depositor's name is recorded
+  // before the fee can be paid (check PAPER_DEPOSITOR_MISSING blocks the payment).
+  const counter = payment.method === 'COUNTER';
+  const depositor = counter
+    ? depositorName((await getDb().filingDraft.findUnique({ where: { id: draftId }, select: { paperDepositor: true } }))?.paperDepositor ?? null)
+    : '';
+  const payer =
+    !counter && payment.payerUserId ? ((await getDb().user.findUnique({ where: { id: payment.payerUserId }, select: { fullName: true } }))?.fullName ?? '') : '';
   const generate = input(
     'payment-receipt',
     {
@@ -146,6 +170,8 @@ export async function issuePaymentReceipt(paymentId: string): Promise<void> {
       paidDate: formatMoroccoDate(payment.paidAt),
       paidTime: formatMoroccoTime(payment.paidAt),
       subject: t('documents.paymentReceipt.subject'),
+      counter,
+      depositor,
       payer,
       amount: dirhamsText(payment.amountCents),
       operationRef: payment.operationRef,
@@ -153,7 +179,7 @@ export async function issuePaymentReceipt(paymentId: string): Promise<void> {
       lines: [{ line: t('documents.paymentReceipt.simulated') }],
     },
   );
-  const bytes = await printOrRecord('payment-receipt', generate, payment.caseFileId);
+  const bytes = await printOrRecord('payment-receipt', generate, payment.caseFileId, context);
   if (!bytes) return;
   const key = draftStorageKey(draftId);
   const digest = sha256Hex(bytes);
@@ -198,13 +224,21 @@ export async function issuePaymentReceipt(paymentId: string): Promise<void> {
 
 // ---------------------------------------------------------------------------
 
-function depositorName(depositor: unknown): string {
-  const name = (depositor as { name?: unknown } | null)?.name;
-  return typeof name === 'string' ? name : '';
+const isApplication = (d: { docType: string }) => d.docType === 'APPLICATION' || d.docType === 'APPLICATION_SOURCE';
+
+/**
+ * The column «نوعيتها» of the receipt (review P2-L-03): the nature declared (art. 631); else
+ * «ولدتها المنصة» for what the platform printed; else, in a paper filing, the scan whose paper
+ * original the registry keeps; else nothing.
+ */
+function natureText(d: { declaredNature: string | null; generated: boolean }, paper: boolean): string {
+  if (d.declaredNature) return t(`case.nature.${d.declaredNature}`);
+  if (d.generated) return t('documents.filingReceipt.generatedNature');
+  return t(paper ? 'documents.filingReceipt.scannedNature' : 'case.nature.none');
 }
 
 /** «وصل الإيداع» (study, «المرحلة الأولى»; art. 77 and 628). */
-export async function issueFilingReceipt(caseFileId: string): Promise<void> {
+export async function issueFilingReceipt(caseFileId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
   const db = getDb();
   const file = await db.caseFile.findUnique({
     where: { id: caseFileId },
@@ -219,7 +253,7 @@ export async function issueFilingReceipt(caseFileId: string): Promise<void> {
       designatedBailiffUserId: true,
       court: { select: { name: true } },
       filingDraft: { select: { id: true, ownerUserId: true, paperDepositor: true } },
-      documents: { select: { id: true, docType: true, title: true, declaredNature: true, sha256: true, paperOriginalLocation: true, depositedAt: true }, orderBy: { depositedAt: 'asc' } },
+      documents: { select: { id: true, docType: true, title: true, declaredNature: true, generated: true, sha256: true, paperOriginalLocation: true, depositedAt: true }, orderBy: { depositedAt: 'asc' } },
       payments: { where: { status: 'SUCCEEDED' }, select: { operationRef: true, amountCents: true } },
     },
   });
@@ -250,8 +284,9 @@ export async function issueFilingReceipt(caseFileId: string): Promise<void> {
       depositDate: formatMoroccoDate(at),
       depositTime: formatMoroccoTime(at),
       documents: filed.map((d) => ({
-        title: d.title ?? t(`case.docType.${d.docType}`),
-        nature: d.declaredNature ? t(`case.nature.${d.declaredNature}`) : t('documents.filingReceipt.generatedNature'),
+        // The application is named as such, not by the name of the file uploaded (review P2-L-03).
+        title: isApplication(d) && !d.generated ? t('terms.initialApplication') : (d.title ?? t(`case.docType.${d.docType}`)),
+        nature: natureText(d, file.filingChannel === 'PAPER'),
         hash: d.sha256,
       })),
       exhibitCount: filed.filter((d) => d.docType === 'EXHIBIT').length,
@@ -261,7 +296,7 @@ export async function issueFilingReceipt(caseFileId: string): Promise<void> {
       bailiff: bailiff ? [{ bailiffName: bailiff }] : [],
     },
   );
-  const bytes = await printOrRecord('filing-receipt', generate, caseFileId);
+  const bytes = await printOrRecord('filing-receipt', generate, caseFileId, context);
   if (!bytes) return;
   const id = randomUUID();
   const key = `cases/${caseFileId}/${id}`;

@@ -6,6 +6,13 @@ import { appendStandaloneEvent } from '@/server/events/append';
 import { defineEndpoint } from '@/server/http/endpoint';
 import { fail, notFound } from '@/server/http/responses';
 
+const SERVED_TYPES: Readonly<Record<string, string>> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+};
+
 // A document of the file, to whoever may see it (prompt, «المدخلات والملفات»):
 // served by the application after the check, never from the bucket; as an
 // attachment of its stored type, never rendered as a web page.
@@ -39,8 +46,9 @@ export const GET = defineEndpoint({
     return new Response(Buffer.from(stored.bytes), {
       status: 200,
       headers: {
-        'Content-Type': doc.mediaType === 'application/pdf' ? 'application/pdf' : 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${doc.id}.pdf"`,
+        // The stored type when it is one the platform accepts, its extension with it (review P2-S-13).
+        'Content-Type': SERVED_TYPES[doc.mediaType] ? doc.mediaType : 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${doc.id}.${SERVED_TYPES[doc.mediaType] ?? 'bin'}"`,
         'Content-Length': String(stored.bytes.byteLength),
         'X-Content-Type-Options': 'nosniff',
         'Content-Security-Policy': "sandbox; default-src 'none'",

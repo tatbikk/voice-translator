@@ -1,7 +1,9 @@
 import 'server-only';
 import { authorize, availableActions, resolveLegalBasis, type AuthorizationContext, type LegalBasis, type UserSubject } from '@mahkama/core';
 import { getDb } from '../db';
+import { caseTypeRules } from '../rules/store';
 import { caseSnapshot } from '../cases/snapshot';
+import { feeCalledFor } from './fees';
 
 // «مكتب التقييد» (study, «واجهة كتابة الضبط»): the files registered at the
 // clerk's court that the office has not stamped yet, newest first, each with
@@ -15,6 +17,8 @@ export interface IncomingFile {
   readonly caseType: string | null;
   readonly channel: 'ELECTRONIC' | 'PAPER' | null;
   readonly registeredAt: Date | null;
+  /** the summary of the subject, to check the case-type code against it (study, «المرحلة الثانية») */
+  readonly subject: string | null;
   readonly parties: readonly { readonly side: string; readonly name: string }[];
   readonly claims: readonly { readonly nature: string; readonly amountCents: bigint | null }[];
   readonly feePaidCents: bigint;
@@ -28,7 +32,7 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
   if (!authorize(subject, 'registry.incoming.list', undefined, context).allowed || !subject.courtId) return [];
   const files = await getDb().caseFile.findMany({
     where: { courtId: subject.courtId, status: 'REGISTERED', registrationStampedAt: null },
-    orderBy: [{ registeredAt: 'desc' }, { number: 'desc' }],
+    orderBy: [{ registeredAt: { sort: 'desc', nulls: 'last' } }, { number: 'desc' }],
     take: LIMIT,
     select: {
       id: true,
@@ -42,7 +46,7 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
       parties: { orderBy: { position: 'asc' }, select: { side: true, displayName: true } },
       claims: { orderBy: { filedAt: 'asc' }, select: { nature: true, amountCents: true } },
       payments: { where: { status: 'SUCCEEDED' }, select: { amountCents: true } },
-      fees: { orderBy: { assessedAt: 'desc' }, take: 1, select: { totalCents: true } },
+      subject: true,
     },
   });
   const now = context.now ?? null;
@@ -61,12 +65,24 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
       caseType: f.caseType,
       channel: f.filingChannel,
       registeredAt: f.registeredAt,
+      subject: f.subject,
       parties: f.parties.map((p) => ({ side: p.side, name: p.displayName })),
       claims: f.claims.map((c) => ({ nature: c.nature, amountCents: c.amountCents })),
       feePaidCents: f.payments.reduce((sum, p) => sum + p.amountCents, 0n),
-      feeAssessedCents: f.fees[0]?.totalCents ?? null,
+      // What the claims call for, computed again from them on the day of filing (review P2-A-13).
+      feeAssessedCents: f.registeredAt ? await feeCalledFor(f.claims, f.registeredAt) : null,
       actions,
     });
   }
   return out;
+}
+
+/**
+ * The case types «تصحيح التصنيف» may offer on a file of this court: those of
+ * its specialty, the only ones the act accepts (review P2-S-05, audit G067).
+ */
+export async function caseTypesOfCourt(courtId: string | null, at: Date): Promise<{ readonly code: string }[]> {
+  if (!courtId) return [];
+  const [court, rules] = await Promise.all([getDb().court.findUnique({ where: { id: courtId }, select: { specialty: true } }), caseTypeRules(at)]);
+  return court ? rules.types.filter((type) => type.specialty === court.specialty) : [];
 }

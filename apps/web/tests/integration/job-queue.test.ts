@@ -129,6 +129,47 @@ describe('job queue (review A-11)', () => {
     expect({ status: job.status, attempts: job.attempts, lockedBy: job.lockedBy }).toEqual({ status: 'PENDING', attempts: 0, lockedBy: null });
   });
 
+  it('a job past its time limit is aborted, given time to close what it started, and counted as failed (review P2-S-15)', async () => {
+    const id = await insertJob();
+    const seen = { aborted: false, closed: false };
+    const h = handlers({
+      'maintenance.cleanup': async (_payload, { signal }) => {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => {
+            seen.aborted = true;
+            resolve();
+          });
+        });
+        await sleep(100);
+        seen.closed = true;
+      },
+    });
+    await runDueJobs(h, { timeoutMs: 200 });
+    expect(seen).toEqual({ aborted: true, closed: true });
+    const job = await jobOf(id);
+    expect({ status: job.status, attempts: job.attempts, lastErrorClass: job.lastErrorClass }).toEqual({ status: 'PENDING', attempts: 1, lastErrorClass: 'JobTimedOut' });
+    await sql(`UPDATE "Job" SET status = 'DONE' WHERE id = $1`, [id]);
+  });
+
+  it('a job is told when its attempt is the last, and a failure then makes it DEAD (review P2-A-05)', async () => {
+    const told: boolean[] = [];
+    const failing = handlers({
+      'maintenance.cleanup': async (_payload, { lastAttempt }) => {
+        told.push(lastAttempt);
+        await Promise.resolve();
+        throw new Error('print failed');
+      },
+    });
+    const first = await insertJob();
+    await runDueJobs(failing);
+    expect((await jobOf(first)).status).toBe('PENDING');
+    await sql(`UPDATE "Job" SET status = 'DONE' WHERE id = $1`, [first]);
+    const last = await insertJob({ attempts: JOB_POLICY.maxAttempts - 1 });
+    await runDueJobs(failing);
+    expect((await jobOf(last)).status).toBe('DEAD');
+    expect(told).toEqual([false, true]);
+  });
+
   it('a job recovered and claimed by another worker is not closed by the first one', async () => {
     const id = await insertJob();
     const h = handlers({

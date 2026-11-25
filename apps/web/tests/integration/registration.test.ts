@@ -10,7 +10,7 @@
 //   - numbers are sequential under concurrency and cannot be changed;
 //   - the registry's note to the judge is never shown to a lawyer.
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { UserSubject } from '@mahkama/core';
+import { SECURITY_POLICY, type UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { caseView } from '@/server/cases/view';
 import {
@@ -24,10 +24,11 @@ import {
 import { login } from '../helpers/auth';
 import { capturingEvents, count, events, notificationsOf, one, runtime, sql, type EventRow } from '../helpers/db';
 import { createCourt, createUser, theCourt, type TestUser } from '../helpers/factories';
-import { fileCase, getDraft, giveSigningSecret, payDraft, prepareDraft, submit, type FiledCase } from '../helpers/filings';
+import { attestAll, createDraft, fileCase, getDraft, giveSigningSecret, pasteApplication, payDraft, prepareDraft, runJobs, submit, updateDraft, upload, type FiledCase } from '../helpers/filings';
 import { describeResponse, type ApiResponse, type Client } from '../helpers/http';
 import { useFreshDatabase } from '../helpers/reset';
 import { docxBytes, pdfBytes } from '../helpers/samples';
+import { MODEL_CASE_APPLICATION_TEXT } from '../acceptance/model-case-filing.fixture';
 import { loadRuleTables, makeModelCourt } from '../helpers/rules';
 
 useFreshDatabase();
@@ -294,6 +295,26 @@ describe('automatic referrals (art. 18, 20 and 101)', () => {
       404,
     );
   });
+
+  it('refuses conclusions beyond what one act may file on one file, before storing anything (review P2-A-10)', async () => {
+    const prosecutor = await as('prosecutor');
+    const filedOf = () => count(`SELECT count(*) FROM "Document" WHERE "caseFileId" = $1 AND "docType" = 'PROSECUTION_CONCLUSIONS'`, [publicCase.caseFileId]);
+    const missing = SECURITY_POLICY.uploads.caseMaxFiledPerAct - (await filedOf());
+    await sql(
+      `INSERT INTO "Document" (id, "caseFileId", "storageKey", sha256, "byteSize", "mediaType", "docType", channel, "depositedAt")
+       SELECT gen_random_uuid(), $1::uuid, 'cases/' || $1::text || '/' || gen_random_uuid(), repeat('b', 64), 10, 'application/pdf', 'PROSECUTION_CONCLUSIONS', 'ELECTRONIC', now()
+         FROM generate_series(1, $2)`,
+      [publicCase.caseFileId, missing],
+    );
+    const before = await filedOf();
+    const res = await prosecutor.post(`/api/v1/cases/${publicCase.caseFileId}/uploads/case.prosecution.conclusions`, undefined, {
+      query: { name: 'one-more.pdf' },
+      rawBody: Buffer.from(pdfBytes('one more')),
+      headers: { 'content-type': 'application/octet-stream' },
+    });
+    expect({ status: res.status, code: res.code }, describeResponse(res)).toEqual({ status: 409, code: 'CASE_DOCUMENT_LIMIT' });
+    expect(await filedOf()).toBe(before);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -341,6 +362,41 @@ describe('the registry office: three buttons, and none to reject the application
     expect(after.classificationCorrectedAt).not.toBeNull();
     const event = (await events('case.registration.reclassified')).find((e) => e.details.caseFileId === other.caseFileId);
     expect(event?.details).toMatchObject({ fromCode: before.code, toCode: 8203 });
+  });
+
+  it('recomputes the referrals when the classification changes, and refuses a case type of another specialty (review P2-S-05)', async () => {
+    // A court of general jurisdiction, its registry, its prosecution.
+    const general = await createCourt();
+    await sql(`UPDATE "Court" SET specialty = 'GENERAL' WHERE id = $1`, [general.id]);
+    const clerk = await login(await createUser({ roles: [{ role: 'CLERK_REGISTRATION', courtId: general.id }], label: 'general-registry' }));
+    const prosecutor = await createUser({ roles: [{ role: 'PUBLIC_PROSECUTOR', courtId: general.id }], label: 'general-prosecutor' });
+    const lawyer = await as('lawyer');
+    const draftId = await createDraft(lawyer);
+    expect((await updateDraft(lawyer, draftId, { caseType: '1201', courtId: general.id })).status).toBe(200);
+    expect((await pasteApplication(lawyer, draftId, MODEL_CASE_APPLICATION_TEXT)).status).toBe(200);
+    await runJobs();
+    expect((await updateDraft(lawyer, draftId, { card: MODEL_CASE })).status).toBe(200);
+    await attestAll(lawyer, draftId);
+    expect((await upload(lawyer, draftId, { kind: 'EXHIBIT', name: 'contrat.pdf', bytes: pdfBytes('contract'), nature: 'ORIGINAL' })).status).toBe(200);
+    await payDraft(lawyer, draftId);
+    const filed = await submit(lawyer, draftId, { secret });
+    expect(filed.status, describeResponse(filed)).toBe(200);
+    const caseFileId = filed.data!.caseFileId;
+    expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1`, [caseFileId])).toBe(0);
+
+    // A commercial case type does not belong to a court of general jurisdiction.
+    await expectDenied(() => act(clerk, caseFileId, 'case.registration.reclassify', { caseType: '8201' }), 422);
+    // A family matter (art. 18, item 2): the prosecution becomes a principal party, and is told.
+    const res = await act(clerk, caseFileId, 'case.registration.reclassify', { caseType: '1601' });
+    expect(res.status, describeResponse(res)).toBe(200);
+    const referral = await one<{ target: string; ground: string; article: number; item: number | null }>(
+      'SELECT target::text, ground::text, article, item FROM "CaseReferral" WHERE "caseFileId" = $1',
+      [caseFileId],
+    );
+    expect(referral).toEqual({ target: 'PROSECUTION', ground: 'PRINCIPAL_PARTY', article: 18, item: 2 });
+    const file = await one<{ referredToProsecutionAt: Date | null }>('SELECT "referredToProsecutionAt" FROM "CaseFile" WHERE id = $1', [caseFileId]);
+    expect(file.referredToProsecutionAt).not.toBeNull();
+    expect(await count(`SELECT count(*) FROM "Notification" WHERE "userId" = $1 AND "templateKey" = 'notifications.case.referred-reclassified'`, [prosecutor.id])).toBe(1);
   });
 
   it('stamps once: two stamps at once leave one stamp, and the buttons that precede it disappear', async () => {

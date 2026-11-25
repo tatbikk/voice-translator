@@ -160,6 +160,11 @@ describe('the constraints of "RuleSet" (review P1-A-18)', () => {
     }
   }
 
+  // Other test files load the tables of Phase 2 in force from 2026 with no end: the
+  // checks below use days of 2001, when no version of any kind is in force.
+  const FREE_FROM = '2001-01-01';
+  const FREE_TO = '2001-06-30';
+
   const insert = (kind: string, version: string, validFrom: string, validTo: string | null) =>
     `INSERT INTO "RuleSet" (id, kind, version, "validFrom", "validTo", "contentSha256", content)
      VALUES (gen_random_uuid(), '${kind}', '${version}', '${validFrom}', ${validTo === null ? 'NULL' : `'${validTo}'`}, repeat('0', 64), '{}'::jsonb)`;
@@ -167,21 +172,21 @@ describe('the constraints of "RuleSet" (review P1-A-18)', () => {
   it('refuses an unknown kind, and accepts those of Phase 2', async () => {
     expect(await outcome(insert('NO_SUCH_KIND', 'x', '2030-01-01', null))).toBe('23514');
     for (const kind of ['CASE_TYPES', 'DISTRICTS', 'REFERRALS', 'JURISDICTION']) {
-      expect(await outcome(insert(kind, '2026-11-25.1', '2026-11-25', null)), kind).toBe('OK');
+      expect(await outcome(insert(kind, '2001-01-01.1', FREE_FROM, FREE_TO)), kind).toBe('OK');
     }
   });
 
   it('refuses a day that is not written YYYY-MM-DD or does not exist', async () => {
     for (const day of ['2026/11/25', '25-11-2026', '2026-11-5', '2026-02-30', '2026-13-01', '0000-01-01', '']) {
-      expect(await outcome(insert('CASE_TYPES', 'x', day, null)), `validFrom ${day}`).toBe('23514');
-      expect(await outcome(insert('CASE_TYPES', 'x', '2030-01-01', day)), `validTo ${day}`).toBe('23514');
+      expect(await outcome(insert('CASE_TYPES', 'x', day, FREE_TO)), `validFrom ${day}`).toBe('23514');
+      expect(await outcome(insert('CASE_TYPES', 'x', FREE_FROM, day)), `validTo ${day}`).toBe('23514');
     }
   });
 
   it('refuses an end that does not come after the start', async () => {
-    expect(await outcome(insert('CASE_TYPES', 'x', '2030-01-01', '2030-01-01'))).toBe('23514');
-    expect(await outcome(insert('CASE_TYPES', 'x', '2030-01-01', '2029-12-31'))).toBe('23514');
-    expect(await outcome(insert('CASE_TYPES', 'x', '2030-01-01', '2030-01-02'))).toBe('OK');
+    expect(await outcome(insert('CASE_TYPES', 'x', FREE_FROM, FREE_FROM))).toBe('23514');
+    expect(await outcome(insert('CASE_TYPES', 'x', FREE_FROM, '2000-12-31'))).toBe('23514');
+    expect(await outcome(insert('CASE_TYPES', 'x', FREE_FROM, '2001-01-02'))).toBe('OK');
   });
 
   it('refuses two versions of one kind in force on the same day, by insertion or by update', async () => {
@@ -194,8 +199,9 @@ describe('the constraints of "RuleSet" (review P1-A-18)', () => {
     const close = `UPDATE "RuleSet" SET "validTo" = '${later}' WHERE kind = '${table.kind}' AND version = '${table.version}'`;
     expect(await outcome(close, insert(table.kind, 'newer', later, null))).toBe('OK');
     expect(await outcome(close, insert(table.kind, 'newer', later, null), `UPDATE "RuleSet" SET "validTo" = NULL WHERE version = '${table.version}' AND kind = '${table.kind}'`)).toBe('23P01');
-    // Another kind may be in force on the same days.
-    expect(await outcome(insert('CASE_TYPES', 'same-days', table.validFrom, null))).toBe('OK');
+    // Another kind may be in force on the same days (a kind other than the table's, in the free window).
+    const otherKind = table.kind === 'CASE_TYPES' ? 'DISTRICTS' : 'CASE_TYPES';
+    expect(await outcome(insert(table.kind, 'window', FREE_FROM, FREE_TO), insert(otherKind, 'same-days', FREE_FROM, FREE_TO))).toBe('OK');
   });
 
   it('refuses a write at REPEATABLE READ, whose snapshot could miss a concurrent version', async () => {

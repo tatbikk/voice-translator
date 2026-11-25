@@ -1,4 +1,4 @@
-import { formatMoroccoDate } from '@mahkama/core';
+import { authorize, formatMoroccoDate } from '@mahkama/core';
 import type { Metadata } from 'next';
 import { dictionary } from '@/i18n/dictionary';
 import { translator } from '@/i18n/translate';
@@ -19,15 +19,20 @@ export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens
 export default async function FilingsPage() {
   const context = await requirePage('filings', 'filing.drafts.list');
   const t = translator(context.locale);
-  const drafts = await draftsOf(context.subject, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() });
+  const authContext = { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() };
+  const drafts = await draftsOf(context.subject, authContext);
+  // A button is shown only to whoever holds its act (the registry clerk lists the paper drafts, files none here).
+  const canFile = authorize(context.subject, 'filing.new', { kind: 'new-filing' }, authContext).allowed;
   return (
     <Frame context={context}>
       <PageHeader title={t('screens.filings')}>
         <p className="mt-2 max-w-3xl text-text-muted">{t('filing.list.intro')}</p>
       </PageHeader>
-      <div className="mb-8">
-        <NewFilingButton path="/api/v1/filings" label={t('filing.newCase')} dict={dictionary(context.locale, ['errors.'])} />
-      </div>
+      {canFile ? (
+        <div className="mb-8">
+          <NewFilingButton path="/api/v1/filings" label={t('filing.newCase')} dict={dictionary(context.locale, ['errors.'])} />
+        </div>
+      ) : null}
       {drafts.length === 0 ? (
         <EmptyState text={t('filing.list.empty')} />
       ) : (

@@ -34,6 +34,8 @@ export interface CaseRow {
   readonly number: { readonly number: number; readonly code: number; readonly year: number };
   readonly caseType: string | null;
   readonly status: string;
+  /** registered, its rapporteur not yet assigned (study: «مقيد، في انتظار تعيين القاضي المقرر») */
+  readonly awaitingRapporteur: boolean;
   readonly courtName: string;
   readonly parties: readonly string[];
   readonly nextHearing: Date | null;
@@ -62,6 +64,7 @@ export async function casesOf(subject: UserSubject, context: AuthorizationContex
       year: true,
       caseType: true,
       status: true,
+      rapporteurUserId: true,
       court: { select: { name: true } },
       nextHearing: { select: { startsAt: true } },
       parties: { orderBy: { position: 'asc' }, take: 3, select: { displayName: true } },
@@ -76,6 +79,7 @@ export async function casesOf(subject: UserSubject, context: AuthorizationContex
       number: { number: r.number, code: r.code, year: r.year },
       caseType: r.caseType,
       status: r.status,
+      awaitingRapporteur: r.status === 'REGISTERED' && r.rapporteurUserId === null,
       courtName: r.court.name,
       parties: r.parties.map((p) => p.displayName),
       nextHearing: r.nextHearing?.startsAt ?? null,

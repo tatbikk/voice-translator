@@ -1,5 +1,6 @@
 'use client';
 
+import { SECURITY_POLICY } from '@mahkama/core';
 import { useEffect, useState } from 'react';
 import { apiPost, apiPostBytes } from '@/components/client/api';
 import { Button } from '@/components/ui/Button';
@@ -74,7 +75,7 @@ export function DocumentsStep({ view, t, busy, run, base }: StepProps) {
   return (
     <div>
       <p className="mb-5 text-text-muted">{t(paper ? 'filing.documents.introPaper' : 'filing.documents.intro')}</p>
-      <Field id="addExhibit" label={t('filing.documents.add')} hint={t(paper ? 'filing.documents.typesPaper' : 'filing.documents.types')}>
+      <Field id="addExhibit" label={t('filing.documents.add')} hint={t(paper ? 'filing.documents.typesPaper' : 'filing.documents.types', { size: (paper ? SECURITY_POLICY.uploads.scanMaxBytes : SECURITY_POLICY.uploads.exhibitMaxBytes) / (1024 * 1024) })}>
         <input
           id="addExhibit"
           type="file"

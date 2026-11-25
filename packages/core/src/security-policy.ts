@@ -58,7 +58,11 @@ export const SECURITY_POLICY = {
     conclusionsMaxBytes: 10 * MIB,
     draftMaxDocuments: 40,
     draftMaxTotalBytes: 150 * MIB,
+    /** everything a draft ever stored, removed documents included (review P2-S-07) */
+    draftMaxStoredBytes: 300 * MIB,
     perSession: { max: 120, windowMs: HOUR },
+    /** documents one act may file on one case file (review P2-A-10) */
+    caseMaxFiledPerAct: 50,
     docx: { maxEntries: 1000, maxEntryBytes: 30 * MIB, maxTotalBytes: 60 * MIB },
     titleMaxChars: 150,
   },
@@ -66,6 +70,16 @@ export const SECURITY_POLICY = {
   applicationText: { maxBytes: 1024 * 1024, maxChars: 200_000, maxParagraphs: 5_000 },
   /** the case card and the other bodies of the filing path */
   filingBody: { maxBytes: 128 * 1024 },
+  /**
+   * The writes of the filing path (review P2-S-07): open drafts per account, and
+   * per session the changes of a draft and the pasted texts, each of which has
+   * the worker print a fixed copy.
+   */
+  filing: {
+    maxOpenDrafts: 50,
+    writesPerSession: { max: 600, windowMs: HOUR },
+    pastesPerSession: { max: 60, windowMs: HOUR },
+  },
   /** a payment opened on the simulated gateway expires after this time */
   paymentIntent: { ttlMs: 30 * MINUTE },
   registerLookup: { perSession: { max: 60, windowMs: 15 * MINUTE } },

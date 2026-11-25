@@ -7,7 +7,7 @@
 import { createServer, get, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { generatePdf, printPdf, type GenerateInput } from '@/server/documents/generate';
+import { DocumentGenerationError, generatePdf, printPdf, type GenerateInput } from '@/server/documents/generate';
 import { translator } from '@/i18n/translate';
 import { pdfPages, readsRightToLeft } from '../helpers/pdf-text';
 import { useFreshDatabase } from '../helpers/reset';
@@ -119,5 +119,14 @@ describe('the printing browser makes no network request (review P1-S-15)', () =>
       }).on('error', reject);
     });
     expect(seen).toEqual(['/probe']);
+  }, 90_000);
+
+  it('stops printing when its job is aborted: an aborted signal prints nothing (review P2-S-15)', async () => {
+    const margins = { headerHtml: '<span></span>', footerHtml: '<span></span>' };
+    await expect(printPdf('<html><body><p>x</p></body></html>', margins, AbortSignal.abort())).rejects.toBeInstanceOf(DocumentGenerationError);
+    const aborting = new AbortController();
+    const printing = printPdf('<html><body><p>x</p></body></html>', margins, aborting.signal);
+    aborting.abort();
+    await expect(printing).rejects.toBeInstanceOf(DocumentGenerationError);
   }, 90_000);
 });

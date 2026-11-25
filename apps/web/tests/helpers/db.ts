@@ -53,7 +53,7 @@ export async function one<T = Record<string, unknown>>(text: string, params: rea
 
 /** The first column of the first row, as a number: `SELECT count(*) …` with or without `AS n`. */
 export async function count(text: string, params: readonly unknown[] = []): Promise<number> {
-  const rows = await sql<Record<string, unknown>>(text, params);
+  const rows = await sql(text, params);
   const row = rows[0];
   const value = row ? (row.n ?? Object.values(row)[0]) : 0;
   return Number(value ?? 0);

@@ -2,7 +2,8 @@
 // register (every answer carries «مصدر محاكى»), the professional data of the
 // demo lawyers, and one filing whose defendant is a public establishment, filed
 // through the platform's own path so that it is referred to the prosecution
-// (art. 20). Every name, number and address is fictitious (prompt rule 11).
+// (art. 20). Every name, number and address is fictitious (prompt rule 11), and no
+// party bears the name of a demo account (reviews P1-L-39, P1-L-40, P2-L-27).
 
 export interface RegisterEntrySeed {
   readonly key: string;
@@ -43,9 +44,9 @@ export const DEMO_REGISTER_ENTRIES: readonly RegisterEntrySeed[] = [
   {
     key: 'RC-DEMO-3003',
     data: {
-      name: 'شركة تاء للنقل',
+      name: 'شركة تاء صاد للنقل',
       legalForm: 'شركة ذات مسؤولية محدودة',
-      legalRepresentative: 'السيدة سين',
+      legalRepresentative: 'السيدة سين ياء',
       registeredOffice: 'برشيد، شارع المثال، رقم 3',
       locality: 'berrechid',
       email: 'contact@taa-demo.example',
@@ -56,7 +57,12 @@ export const DEMO_REGISTER_ENTRIES: readonly RegisterEntrySeed[] = [
 /** The professional data the check before signature reads (art. 77): number and bar. */
 export const DEMO_BAR = { body: 'هيئة المحامين النموذجية', numbers: { 'lawyer.plaintiff': 'DEMO-A-0101', 'lawyer.defendants': 'DEMO-A-0202' } } as const;
 
-/** A filing against a public establishment, made by the plaintiff's lawyer (art. 20, first case). */
+/**
+ * A filing against a public establishment, made by the plaintiff's lawyer (art. 20, first case),
+ * for a debt under a commercial contract of carriage (art. 35, first case). The State judicial
+ * agent is left out on purpose: the check before signature then shows the warning of art. 605
+ * (STATE_JUDICIAL_AGENT_MISSING), which never stops the filing (decision 55; review P2-L-50).
+ */
 export const DEMO_REFERRED_FILING = {
   caseType: '8201',
   defendantLocality: 'casablanca',
@@ -66,11 +72,11 @@ export const DEMO_REFERRED_FILING = {
         key: 'taa',
         side: 'PLAINTIFF',
         personKind: 'LEGAL',
-        name: 'شركة تاء للنقل',
-        quality: 'مدعية',
+        name: 'شركة تاء صاد للنقل',
+        quality: 'ناقلة دائنة بثمن النقل',
         idNumber: 'RC-DEMO-3003',
         legalForm: 'شركة ذات مسؤولية محدودة',
-        legalRepresentative: 'السيدة سين',
+        legalRepresentative: 'السيدة سين ياء',
         registeredOffice: { value: 'برشيد، شارع المثال، رقم 3', locality: 'berrechid', source: 'COMMERCIAL_REGISTER' },
         email: 'contact@taa-demo.example',
         representedByFiler: true,
@@ -81,12 +87,12 @@ export const DEMO_REFERRED_FILING = {
         personKind: 'PUBLIC',
         publicEntityKind: 'PUBLIC_ESTABLISHMENT',
         name: 'المكتب النموذجي للتجهيز',
-        quality: 'مدعى عليه',
+        quality: 'مدين بثمن النقل',
         legalRepresentative: 'مديره العام',
         registeredOffice: { value: 'الدار البيضاء، شارع المؤسسات النموذجي، رقم 9', locality: 'casablanca', source: 'DECLARED' },
       },
     ],
-    summary: 'نقلت المدعية معدات لفائدة المدعى عليه بموجب صفقة نقل، ولم يؤد ثمن خدماتها البالغ 120.000 درهم رغم الإنذار. تلتمس الحكم بأداء المبلغ مع الفوائد القانونية والمصاريف.',
+    summary: 'نقلت المدعية معدات لفائدة المدعى عليه بموجب عقد نقل، ولم يؤد ثمن خدماتها البالغ 120.000 درهم رغم الإنذار، وتلتمس الحكم بأداء المبلغ مع الفوائد القانونية والمصاريف.',
     claims: [
       { key: 'debt', nature: 'DEBT', amountCents: 12_000_000 },
       { key: 'interest', nature: 'LEGAL_INTEREST', amountCents: null },
@@ -95,13 +101,13 @@ export const DEMO_REFERRED_FILING = {
   },
   applicationText: [
     'مقال افتتاحي من أجل الأداء',
-    'لفائدة: شركة تاء للنقل، شركة ذات مسؤولية محدودة، في شخص ممثلها القانوني.',
+    'لفائدة: شركة تاء صاد للنقل، شركة ذات مسؤولية محدودة، في شخص ممثلها القانوني.',
     'ضد: المكتب النموذجي للتجهيز، مؤسسة عمومية، في شخص مديره العام.',
-    '1. الوقائع: نقلت المدعية معدات لفائدة المدعى عليه، وبقي ثمن خدماتها البالغ 120.000 درهم دون أداء.',
+    '1. الوقائع: نقلت المدعية معدات لفائدة المدعى عليه بموجب عقد نقل، وبقي ثمن خدماتها البالغ 120.000 درهم دون أداء.',
     '2. الطلبات: الحكم على المدعى عليه بأداء 120.000 درهم مع الفوائد القانونية والمصاريف.',
   ].join('\n'),
   exhibits: [
-    { title: 'صفقة النقل', nature: 'ORIGINAL' },
+    { title: 'عقد النقل', nature: 'ORIGINAL' },
     { title: 'الفاتورة', nature: 'CERTIFIED_COPY' },
   ],
 } as const;

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { translator } from '@/i18n/translate';
+import { translator, type Translator } from '@/i18n/translate';
 import { Frame } from '@/components/shell/Frames';
 import { dateTime, dirhams } from '@/components/case/format';
 import { CaseNumber } from '@/components/ui/CaseNumber';
@@ -15,6 +15,22 @@ import { requirePage } from '@/server/permissions/guard';
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.filings-:draftId-receipt');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+type ReceiptDocument = NonNullable<Awaited<ReturnType<typeof receiptView>>>['documents'][number];
+
+/** The application is named as such on the receipt, not by the name of the file uploaded (review P2-L-03). */
+const isApplication = (d: ReceiptDocument) => d.docType === 'APPLICATION' || d.docType === 'APPLICATION_SOURCE';
+
+/**
+ * The column «نوعية الوثيقة» (review P2-L-03): the nature declared (art. 631); else «ولدتها
+ * المنصة» for what the platform printed; else, in a paper filing, the scan whose paper
+ * original the registry keeps; else nothing.
+ */
+function natureText(t: Translator, d: ReceiptDocument, paper: boolean): string {
+  if (d.declaredNature) return t(`case.nature.${d.declaredNature}`);
+  if (d.generated) return t('filing.receipt.generated');
+  return t(paper ? 'filing.receipt.scanned' : 'case.nature.none');
+}
 
 // «وصل الإيداع» (study, «المرحلة الأولى»; art. 628): the number of the file,
 // its national identifier, the date and hour of filing, each document with its
@@ -89,8 +105,8 @@ export default async function ReceiptPage({ params }: { params: Promise<{ draftI
               <tbody>
                 {receipt.documents.map((d) => (
                   <tr key={d.id} className={TABLE.row}>
-                    <th scope="row" className={TABLE.rowHeader}>{d.title ?? t(`case.docType.${d.docType}`)}</th>
-                    <td className={TABLE.td}>{d.declaredNature ? t(`case.nature.${d.declaredNature}`) : t('filing.receipt.generated')}</td>
+                    <th scope="row" className={TABLE.rowHeader}>{isApplication(d) && !d.generated ? t('terms.initialApplication') : (d.title ?? t(`case.docType.${d.docType}`))}</th>
+                    <td className={TABLE.td}>{natureText(t, d, receipt.channel === 'PAPER')}</td>
                     <td className={TABLE.td}>
                       <code dir="ltr" className="text-xs break-all">{d.sha256}</code>
                     </td>

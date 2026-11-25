@@ -1,3 +1,4 @@
+import { authorize } from '@mahkama/core';
 import type { Metadata } from 'next';
 import { dictionary } from '@/i18n/dictionary';
 import { translator } from '@/i18n/translate';
@@ -10,8 +11,7 @@ import { CaseNumber } from '@/components/ui/CaseNumber';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { clock } from '@/server/clock';
-import { incomingFiles } from '@/server/offices/registry';
-import { caseTypeRules } from '@/server/rules/store';
+import { caseTypesOfCourt, incomingFiles } from '@/server/offices/registry';
 import { screenMetadata } from '@/server/page-metadata';
 import { requirePage } from '@/server/permissions/guard';
 
@@ -31,18 +31,22 @@ export default async function RegistryPage() {
   const context = await requirePage('registry', 'registry.incoming.list');
   const t = translator(context.locale);
   const now = clock.now();
-  const [files, rules] = await Promise.all([incomingFiles(context.subject, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now }), caseTypeRules(now)]);
+  const authContext = { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now };
+  const [files, types] = await Promise.all([incomingFiles(context.subject, authContext), caseTypesOfCourt(context.subject.courtId ?? null, now)]);
+  const canFilePaper = authorize(context.subject, 'filing.paper', { kind: 'new-filing' }, authContext).allowed;
   const dict = dictionary(context.locale, ['errors.', 'common.', 'filing.choose', 'filing.court.caseTypeOption', 'registry.']);
-  const caseTypes = rules.types.map((c) => ({ code: c.code, name: t(`case.type.${c.code}`) }));
+  const caseTypes = types.map((c) => ({ code: c.code, name: t(`case.type.${c.code}`) }));
   const numberLabel = t('common.caseNumberLabel');
   return (
     <Frame context={context}>
       <PageHeader title={t('screens.registry')}>
         <p className="mt-2 max-w-3xl text-text-muted">{t('registry.intro')}</p>
       </PageHeader>
-      <div className="mb-8">
-        <NewFilingButton path="/api/v1/filings/paper" label={t('registry.paperFiling')} dict={dict} variant="secondary" />
-      </div>
+      {canFilePaper ? (
+        <div className="mb-8">
+          <NewFilingButton path="/api/v1/filings/paper" label={t('registry.paperFiling')} dict={dict} variant="secondary" />
+        </div>
+      ) : null}
       <section aria-labelledby="incoming-title">
         <h2 id="incoming-title" className="mb-4 text-2xl">
           {t('registry.incoming')}
@@ -60,6 +64,10 @@ export default async function RegistryPage() {
               </p>
               <h4 className="mt-4 font-semibold">{t('filing.caseCard')}</h4>
               <dl className="mt-2 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <dt className="text-text-muted">{t('filing.card.summary')}</dt>
+                  <dd className="whitespace-pre-line">{f.subject ?? '—'}</dd>
+                </div>
                 <div>
                   <dt className="text-text-muted">{t('registry.card.plaintiffs')}</dt>
                   <dd>{f.parties.filter((p) => p.side === 'PLAINTIFF').map((p) => p.name).join(t('filing.listSeparator')) || '—'}</dd>

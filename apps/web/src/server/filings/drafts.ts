@@ -68,6 +68,8 @@ export function attestationsFor(card: FilingCard, previous: unknown, sections: r
 export interface DraftFee {
   readonly assessment: FeeAssessment;
   readonly version: string;
+  /** the day the schedule applied is in force from (YYYY-MM-DD), shown instead of its version (review P2-L-36) */
+  readonly validFrom: string;
   readonly uncertain: boolean;
   readonly digest: string;
 }
@@ -83,6 +85,7 @@ export async function draftFee(card: FilingCard, courtId: string | null, at: Dat
   return {
     assessment,
     version: schedule.version,
+    validFrom: schedule.validFrom,
     uncertain: assessment.lines.some((l) => l.uncertain),
     digest: feeDigest(card, courtId, schedule.version),
   };
@@ -97,7 +100,7 @@ interface IntentLike {
   readonly createdAt: Date;
 }
 
-const intentVersion = (intent: IntentLike) => {
+export const intentVersion = (intent: Pick<IntentLike, 'breakdown'>) => {
   const breakdown = intent.breakdown as { version?: unknown } | null;
   return typeof breakdown?.version === 'string' ? breakdown.version : '';
 };
@@ -297,7 +300,7 @@ export interface DraftView {
     readonly paperOriginalLocation: string | null;
     readonly generated: boolean;
   }[];
-  readonly fee: { readonly totalCents: number; readonly baseCents: number; readonly uncertain: boolean; readonly version: string; readonly lines: readonly { kind: string; amountCents: number; baseCents: number | null; rateBasisPoints: number | null; basis: string; uncertain: boolean }[]; readonly excluded: readonly string[] } | null;
+  readonly fee: { readonly totalCents: number; readonly baseCents: number; readonly uncertain: boolean; readonly version: string; readonly validFrom: string; readonly lines: readonly { kind: string; amountCents: number; baseCents: number | null; rateBasisPoints: number | null; basis: string; uncertain: boolean }[]; readonly excluded: readonly string[] } | null;
   readonly payment: {
     readonly status: 'NONE' | 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
     readonly intentId: string | null;
@@ -372,6 +375,7 @@ export async function draftView(draft: DraftWithParts, subject: UserSubject): Pr
           baseCents: fee.assessment.baseCents,
           uncertain: fee.uncertain,
           version: fee.version,
+          validFrom: fee.validFrom,
           lines: fee.assessment.lines.map((l) => ({ ...l })),
           excluded: [...fee.assessment.excluded],
         }

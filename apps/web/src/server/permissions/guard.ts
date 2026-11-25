@@ -172,6 +172,15 @@ export async function requireDemo(pageId: string, action: ActionCode): Promise<G
   return context;
 }
 
+/**
+ * For a page's metadata: the subject of the request as resolved, or anonymous.
+ * It refuses nothing and redirects nowhere; the page's own guard does that.
+ */
+export async function currentSubject(): Promise<Subject> {
+  const state = await requestState();
+  return state.session?.subject ?? { kind: 'anonymous' };
+}
+
 /** For layouts and components below a guarded page: the locale only. */
 export async function currentLocale(): Promise<Locale> {
   const incoming = await headers();

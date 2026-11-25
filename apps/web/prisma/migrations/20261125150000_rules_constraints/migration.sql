@@ -45,6 +45,12 @@ BEGIN
   IF current_setting('transaction_isolation') = 'repeatable read' THEN
     RAISE EXCEPTION 'rule sets are written at READ COMMITTED or SERIALIZABLE' USING ERRCODE = 'invalid_transaction_state';
   END IF;
+  -- A day that is not one, or an end not after the start, is refused by the CHECK
+  -- constraints (23514), which run after this trigger: no overlap is computed for it.
+  IF "rule_set_day"(NEW."validFrom") IS NULL
+     OR (NEW."validTo" IS NOT NULL AND ("rule_set_day"(NEW."validTo") IS NULL OR "rule_set_day"(NEW."validTo") <= "rule_set_day"(NEW."validFrom"))) THEN
+    RETURN NEW;
+  END IF;
   PERFORM pg_advisory_xact_lock(hashtext('RuleSet:' || NEW."kind"));
   SELECT r."version" INTO clash
     FROM "RuleSet" r

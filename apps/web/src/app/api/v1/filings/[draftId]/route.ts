@@ -29,6 +29,7 @@ export const POST = defineEndpoint({
   access: { kind: 'action', action: 'filing.draft.edit' },
   params,
   resource: (p) => draftResource(p.draftId),
+  rateLimit: (_client, session) => ({ key: `filing-writes:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.filing.writesPerSession }),
   bodyLimitBytes: SECURITY_POLICY.filingBody.maxBytes,
   body: UpdateDraftBody,
   handler: ({ params: p, body, session }) =>

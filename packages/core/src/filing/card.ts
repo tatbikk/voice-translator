@@ -24,7 +24,20 @@ export const CARD_LIMITS = {
 const optional = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (typeof value === 'string' && value.trim() === '' ? undefined : value), schema.optional());
 
-const text = (max: number) => z.string().trim().min(1).max(max);
+/**
+ * Control characters and the invisible marks that make a text read otherwise than
+ * it is (direction overrides and isolates, zero-width characters): removed from
+ * every text of the card, the line breaks of the summary kept (review P2-S-11).
+ */
+// eslint-disable-next-line no-control-regex -- the control characters are what this class removes
+const INVISIBLE = new RegExp('[\\u0000-\\u0009\\u000b-\\u001f\\u007f-\\u009f\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]', 'g');
+export const stripInvisible = (value: string) => value.normalize('NFC').replace(INVISIBLE, '');
+
+const text = (max: number) =>
+  z
+    .string()
+    .transform(stripInvisible)
+    .pipe(z.string().trim().min(1).max(max));
 const key = z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/);
 
 const AddressSchema = z
@@ -64,7 +77,7 @@ const PartySchema = z
     phone: optional(z.string().trim().regex(/^\+?[0-9][0-9 ]{5,19}$/)),
     /** the plaintiff's agent and his domicile (art. 77) */
     agent: z.preprocess(blankObject('name'), z.object({ name: text(200), address: optional(text(300)) }).strict().optional()),
-    /** the filing lawyer acts for this party */
+    /** the filing lawyer acts for this party: a plaintiff only (the card's refinement below) */
     representedByFiler: z.boolean().optional(),
   })
   .strict();
@@ -82,7 +95,7 @@ const ClaimSchema = z
 export const FilingCardSchema = z
   .object({
     parties: z.array(PartySchema).max(CARD_LIMITS.parties),
-    summary: z.string().trim().max(CARD_LIMITS.summaryChars),
+    summary: z.string().transform(stripInvisible).pipe(z.string().trim().max(CARD_LIMITS.summaryChars)),
     claims: z.array(ClaimSchema).max(CARD_LIMITS.claims),
   })
   .strict()
@@ -95,6 +108,12 @@ export const FilingCardSchema = z
       for (const [index, item] of items.entries()) {
         if (seen.has(item.key)) ctx.addIssue({ code: 'custom', path: [field, index, 'key'], message: 'duplicate key' });
         seen.add(item.key);
+      }
+    }
+    // The filing lawyer files the application of a plaintiff: he can act for no other side (review P2-S-02).
+    for (const [index, party] of card.parties.entries()) {
+      if (party.representedByFiler === true && party.side !== 'PLAINTIFF') {
+        ctx.addIssue({ code: 'custom', path: ['parties', index, 'representedByFiler'], message: 'the filer acts for a plaintiff only' });
       }
     }
   });

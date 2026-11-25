@@ -24,6 +24,7 @@ export const POST = defineEndpoint({
   // Only an act that files a document is named here; any other is unknown on this route.
   actionFrom: (params) => (ACTIONS[params.action]?.procedure?.files ? params.action : 'unknown'),
   resource: (params) => caseResource(params.caseId, clock.now()),
+  rateLimit: (_client, session) => ({ key: `uploads:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.uploads.perSession }),
   binary: { absoluteMaxBytes: SECURITY_POLICY.uploads.conclusionsMaxBytes, maxBytes: () => SECURITY_POLICY.uploads.conclusionsMaxBytes },
   handler: async ({ params, session, subject, action, bytes }) => {
     const code = action ?? params.action;

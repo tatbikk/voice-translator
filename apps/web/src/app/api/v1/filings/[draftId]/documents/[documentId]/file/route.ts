@@ -16,8 +16,8 @@ export const GET = defineEndpoint({
   params: z.strictObject({ draftId: z.uuid(), documentId: z.uuid() }),
   resource: (p) => draftResource(p.draftId),
   handler: ({ params: p, session }) =>
-    withDraft(p.draftId, session, async (draft) => {
-      const file = await draftDocumentFile(draft, p.documentId);
+    withDraft(p.draftId, session, async (draft, caller) => {
+      const file = await draftDocumentFile(draft, p.documentId, caller.session.actor);
       if (file === 'NOT_FOUND') return notFound();
       if (file === 'INTEGRITY') return fail(503, 'UNAVAILABLE');
       const extension = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' }[file.mediaType] ?? 'docx';

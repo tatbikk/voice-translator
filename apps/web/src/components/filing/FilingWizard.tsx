@@ -1,5 +1,6 @@
 'use client';
 
+import { SECURITY_POLICY } from '@mahkama/core';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { CardSection, FilingCard } from '@mahkama/core';
 import { apiGet, apiPost, apiPostBytes, navigate } from '@/components/client/api';
@@ -280,7 +281,7 @@ function ApplicationStep({ view, t, busy, run, refresh, base }: StepProps) {
       <p className="mb-5 text-text-muted">{t(paper ? 'filing.application.introPaper' : 'filing.application.intro')}</p>
       {paper ? (
         <>
-          <LabeledInput id="applicationFile" label={t('filing.application.upload')} hint={t('filing.application.scanTypes')}>
+          <LabeledInput id="applicationFile" label={t('filing.application.upload')} hint={t('filing.application.scanTypes', { size: SECURITY_POLICY.uploads.scanMaxBytes / (1024 * 1024) })}>
             <input id="applicationFile" type="file" accept=".pdf,.jpg,.jpeg,.png" className="block" onChange={(e) => { setFile(e.target.files?.[0] ?? null); }} />
           </LabeledInput>
           <LabeledInput id="applicationPages" label={t('filing.application.pages')}>
@@ -304,7 +305,7 @@ function ApplicationStep({ view, t, busy, run, refresh, base }: StepProps) {
               <textarea id="applicationText" rows={12} className={CONTROL} value={text} onChange={(e) => { setText(e.target.value); }} />
             </LabeledInput>
           ) : (
-            <LabeledInput id="applicationFile" label={t('filing.application.file')} hint={t('filing.application.fileTypes')}>
+            <LabeledInput id="applicationFile" label={t('filing.application.file')} hint={t('filing.application.fileTypes', { size: SECURITY_POLICY.uploads.applicationMaxBytes / (1024 * 1024) })}>
               <input id="applicationFile" type="file" accept=".pdf,.docx" className="block" onChange={(e) => { setFile(e.target.files?.[0] ?? null); }} />
             </LabeledInput>
           )}
@@ -344,16 +345,24 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
   const warnings = view.checks.filter((c) => c.level === 'WARNING');
   const paid = view.payment.status === 'SUCCEEDED';
 
+  // What this screen holds and the draft does not yet: saved by «حفظ», and again before filing.
+  const changes = (): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    if ((d.designatedBailiffUserId ?? '') !== bailiff) out.bailiffUserId = bailiff === '' ? null : bailiff;
+    if (paper) {
+      out.paperDepositor = depositor.name.trim() === '' ? null : { name: depositor.name, ...(depositor.idNumber ? { idNumber: depositor.idNumber } : {}), ...(depositor.quality ? { quality: depositor.quality } : {}) };
+      out.paperLawyerUserId = lawyer === '' ? null : lawyer;
+    }
+    return out;
+  };
+  // A depositor typed on this screen is saved before filing: its check does not hold the button back.
+  const holding = blocking.filter((c) => !(c.code === 'PAPER_DEPOSITOR_MISSING' && depositor.name.trim() !== ''));
+
   const file = async () => {
     setWorking(true);
     setDialogError(null);
-    const changes: Record<string, unknown> = {};
-    if ((d.designatedBailiffUserId ?? '') !== bailiff) changes.bailiffUserId = bailiff === '' ? null : bailiff;
-    if (paper) {
-      changes.paperDepositor = depositor.name.trim() === '' ? null : { name: depositor.name, ...(depositor.idNumber ? { idNumber: depositor.idNumber } : {}), ...(depositor.quality ? { quality: depositor.quality } : {}) };
-      changes.paperLawyerUserId = lawyer === '' ? null : lawyer;
-    }
-    if (Object.keys(changes).length > 0 && !(await update(changes))) {
+    const pending = changes();
+    if (Object.keys(pending).length > 0 && !(await update(pending))) {
       setWorking(false);
       setOpen(false);
       return;
@@ -408,6 +417,8 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
           ))}
         </select>
       </Field>
+      {/* The roster stands for the professional body's table: its answer carries «مصدر محاكى» (prompt, «السجلات»). */}
+      <p className="-mt-3 mb-5 text-sm text-text-muted">{t('registers.simulatedSource')}</p>
 
       {paper ? (
         <fieldset className="mb-6 rounded border border-line px-4 py-4">
@@ -431,6 +442,7 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
               ))}
             </select>
           </Field>
+          <p className="-mt-3 mb-2 text-sm text-text-muted">{t('registers.simulatedSource')}</p>
         </fieldset>
       ) : (
         <LabeledInput id="signingSecret" label={t('filing.sign.secret')} hint={t('filing.sign.secretHint')}>
@@ -438,15 +450,27 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
         </LabeledInput>
       )}
 
-      <Button
-        disabled={busy || working || blocking.length > 0 || !paid || (!paper && secret === '')}
-        onClick={() => {
-          setDialogError(null);
-          setOpen(true);
-        }}
-      >
-        {t(paper ? 'filing.paper.file' : 'filing.sign.file')}
-      </Button>
+      <div className="flex flex-wrap items-center gap-4">
+        <Button
+          variant="quiet"
+          disabled={busy || working}
+          onClick={() => {
+            const pending = changes();
+            if (Object.keys(pending).length > 0) void update(pending);
+          }}
+        >
+          {t('filing.save')}
+        </Button>
+        <Button
+          disabled={busy || working || holding.length > 0 || !paid || (!paper && secret === '')}
+          onClick={() => {
+            setDialogError(null);
+            setOpen(true);
+          }}
+        >
+          {t(paper ? 'filing.paper.file' : 'filing.sign.file')}
+        </Button>
+      </div>
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}

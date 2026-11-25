@@ -21,8 +21,14 @@ export interface ReceiptView {
 
 export async function receiptView(draftId: string): Promise<ReceiptView | null> {
   const db = getDb();
-  const draft = await db.filingDraft.findUnique({ where: { id: draftId }, select: { id: true, channel: true, caseFileId: true } });
+  const draft = await db.filingDraft.findUnique({
+    where: { id: draftId },
+    select: { id: true, channel: true, caseFileId: true, documents: { where: { removedAt: null, documentId: { not: null } }, select: { documentId: true } } },
+  });
   if (!draft?.caseFileId) return null;
+  // The receipt shows what was filed with the draft, as it was filed (review P2-S-06): never a
+  // document the file received later, which the draft's author may not be entitled to see.
+  const filed = new Set(draft.documents.map((d) => d.documentId));
   const file = await db.caseFile.findUnique({
     where: { id: draft.caseFileId },
     select: {
@@ -48,7 +54,7 @@ export async function receiptView(draftId: string): Promise<ReceiptView | null> 
     courtName: file.court.name,
     channel: draft.channel,
     registeredAt: file.registeredAt,
-    documents: file.documents.filter((d) => d.docType !== 'FILING_RECEIPT'),
+    documents: file.documents.filter((d) => filed.has(d.id)),
     payment: file.payments[0] ?? null,
     receiptDocumentId: file.documents.find((d) => d.docType === 'FILING_RECEIPT')?.id ?? null,
     bailiffName: bailiff?.fullName ?? null,

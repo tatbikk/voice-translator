@@ -58,7 +58,26 @@ export async function seedReferredFiling(signingSecret: string): Promise<boolean
   const { subject, actor } = await lawyerSubject();
   const demo = DEMO_REFERRED_FILING;
 
-  const draftId = await createDraft(subject, 'ELECTRONIC', actor);
+  // A run without a browser left the draft unfiled: it is taken up again, never duplicated (review P2-A-12).
+  const left = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "FilingDraft"
+     WHERE "ownerUserId" = ${subject.userId}::uuid AND status = 'DRAFT' AND card::text LIKE ${`%${marker}%`}
+     ORDER BY "createdAt" ASC LIMIT 1`;
+  let draftId = left[0]?.id ?? null;
+  if (draftId) {
+    if ((await fresh(draftId)).fixedCopyStatus !== 'READY') {
+      expectOk(await pasteApplication(await fresh(draftId), demo.applicationText, actor), 'application');
+      await drainJobs();
+    }
+    if ((await fresh(draftId)).fixedCopyStatus !== 'READY') {
+      console.log(JSON.stringify({ level: 'warn', msg: 'seed-filings: fixed copy still not ready, the referred demo case stays a draft' }));
+      return false;
+    }
+    return fileDraft(draftId, subject, actor, signingSecret);
+  }
+  const created = await createDraft(subject, 'ELECTRONIC', actor);
+  if (!created.ok) throw new Error(`seed-filings: draft refused (${created.code})`);
+  draftId = created.value;
   expectOk(await updateDraft(await fresh(draftId), subject, { caseType: demo.caseType, defendantLocality: demo.defendantLocality }, actor), 'case type');
   const suggested = (await fresh(draftId)).suggestedCourtId;
   const court = suggested ?? (await db.court.findFirstOrThrow({ where: { degree: 'FIRST_INSTANCE', specialty: 'COMMERCIAL' }, select: { id: true } })).id;
@@ -81,10 +100,18 @@ export async function seedReferredFiling(signingSecret: string): Promise<boolean
     return false;
   }
 
-  const opened = await openPayment(await fresh(draftId), subject, actor);
-  if (!opened.ok) throw new Error(`seed-filings: payment refused (${opened.code})`);
-  expectOk(await settlePayment(opened.intentId, subject, 'SUCCEEDED', actor), 'payment');
-  await drainJobs();
+  return fileDraft(draftId, subject, actor, signingSecret);
+}
+
+/** Pays the fee of the demo draft on the simulated gateway (once), signs and files it. */
+async function fileDraft(draftId: string, subject: UserSubject, actor: EventActor, signingSecret: string): Promise<boolean> {
+  const draft = await fresh(draftId);
+  if (!draft.intents.some((i) => i.status === 'SUCCEEDED')) {
+    const opened = await openPayment(draft, subject, actor);
+    if (!opened.ok) throw new Error(`seed-filings: payment refused (${opened.code})`);
+    expectOk(await settlePayment(opened.intentId, subject, 'SUCCEEDED', actor), 'payment');
+    await drainJobs();
+  }
   const filed = await submitDraft(draftId, subject, signingSecret, actor);
   if (!filed.ok) throw new Error(`seed-filings: filing refused (${filed.code})`);
   await drainJobs();

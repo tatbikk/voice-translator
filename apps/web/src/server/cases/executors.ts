@@ -1,18 +1,24 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { ACTIONS, authorize, SECURITY_POLICY, type CaseSnapshot, type NotifyTarget, type UserSubject } from '@mahkama/core';
+import { ACTIONS, authorize, CAPACITY_STATUSES, PUBLIC_ENTITY_KINDS, referralsFor, SECURITY_POLICY, stripInvisible, type CaseSnapshot, type CaseTypeRule, type NotifyTarget, type ReferralRuleSet, type UserSubject } from '@mahkama/core';
 import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getEnv } from '../config/env';
+import { getDb } from '../db';
 import { sha256Hex } from '../documents/service';
 import { documentStore } from '../documents/store';
 import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
 import type { ErrorCode } from '../http/responses';
 import { createNotification } from '../notifications/service';
-import { caseTypeRules } from '../rules/store';
+import { caseTypeRules, referralRules, ruleSetId } from '../rules/store';
 import { inspectUpload, uploadTitle } from '../uploads/inspect';
+import { groundsText, referralArticles } from '../filings/registration';
 import { caseSnapshot } from './snapshot';
+
+/** A stored code, when the core knows it. */
+const oneOf = <T extends string>(value: string | null, allowed: readonly T[]): T | undefined =>
+  value !== null && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
 
 // The executors of the procedural acts, from Phase 2 on (decision 46). The
 // route authorizes the act on a snapshot read before the transaction; the
@@ -131,25 +137,83 @@ const stamp: Executor<null> = {
 
 const ReclassifyBody = z.strictObject({ caseType: z.string().regex(/^\d{4}$/) });
 
-const reclassify: Executor<{ caseType: string }> = {
+const reclassify: Executor<{ caseType: string; rule: CaseTypeRule; rules: ReferralRuleSet; referralRuleSetId: string }> = {
   input: 'json',
   async prepare(input, _caseFileId, now) {
     const parsed = ReclassifyBody.safeParse(input.body);
     if (!parsed.success) return invalid('BODY');
-    const rules = await caseTypeRules(now);
-    if (!rules.types.some((t) => t.code === parsed.data.caseType)) return invalid('UNKNOWN_CASE_TYPE');
-    return { ok: true, value: parsed.data };
+    const [types, rules] = await Promise.all([caseTypeRules(now), referralRules(now)]);
+    const rule = types.types.find((t) => t.code === parsed.data.caseType);
+    if (!rule) return invalid('UNKNOWN_CASE_TYPE');
+    return { ok: true, value: { caseType: parsed.data.caseType, rule, rules, referralRuleSetId: await ruleSetId('REFERRALS', rules.version) } };
   },
   async run(context) {
     const { tx, caseFileId, actor, now, value } = context;
-    const file = await tx.caseFile.findUniqueOrThrow({ where: { id: caseFileId }, select: { code: true, caseType: true } });
+    const file = await tx.caseFile.findUniqueOrThrow({
+      where: { id: caseFileId },
+      select: {
+        code: true,
+        caseType: true,
+        courtId: true,
+        referredToProsecutionAt: true,
+        referredToCommissionerAt: true,
+        court: { select: { specialty: true } },
+        parties: { select: { personKind: true, publicEntityKind: true, capacityStatus: true } },
+        referrals: { select: { target: true, ground: true } },
+      },
+    });
     const toCode = Number(value.caseType);
     if (file.caseType === value.caseType && file.code === toCode) throw new InputRefused('SAME_CASE_TYPE');
+    // A case type belongs to a specialty: it must be the court's own (review P2-S-05).
+    if (value.rule.specialty !== file.court.specialty) throw new InputRefused('CASE_TYPE_OF_ANOTHER_SPECIALTY');
     // The number and the national identifier stay; only the code changes (decision 53).
     await tx.caseFile.update({ where: { id: caseFileId }, data: { caseType: value.caseType, code: toCode, classificationCorrectedAt: now } });
     await appendEvent(tx, { action: 'case.registration.reclassified', details: { caseFileId, fromCode: file.code, toCode }, caseFileId, actor });
+
+    // The referrals the new type makes due are added (review P2-S-05); one already made stays.
+    const parties = file.parties.map((p) => ({
+      personKind: p.personKind,
+      publicEntityKind: oneOf(p.publicEntityKind, PUBLIC_ENTITY_KINDS),
+      capacityStatus: oneOf(p.capacityStatus, CAPACITY_STATUSES),
+    }));
+    const due = referralsFor({ courtSpecialty: file.court.specialty, caseType: value.rule, parties, rules: value.rules });
+    const added = due.filter((r) => !file.referrals.some((e) => e.target === r.target && e.ground === r.ground));
+    for (const referral of added) {
+      await tx.caseReferral.create({
+        data: { caseFileId, target: referral.target, ground: referral.ground, article: referral.article, item: referral.item, reasonCode: referral.reasonCode, ruleSetId: value.referralRuleSetId, createdAt: now },
+      });
+    }
+    const toProsecution = added.some((r) => r.target === 'PROSECUTION') && file.referredToProsecutionAt === null;
+    const toCommissioner = added.some((r) => r.target === 'ROYAL_COMMISSIONER') && file.referredToCommissionerAt === null;
+    if (toProsecution || toCommissioner) {
+      await tx.caseFile.update({
+        where: { id: caseFileId },
+        data: { ...(toProsecution ? { referredToProsecutionAt: now } : {}), ...(toCommissioner ? { referredToCommissionerAt: now } : {}) },
+      });
+    }
+    await appendEvent(tx, {
+      action: 'case.referrals.reviewed',
+      details: { caseFileId, ruleVersion: value.rules.version, referrals: added.length, grounds: groundsText(added) },
+      caseFileId,
+      legalBasis: referralArticles(value.rules),
+    });
     await inform(tx, context, 'case.registration.reclassify', 'notifications.case.reclassified', { code: toCode });
-    return { code: toCode };
+    const roles = [...(toProsecution ? (['PUBLIC_PROSECUTOR'] as const) : []), ...(toCommissioner ? (['ROYAL_COMMISSIONER'] as const) : [])];
+    if (roles.length > 0) {
+      const holders = await tx.roleAssignment.findMany({ where: { role: { in: [...roles] }, courtId: file.courtId, revokedAt: null }, select: { userId: true } });
+      const number = await tx.caseFile.findUniqueOrThrow({ where: { id: caseFileId }, select: { number: true, code: true, year: true } });
+      for (const userId of new Set(holders.map((h) => h.userId))) {
+        await createNotification(tx, {
+          userId,
+          kind: 'INFORMATION',
+          templateKey: 'notifications.case.referred-reclassified',
+          params: { number: `${String(number.number)}/${String(number.code)}/${String(number.year)}` },
+          targetPath: `/cases/${caseFileId}`,
+          caseFileId,
+        });
+      }
+    }
+    return { code: toCode, referrals: added.length };
   },
 };
 
@@ -188,7 +252,11 @@ interface StoredUpload {
   readonly title: string | null;
 }
 
-const UploadQuery = z.strictObject({ name: z.string().min(1).max(255), title: z.string().trim().max(SECURITY_POLICY.uploads.titleMaxChars).optional() });
+const UploadQuery = z.strictObject({
+  name: z.string().min(1).max(255),
+  // A title keeps no invisible or direction mark (review P2-S-11).
+  title: z.string().transform(stripInvisible).pipe(z.string().trim().max(SECURITY_POLICY.uploads.titleMaxChars)).optional(),
+});
 
 function filedDocument(code: string): Executor<StoredUpload> {
   return {
@@ -196,6 +264,10 @@ function filedDocument(code: string): Executor<StoredUpload> {
     async prepare(input, caseFileId) {
       const query = UploadQuery.safeParse(input.query);
       if (!query.success) return invalid('QUERY');
+      // A cap on what one act files on one file, before any byte is stored (review P2-A-10).
+      const docType = ACTIONS[code]?.procedure?.files;
+      const filed = docType ? await getDb().document.count({ where: { caseFileId, docType, generated: false } }) : 0;
+      if (filed >= SECURITY_POLICY.uploads.caseMaxFiledPerAct) return invalid('CASE_DOCUMENT_LIMIT', 409, 'CASE_DOCUMENT_LIMIT');
       const bytes = input.bytes ?? new Uint8Array();
       if (bytes.byteLength === 0) return invalid('EMPTY', 415, 'FILE_TYPE_MISMATCH');
       const inspected = inspectUpload(bytes, { declaredName: query.data.name, accept: ['pdf'] });

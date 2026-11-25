@@ -1,5 +1,6 @@
 'use client';
 
+import { SECURITY_POLICY } from '@mahkama/core';
 import { useState } from 'react';
 import { apiPost, apiPostBytes, navigate } from '@/components/client/api';
 import { errorText, tr, type Dict } from '@/components/client/messages';
@@ -123,7 +124,7 @@ export function CaseActionButton({ caseFileId, code, kind, label, lines, dict, c
             <label htmlFor={`${id}-file`} className="mb-1.5 block font-medium">
               {t('case.act.file')}
             </label>
-            <p className="mb-2 text-sm text-text-muted">{t('case.act.fileHint')}</p>
+            <p className="mb-2 text-sm text-text-muted">{t('case.act.fileHint', { size: SECURITY_POLICY.uploads.conclusionsMaxBytes / (1024 * 1024) })}</p>
             <input id={`${id}-file`} type="file" accept=".pdf" onChange={(e) => { setFile(e.target.files?.[0] ?? null); }} />
           </div>
         ) : null}

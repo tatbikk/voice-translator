@@ -344,9 +344,32 @@ CREATE TRIGGER payment_no_truncate BEFORE TRUNCATE ON "Payment" FOR EACH STATEME
 CREATE TRIGGER treasury_entry_guard BEFORE UPDATE OR DELETE ON "TreasuryEntry" FOR EACH ROW EXECUTE FUNCTION money_record_guard();
 CREATE TRIGGER treasury_entry_no_truncate BEFORE TRUNCATE ON "TreasuryEntry" FOR EACH STATEMENT EXECUTE FUNCTION money_record_no_truncate();
 
+-- The fee as it was assessed is never changed or deleted; it is linked to its file once
+-- (review P2-S-14). It joins the guard of the other money records.
+CREATE TRIGGER fee_assessment_guard BEFORE UPDATE OR DELETE ON "FeeAssessment" FOR EACH ROW EXECUTE FUNCTION money_record_guard();
+CREATE TRIGGER fee_assessment_no_truncate BEFORE TRUNCATE ON "FeeAssessment" FOR EACH STATEMENT EXECUTE FUNCTION money_record_no_truncate();
+
+-- A payment opened keeps its amount, its digest and its breakdown; only its status moves,
+-- once, from PENDING to its outcome, with the time of completion (review P2-S-14).
+CREATE OR REPLACE FUNCTION payment_intent_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'payment intents are never deleted' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  IF (to_jsonb(NEW) - ARRAY['status', 'completedAt']) IS DISTINCT FROM (to_jsonb(OLD) - ARRAY['status', 'completedAt']) THEN
+    RAISE EXCEPTION 'a payment intent changes only by its outcome' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW."status" IS DISTINCT FROM OLD."status" AND OLD."status" <> 'PENDING' THEN
+    RAISE EXCEPTION 'a payment intent has one outcome' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER payment_intent_guard BEFORE UPDATE OR DELETE ON "PaymentIntent" FOR EACH ROW EXECUTE FUNCTION payment_intent_guard();
+CREATE TRIGGER payment_intent_no_truncate BEFORE TRUNCATE ON "PaymentIntent" FOR EACH STATEMENT EXECUTE FUNCTION money_record_no_truncate();
+
 -- A payment is completed once: its operation reference is unique.
 CREATE UNIQUE INDEX "Payment_operationRef_key" ON "Payment" ("operationRef");
 
--- The demo model courts are commercial courts of first instance and appeal
--- (src/cli/seed-data/accounts.ts); other courts keep the general default.
-UPDATE "Court" SET "specialty" = 'COMMERCIAL' WHERE "code" IN ('demo-fi-commercial', 'demo-ap-commercial');
+-- The specialty of the demo model courts is the seed's (src/cli/seed.ts), not
+-- this migration's, which also runs in production (review P2-A-12).

@@ -36,7 +36,7 @@ export interface CaseHeader {
 
 export interface CaseView {
   readonly header: CaseHeader;
-  readonly timeline: readonly { seq: string; action: string; detailAction: string | null; occurredAt: Date; actorRole: string | null; articles: readonly number[] }[];
+  readonly timeline: readonly { seq: string; action: string; detailAction: string | null; occurredAt: Date; actorRole: string | null; articles: readonly number[]; referrals: number | null }[];
   readonly documents: readonly {
     id: string;
     docType: string;
@@ -49,6 +49,8 @@ export interface CaseView {
     simulated: boolean;
     withdrawn: boolean;
     signatures: number;
+    /** a signature of the simulated provider: the document carries the visible stamp «توقيع تجريبي» (audit G046) */
+    simulatedSignature: boolean;
   }[];
   readonly parties: readonly {
     id: string;
@@ -113,7 +115,7 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
         },
       },
       claims: { orderBy: { filedAt: 'asc' } },
-      documents: { orderBy: { depositedAt: 'asc' }, include: { circles: { include: { _count: { select: { signatures: true } } } } } },
+      documents: { orderBy: { depositedAt: 'asc' }, include: { circles: { include: { signatures: { select: { provider: true } } } } } },
       envelopes: { orderBy: { createdAt: 'asc' }, include: { certificate: { select: { id: true } }, receipt: { select: { id: true } } } },
       timeLimits: { orderBy: { endsAt: 'asc' } },
       fees: { orderBy: { assessedAt: 'asc' } },
@@ -175,6 +177,8 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       occurredAt: e.occurredAt,
       actorRole: e.actorRole,
       articles: isLawBasis(e.legalBasis) ? e.legalBasis.articles : [],
+      // How many referrals the review found: «ولم يجد موجبا للإحالة» when none (study, «المرحلة الثانية»).
+      referrals: e.action === 'case.referrals.reviewed' && typeof (e.details as { referrals?: unknown }).referrals === 'number' ? (e.details as { referrals: number }).referrals : null,
     })),
     documents: file.documents
       .filter((d) => documentVisible(subject, snapshot, d.visibility, d.id))
@@ -189,7 +193,8 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
         generated: d.generated,
         simulated: d.simulated,
         withdrawn: d.withdrawnAt !== null,
-        signatures: d.circles.reduce((n, c) => n + c._count.signatures, 0),
+        signatures: d.circles.reduce((n, c) => n + c.signatures.length, 0),
+        simulatedSignature: d.circles.some((c) => c.signatures.some((s) => s.provider === 'SIMULATED')),
       })),
     parties: file.parties.map((p) => ({
       id: p.id,
