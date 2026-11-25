@@ -1,0 +1,377 @@
+import 'server-only';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+import {
+  CARD_SECTIONS,
+  FilingCardSchema,
+  SECURITY_POLICY,
+  canonicalJson,
+  type FilingCard,
+  type UserSubject,
+} from '@mahkama/core';
+import type { Prisma } from '@/generated/prisma/client';
+import { clock } from '../clock';
+import { getDb } from '../db';
+import { sha256Hex } from '../documents/service';
+import { documentStore } from '../documents/store';
+import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
+import type { ErrorCode } from '../http/responses';
+import { enqueue } from '../jobs/queue';
+import { asJson } from '../json';
+import { caseTypeRules, districtRules } from '../rules/store';
+import { docxParagraphs, inspectUpload, isArchiveRefusal, pastedParagraphs, uploadTitle, type UploadType } from '../uploads/inspect';
+import {
+  attestationsFor,
+  bailiffsOf,
+  claimsLocked,
+  documentLimitReached,
+  draftStorageKey,
+  lawyersRoster,
+  newDraftData,
+  parseCard,
+  suggestionFor,
+  type DraftWithParts,
+} from './drafts';
+import { paragraphsDigest } from './generated';
+
+// The operations on a draft. Each is authorized by the core before it runs
+// (filing.draft.edit on the draft's resource); here the content is checked: a
+// field that names a court, a bailiff, a case type or a lawyer must name one
+// the platform knows for this draft, the claims are locked once paid, and a
+// file is known by its bytes. A refusal for its content is recorded in the
+// event log (filing.refused), without any of the card's content.
+
+type Tx = Prisma.TransactionClient;
+
+export type Failure = { readonly ok: false; readonly status: number; readonly code: ErrorCode; readonly fields?: Record<string, string> };
+export type Outcome<T = undefined> = { readonly ok: true; readonly value: T } | Failure;
+
+const done = <T>(value: T): Outcome<T> => ({ ok: true, value });
+
+async function refused(draftId: string | null, actor: EventActor, status: number, code: ErrorCode, fields?: Record<string, string>): Promise<Failure> {
+  await appendStandaloneEvent({ action: 'filing.refused', details: { draftId, reason: code }, actor });
+  return { ok: false, status, code, ...(fields ? { fields } : {}) };
+}
+
+/** Locks the draft's row and checks that it is still open (a filed draft changes no more). */
+async function lockOpenDraft(tx: Tx, draftId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ status: string }[]>`SELECT status::text AS status FROM "FilingDraft" WHERE id = ${draftId}::uuid FOR UPDATE`;
+  return rows[0]?.status === 'DRAFT';
+}
+
+// ---------------------------------------------------------------------------
+
+export async function createDraft(subject: UserSubject, channel: 'ELECTRONIC' | 'PAPER', actor: EventActor): Promise<string> {
+  const id = randomUUID();
+  await eventTransaction(async (tx) => {
+    await tx.filingDraft.create({ data: { id, ...newDraftData(subject, channel) } });
+    await appendEvent(tx, { action: 'filing.draft.created', details: { draftId: id, channel }, actor });
+  });
+  return id;
+}
+
+// ---------------------------------------------------------------------------
+
+const uuid = z.uuid();
+export const UpdateDraftBody = z
+  .object({
+    caseType: z.string().regex(/^\d{3,5}$/).nullable().optional(),
+    courtId: uuid.nullable().optional(),
+    defendantLocality: z.string().regex(/^[a-z][a-z0-9-]{1,40}$/).nullable().optional(),
+    card: z.unknown().optional(),
+    attest: z.array(z.enum(CARD_SECTIONS)).max(CARD_SECTIONS.length).optional(),
+    bailiffUserId: uuid.nullable().optional(),
+    paperDepositor: z
+      .object({
+        name: z.string().trim().min(1).max(200),
+        idNumber: z.string().trim().max(60).optional(),
+        quality: z.string().trim().max(200).optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    paperLawyerUserId: uuid.nullable().optional(),
+  })
+  .strict();
+export type UpdateDraftInput = z.infer<typeof UpdateDraftBody>;
+
+const sameClaims = (a: FilingCard, b: FilingCard) => canonicalJson(a.claims) === canonicalJson(b.claims);
+
+function cardFieldErrors(error: z.ZodError): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const name = ['card', ...issue.path.map(String)].join('.');
+    fields[name] ??= issue.code === 'too_big' ? 'errors.field.tooLong' : 'errors.field.invalid';
+  }
+  return fields;
+}
+
+export async function updateDraft(draft: DraftWithParts, subject: UserSubject, body: UpdateDraftInput, actor: EventActor): Promise<Outcome> {
+  const now = clock.now();
+  const invalid = (field: string) => refused(draft.id, actor, 422, 'INVALID_INPUT', { [field]: 'errors.field.invalid' });
+  const changed: string[] = [];
+  const data: Prisma.FilingDraftUpdateInput = {};
+  const current = parseCard(draft.card);
+  let card = current;
+  const locked = claimsLocked(draft.intents);
+
+  if (body.card !== undefined) {
+    const parsed = FilingCardSchema.safeParse(body.card);
+    if (!parsed.success) return refused(draft.id, actor, 422, 'INVALID_INPUT', cardFieldErrors(parsed.error));
+    card = parsed.data;
+    // Once paid, the claims the fee was computed on do not change (decision 57).
+    if (locked && !sameClaims(card, current)) return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');
+    data.card = asJson(card);
+    changed.push('CARD');
+  }
+  if (body.caseType !== undefined) {
+    if (body.caseType !== null && !(await caseTypeRules(now)).types.some((t) => t.code === body.caseType)) return invalid('caseType');
+    data.caseType = body.caseType;
+    changed.push('CASE_TYPE');
+  }
+  if (body.defendantLocality !== undefined) {
+    if (body.defendantLocality !== null && !(await districtRules(now)).localities.includes(body.defendantLocality)) return invalid('defendantLocality');
+    data.defendantLocality = body.defendantLocality;
+    changed.push('LOCALITY');
+  }
+  let courtId = draft.courtId;
+  if (body.courtId !== undefined && body.courtId !== draft.courtId) {
+    if (draft.channel === 'PAPER') return invalid('courtId'); // the court of a paper filing is the clerk's (memo row 24)
+    if (locked) return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');
+    if (body.courtId !== null) {
+      const court = await getDb().court.findUnique({ where: { id: body.courtId }, select: { degree: true } });
+      if (court?.degree !== 'FIRST_INSTANCE') return invalid('courtId');
+    }
+    courtId = body.courtId;
+    data.court = body.courtId === null ? { disconnect: true } : { connect: { id: body.courtId } };
+    changed.push('COURT');
+  }
+  if (body.bailiffUserId !== undefined) {
+    if (body.bailiffUserId !== null && !(await bailiffsOf(courtId)).some((b) => b.userId === body.bailiffUserId)) return invalid('bailiffUserId');
+    data.designatedBailiffUserId = body.bailiffUserId;
+    changed.push('BAILIFF');
+  }
+  if (body.paperDepositor !== undefined) {
+    if (draft.channel !== 'PAPER') return invalid('paperDepositor');
+    data.paperDepositor = body.paperDepositor === null ? { set: null } : asJson(body.paperDepositor);
+    changed.push('DEPOSITOR');
+  }
+  if (body.paperLawyerUserId !== undefined) {
+    if (draft.channel !== 'PAPER') return invalid('paperLawyerUserId');
+    if (body.paperLawyerUserId !== null && !(await lawyersRoster()).some((l) => l.userId === body.paperLawyerUserId)) return invalid('paperLawyerUserId');
+    data.paperLawyerUserId = body.paperLawyerUserId;
+    changed.push('LAWYER');
+  }
+  if (body.attest !== undefined) changed.push('ATTESTATION');
+  // The attestation of a section holds while its content does not change.
+  data.attestations = attestationsFor(card, draft.attestations, body.attest ?? []);
+  if (changed.includes('CASE_TYPE') || changed.includes('LOCALITY') || changed.includes('CARD')) {
+    const suggestion = await suggestionFor(
+      { caseType: body.caseType !== undefined ? body.caseType : draft.caseType, defendantLocality: body.defendantLocality !== undefined ? body.defendantLocality : draft.defendantLocality },
+      card,
+      now,
+    );
+    data.suggestedCourtId = suggestion.courtId;
+  }
+  data.updatedAt = now;
+
+  const applied = await eventTransaction(async (tx) => {
+    if (!(await lockOpenDraft(tx, draft.id))) return false;
+    await tx.filingDraft.update({ where: { id: draft.id }, data });
+    await appendEvent(tx, { action: 'filing.draft.updated', details: { draftId: draft.id, fields: changed.length ? changed.join(':') : 'ATTESTATION' }, actor });
+    return true;
+  });
+  if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
+  return done(undefined);
+}
+
+// ---------------------------------------------------------------------------
+
+/** The application pasted in the editor: kept as deposited, split into numbered paragraphs, its fixed copy printed by the worker. */
+export async function pasteApplication(draft: DraftWithParts, text: string, actor: EventActor): Promise<Outcome> {
+  if (draft.channel !== 'ELECTRONIC') return refused(draft.id, actor, 422, 'INVALID_INPUT', { text: 'errors.field.invalid' });
+  const { maxChars, maxParagraphs } = SECURITY_POLICY.applicationText;
+  const paragraphs = pastedParagraphs(text);
+  if (paragraphs.length === 0) return refused(draft.id, actor, 422, 'INVALID_INPUT', { text: 'errors.field.tooShort' });
+  if (text.length > maxChars || paragraphs.length > maxParagraphs) return refused(draft.id, actor, 422, 'INVALID_INPUT', { text: 'errors.field.tooLong' });
+  const textDigest = paragraphsDigest(paragraphs);
+  const now = clock.now();
+  const applied = await eventTransaction(async (tx) => {
+    if (!(await lockOpenDraft(tx, draft.id))) return false;
+    await tx.filingDocument.updateMany({ where: { draftId: draft.id, kind: { in: ['APPLICATION_ORIGINAL', 'APPLICATION_COPY'] }, removedAt: null }, data: { removedAt: now } });
+    await tx.filingDraft.update({
+      where: { id: draft.id },
+      data: { applicationMode: 'PASTE', applicationText: text, applicationParagraphs: asJson(paragraphs), fixedCopyStatus: 'PENDING', updatedAt: now },
+    });
+    await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest });
+    await appendEvent(tx, { action: 'filing.application.pasted', details: { draftId: draft.id, paragraphs: paragraphs.length, characters: text.length }, actor });
+    return true;
+  });
+  if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
+  return done(undefined);
+}
+
+// ---------------------------------------------------------------------------
+
+export const UploadParams = z
+  .object({
+    draftId: uuid,
+    kind: z.enum(['APPLICATION', 'EXHIBIT']),
+    name: z.string().min(1).max(255),
+    title: z.string().trim().max(SECURITY_POLICY.uploads.titleMaxChars).optional(),
+    nature: z.enum(['ORIGINAL', 'CERTIFIED_COPY', 'PHOTOCOPY']).optional(),
+    pages: z.coerce.number().int().min(1).max(10_000).optional(),
+    location: z.string().trim().min(1).max(200).optional(),
+  })
+  .strict();
+export type UploadMeta = z.infer<typeof UploadParams>;
+
+/** The types and the size accepted at the place of an upload (decision 62). */
+export function uploadPolicy(channel: 'ELECTRONIC' | 'PAPER', kind: UploadMeta['kind']): { accept: readonly UploadType[]; maxBytes: number } {
+  const limits = SECURITY_POLICY.uploads;
+  if (channel === 'PAPER') return { accept: ['pdf', 'jpeg', 'png'], maxBytes: limits.scanMaxBytes };
+  if (kind === 'APPLICATION') return { accept: ['pdf', 'docx'], maxBytes: limits.applicationMaxBytes };
+  return { accept: ['pdf', 'jpeg', 'png'], maxBytes: limits.exhibitMaxBytes };
+}
+
+const REFUSAL_CODES = { TYPE_MISMATCH: 'FILE_TYPE_MISMATCH', TYPE_NOT_ACCEPTED: 'FILE_TYPE_NOT_ACCEPTED', UNSAFE: 'FILE_UNSAFE' } as const;
+const REFUSAL_STATUS = { TYPE_MISMATCH: 415, TYPE_NOT_ACCEPTED: 415, UNSAFE: 422 } as const;
+
+export async function uploadDocument(
+  draft: DraftWithParts,
+  meta: UploadMeta,
+  bytes: Uint8Array,
+  actor: EventActor,
+): Promise<Outcome<{ documentId: string; mediaType: string; sha256: string }>> {
+  const policy = uploadPolicy(draft.channel, meta.kind);
+  if (bytes.byteLength > policy.maxBytes) return refused(draft.id, actor, 413, 'PAYLOAD_TOO_LARGE');
+  if (bytes.byteLength === 0) return refused(draft.id, actor, 415, 'FILE_TYPE_MISMATCH');
+  const inspected = inspectUpload(bytes, { declaredName: meta.name, accept: policy.accept });
+  if (!inspected.ok) return refused(draft.id, actor, REFUSAL_STATUS[inspected.reason], REFUSAL_CODES[inspected.reason]);
+  if (documentLimitReached(draft, bytes.byteLength)) return refused(draft.id, actor, 409, 'DRAFT_DOCUMENT_LIMIT');
+
+  const application = meta.kind === 'APPLICATION';
+  let paragraphs: string[] | null = null;
+  if (application && inspected.type === 'docx') {
+    try {
+      paragraphs = docxParagraphs(bytes);
+    } catch (error) {
+      if (isArchiveRefusal(error)) return refused(draft.id, actor, 422, 'FILE_UNSAFE');
+      throw error;
+    }
+    if (paragraphs.length === 0) return refused(draft.id, actor, 422, 'INVALID_INPUT', { file: 'errors.field.tooShort' });
+  }
+
+  const id = randomUUID();
+  const key = draftStorageKey(draft.id);
+  const digest = sha256Hex(bytes);
+  // The bytes first: a row never points at a missing object (src/server/documents/service.ts).
+  await documentStore().put(key, bytes, inspected.mediaType);
+  const kind = application ? (inspected.type === 'docx' ? 'APPLICATION_ORIGINAL' : 'APPLICATION_COPY') : 'EXHIBIT';
+  const now = clock.now();
+  const applied = await eventTransaction(async (tx) => {
+    if (!(await lockOpenDraft(tx, draft.id))) return false;
+    if (application) {
+      await tx.filingDocument.updateMany({ where: { draftId: draft.id, kind: { in: ['APPLICATION_ORIGINAL', 'APPLICATION_COPY'] }, removedAt: null }, data: { removedAt: now } });
+    }
+    const position = await tx.filingDocument.count({ where: { draftId: draft.id } });
+    await tx.filingDocument.create({
+      data: {
+        id,
+        draftId: draft.id,
+        kind,
+        storageKey: key,
+        sha256: digest,
+        byteSize: bytes.byteLength,
+        mediaType: inspected.mediaType,
+        title: meta.title?.trim() || uploadTitle(meta.name),
+        declaredNature: application && draft.channel === 'ELECTRONIC' ? 'ORIGINAL' : (meta.nature ?? null),
+        pageCount: meta.pages ?? null,
+        paperOriginalLocation: meta.location ?? null,
+        position,
+        uploadedAt: now,
+      },
+    });
+    if (application) {
+      await tx.filingDraft.update({
+        where: { id: draft.id },
+        data: {
+          applicationMode: draft.channel === 'PAPER' ? 'SCAN' : 'UPLOAD',
+          applicationText: null,
+          applicationParagraphs: paragraphs ? asJson(paragraphs) : { set: null },
+          // A PDF or a scan is fixed as deposited; a Word document is printed by the worker.
+          fixedCopyStatus: paragraphs ? 'PENDING' : 'READY',
+          updatedAt: now,
+        },
+      });
+      if (paragraphs) await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest: paragraphsDigest(paragraphs) });
+    } else {
+      await tx.filingDraft.update({ where: { id: draft.id }, data: { updatedAt: now } });
+    }
+    await appendEvent(tx, {
+      action: 'filing.document.uploaded',
+      details: { draftId: draft.id, documentId: id, kind, mediaType: inspected.mediaType, sha256: digest, byteSize: bytes.byteLength },
+      actor,
+    });
+    return true;
+  });
+  if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
+  return done({ documentId: id, mediaType: inspected.mediaType, sha256: digest });
+}
+
+// ---------------------------------------------------------------------------
+
+export const UpdateDocumentBody = z
+  .object({
+    title: z.string().trim().min(1).max(SECURITY_POLICY.uploads.titleMaxChars).optional(),
+    nature: z.enum(['ORIGINAL', 'CERTIFIED_COPY', 'PHOTOCOPY']).nullable().optional(),
+    pageCount: z.number().int().min(1).max(10_000).nullable().optional(),
+    location: z.string().trim().min(1).max(200).nullable().optional(),
+    remove: z.literal(true).optional(),
+  })
+  .strict();
+export type UpdateDocumentInput = z.infer<typeof UpdateDocumentBody>;
+
+export async function updateDocument(draft: DraftWithParts, documentId: string, body: UpdateDocumentInput, actor: EventActor): Promise<Outcome | null> {
+  const doc = draft.documents.find((d) => d.id === documentId);
+  if (!doc) return null;
+  if (doc.generated) return refused(draft.id, actor, 422, 'INVALID_INPUT', { document: 'errors.field.invalid' });
+  const now = clock.now();
+  const applied = await eventTransaction(async (tx) => {
+    if (!(await lockOpenDraft(tx, draft.id))) return false;
+    if (body.remove) {
+      await tx.filingDocument.update({ where: { id: documentId }, data: { removedAt: now } });
+      if (doc.kind === 'APPLICATION_ORIGINAL' || doc.kind === 'APPLICATION_COPY') {
+        await tx.filingDocument.updateMany({ where: { draftId: draft.id, kind: 'APPLICATION_COPY', removedAt: null }, data: { removedAt: now } });
+        await tx.filingDraft.update({ where: { id: draft.id }, data: { applicationMode: draft.channel === 'PAPER' ? 'SCAN' : null, applicationParagraphs: { set: null }, fixedCopyStatus: 'NONE', updatedAt: now } });
+      }
+    } else {
+      await tx.filingDocument.update({
+        where: { id: documentId },
+        data: {
+          ...(body.title !== undefined ? { title: body.title } : {}),
+          ...(body.nature !== undefined ? { declaredNature: body.nature } : {}),
+          ...(body.pageCount !== undefined ? { pageCount: body.pageCount } : {}),
+          ...(body.location !== undefined ? { paperOriginalLocation: body.location } : {}),
+        },
+      });
+    }
+    await appendEvent(tx, { action: 'filing.document.updated', details: { draftId: draft.id, documentId, removed: body.remove === true }, actor });
+    return true;
+  });
+  if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
+  return done(undefined);
+}
+
+/** A document of the draft for its author, as long as its bytes still have their hash. */
+export async function draftDocumentFile(
+  draft: DraftWithParts,
+  documentId: string,
+): Promise<{ bytes: Uint8Array; mediaType: string; title: string | null } | 'NOT_FOUND' | 'INTEGRITY'> {
+  const doc = draft.documents.find((d) => d.id === documentId) ?? (await getDb().filingDocument.findFirst({ where: { id: documentId, draftId: draft.id } }));
+  if (!doc) return 'NOT_FOUND';
+  const bytes = await documentStore().get(doc.storageKey);
+  if (!bytes) return 'NOT_FOUND';
+  if (sha256Hex(bytes) !== doc.sha256) return 'INTEGRITY';
+  return { bytes, mediaType: doc.mediaType, title: doc.title };
+}

@@ -400,9 +400,10 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     const draftId = await prepareDraft(client);
     await payDraft(client, draftId);
     const before = await caseFiles();
+    // As for every signature (Phase 1, decision 39): three wrong secrets, the third locks.
     for (let i = 0; i < 3; i += 1) {
       const res = await submit(client, draftId, { secret: `Wrong-secret-${String(i)}` });
-      expect(res.status, describeResponse(res)).toBe(i < 2 ? 422 : 423);
+      expect(res.status, describeResponse(res)).toBe(422);
     }
     const locked = await submit(client, draftId, { secret: own });
     expect(locked.status, describeResponse(locked)).toBe(423);

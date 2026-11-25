@@ -1,4 +1,5 @@
 import 'server-only';
+import type { Prisma } from '@/generated/prisma/client';
 import {
   CASE_FACTS,
   DEADLINE_CODES,
@@ -27,11 +28,17 @@ function asFacts<T extends string>(values: readonly string[], allowed: ReadonlyS
   return values.filter((v): v is T => allowed.has(v));
 }
 
-export async function caseSnapshot(caseFileId: string, now: Date, options: { summonsCodeHolder?: UserSubject | null } = {}): Promise<CaseSnapshot | null> {
-  const db = getDb();
+export async function caseSnapshot(
+  caseFileId: string,
+  now: Date,
+  options: { summonsCodeHolder?: UserSubject | null; db?: Prisma.TransactionClient } = {},
+): Promise<CaseSnapshot | null> {
+  // An executor builds the snapshot inside its transaction, after locking the file (Phase 1 memo, row 17).
+  const db = options.db ?? getDb();
   const file = await db.caseFile.findUnique({
     where: { id: caseFileId },
     include: {
+      court: { select: { specialty: true } },
       nextHearing: { select: { startsAt: true, heldAt: true } },
       parties: {
         orderBy: { position: 'asc' },
@@ -50,6 +57,7 @@ export async function caseSnapshot(caseFileId: string, now: Date, options: { sum
   const facts = new Set<CaseFact>(asFacts(file.facts, CASE_FACT_SET));
   if (file.registrationStampedAt) facts.add('REGISTRATION_STAMPED');
   if (file.referredToProsecutionAt) facts.add('REFERRED_TO_PROSECUTION');
+  if (file.referredToCommissionerAt) facts.add('REFERRED_TO_COMMISSIONER');
   if (file.documents.length > 0) facts.add('ELECTRONIC_DOCUMENT');
   const hearing = file.nextHearing;
   if (hearing) {
@@ -94,7 +102,8 @@ export async function caseSnapshot(caseFileId: string, now: Date, options: { sum
     status: file.status,
     courtId: file.courtId,
     panelId: file.panelId,
-    administrativeCourt: false,
+    // From the court's specialty (review P1-A-04, in part).
+    administrativeCourt: file.court.specialty === 'ADMINISTRATIVE',
     rapporteurUserId: file.rapporteurUserId,
     expertUserId: file.investigations[0]?.expertUserId ?? null,
     facts: [...facts],

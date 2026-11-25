@@ -87,6 +87,15 @@ async function main(): Promise<void> {
     await client.query(`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "RuleSet", "RuleChange" FROM ${ident}`);
     await client.query(`REVOKE UPDATE, DELETE, TRUNCATE ON "Signature" FROM ${ident}`);
     await client.query(`REVOKE DELETE, TRUNCATE ON "Document" FROM ${ident}`);
+    // Phase 2 (memo, rows 4 to 8 and 12): money is never deleted and changes only
+    // by its link to the file (trigger money_record_guard); the registry's notes
+    // and the referrals are written once; the simulated register is read only;
+    // the files, their numbers, the drafts and their documents are never deleted
+    // (a draft document is marked removed).
+    await client.query(`REVOKE DELETE, TRUNCATE ON "Payment", "TreasuryEntry", "FeeAssessment", "PaymentIntent" FROM ${ident}`);
+    await client.query(`REVOKE UPDATE, DELETE, TRUNCATE ON "CaseNote", "CaseReferral", "DocumentParagraph" FROM ${ident}`);
+    await client.query(`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "SimulatedRegistryEntry" FROM ${ident}`);
+    await client.query(`REVOKE DELETE, TRUNCATE ON "CaseFile", "CaseSequence", "FilingDraft", "FilingDocument" FROM ${ident}`);
     await client.query(`REVOKE ALL ON "_prisma_migrations" FROM ${ident}`);
     // Read only: the boot check compares the applied migrations with the code.
     await client.query(`GRANT SELECT ON "_prisma_migrations" TO ${ident}`);

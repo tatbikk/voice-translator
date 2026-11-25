@@ -1,5 +1,6 @@
 import 'server-only';
 import {
+  ROLES,
   documentVisible,
   holdsRelation,
   type CaseSnapshot,
@@ -55,10 +56,14 @@ export interface CaseView {
     displayName: string;
     legalForm: string | null;
     legalRepresentative: string | null;
+    /** trade register or identity number: to the court and to counsel only (review P1-S-14) */
+    idNumber: string | null;
     counsel: readonly string[];
     addresses: readonly { kind: string; value: string; source: string }[];
     eServiceAcceptedAt: Date | null;
   }[];
+  /** the notes of the registry office to the judge (art. 619): never shown to a party or its counsel */
+  readonly notes: readonly { id: string; reason: string; text: string; createdAt: Date; authorRole: string }[];
   readonly claims: readonly { id: string; category: string; nature: string; amountCents: bigint | null; party: string | null }[];
   readonly services: readonly {
     id: string;
@@ -114,11 +119,18 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       payments: { orderBy: { paidAt: 'asc' } },
       treasury: { orderBy: { at: 'asc' } },
       decisions: { orderBy: { issuedAt: 'asc' } },
+      notes: { orderBy: { createdAt: 'asc' } },
     },
   });
   if (!file) return null;
   const partyName = new Map(file.parties.map((p) => [p.id, p.displayName]));
   const panelSide = holdsRelation(subject, snapshot, 'PANEL') || holdsRelation(subject, snapshot, 'RAPPORTEUR');
+  // Identity numbers and electronic contacts of the parties: the court and counsel
+  // see them; a litigant, an administration or another participant sees its own only.
+  const seesContacts = ROLES[subject.role].accountBasis === 'INTERNAL' || subject.role === 'LAWYER' || subject.role === 'LAWYER_ASSISTANT';
+  const ownParty = (p: { litigantUserId: string | null }) => p.litigantUserId === subject.userId;
+  const notesVisible = (n: { addressedToUserId: string | null }) =>
+    NOTE_READERS.has(subject.role) || n.addressedToUserId === subject.userId || (snapshot.rapporteurUserId !== null && snapshot.rapporteurUserId === subject.userId);
 
   const events = await db.event.findMany({
     where: { caseFileId, outcome: 'DONE' },
@@ -153,7 +165,11 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       nextHearing: file.nextHearing?.startsAt ?? null,
       rapporteurName: file.rapporteur?.fullName ?? null,
     },
-    timeline: events.filter((e) => timelineVisible(e.action, e.details, visibleDocumentIds, panelSide)).map((e) => ({
+    timeline: events
+      .filter((e) => timelineVisible(e.action, e.details, visibleDocumentIds, panelSide))
+      // A note of the registry is the court's: its very existence stays off the parties' timeline.
+      .filter((e) => e.action !== 'case.note.added' || NOTE_READERS.has(subject.role) || panelSide || snapshot.rapporteurUserId === subject.userId)
+      .map((e) => ({
       seq: e.seq.toString(),
       action: e.action,
       detailAction: typeof (e.details as { action?: unknown }).action === 'string' ? ((e.details as { action: string }).action) : null,
@@ -183,10 +199,14 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       displayName: p.displayName,
       legalForm: p.legalForm,
       legalRepresentative: p.legalRepresentative,
+      idNumber: seesContacts || ownParty(p) ? p.idNumber : null,
       counsel: p.representations.map((r) => r.lawyer.fullName),
-      addresses: p.addresses.map((a) => ({ kind: a.kind, value: a.value, source: a.source })),
+      addresses: p.addresses
+        .filter((a) => seesContacts || ownParty(p) || !PRIVATE_ADDRESS_KINDS.has(a.kind))
+        .map((a) => ({ kind: a.kind, value: a.value, source: a.source })),
       eServiceAcceptedAt: p.eServiceAcceptedAt,
     })),
+    notes: file.notes.filter(notesVisible).map((n) => ({ id: n.id, reason: n.reason, text: n.text, createdAt: n.createdAt, authorRole: n.authorRole })),
     claims: file.claims.map((c) => ({
       id: c.id,
       category: c.category,
@@ -246,6 +266,10 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       .map((d) => ({ id: d.id, kind: d.kind, subjectCode: d.subjectCode, issuedAt: d.issuedAt, pronouncedAt: d.pronouncedAt, final: d.final })),
   };
 }
+
+/** The registry office and the president of the court read every note of the file. */
+const NOTE_READERS: ReadonlySet<string> = new Set(['CLERK_REGISTRATION', 'CHIEF_CLERK', 'COURT_PRESIDENT']);
+const PRIVATE_ADDRESS_KINDS: ReadonlySet<string> = new Set(['ELECTRONIC', 'PHONE']);
 
 function isLawBasis(value: unknown): value is { kind: 'LAW'; articles: number[] } {
   return typeof value === 'object' && value !== null && (value as { kind?: unknown }).kind === 'LAW' && Array.isArray((value as { articles?: unknown }).articles);

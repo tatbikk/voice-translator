@@ -25,7 +25,7 @@ const PDF = (note: string) => Buffer.from(`%PDF-1.4\n% ${note}\n1 0 obj << /Type
 
 async function next(page: Page, step: number): Promise<void> {
   await page.getByRole('button', { name: FILING.next }).click();
-  await expect(page.getByRole('heading', { level: 2, name: FILING.steps[step] })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: FILING.steps[step] ?? '' })).toBeVisible();
 }
 
 /** The six screens of «دعوى جديدة» for the model case; returns the receipt page's text. */

@@ -219,7 +219,8 @@ describe('the model case, filed from the first screen to the receipt', () => {
     const registered = (await events('case.registered')).find((e) => e.details.caseFileId === model.caseFileId);
     expect(registered).toBeDefined();
     const reviewed = (await events('case.referrals.reviewed')).find((e) => e.details.caseFileId === model.caseFileId);
-    expect(reviewed?.details.referrals).toEqual([]);
+    expect(reviewed?.details.referrals).toBe(0);
+    expect(reviewed?.details.grounds).toBe('NONE');
     expect(await count('SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1', [model.caseFileId])).toBe(0);
     const file = await one<{ referredToProsecutionAt: Date | null }>('SELECT "referredToProsecutionAt" FROM "CaseFile" WHERE id = $1', [model.caseFileId]);
     expect(file.referredToProsecutionAt).toBeNull();

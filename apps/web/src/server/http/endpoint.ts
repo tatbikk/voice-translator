@@ -27,6 +27,8 @@ import { fail, type ErrorCode } from './responses';
 //   1 body size and method  2 visitor gate  3 mode (demo endpoints)  4 CSRF
 //   5 session  6 rate limit  7 path/query parameters  8 authorization
 //   9 recent re-authentication  10 body  11 handler
+// A body beyond the default limit (an upload, the pasted application) is not
+// read before step 10: whoever may not act never makes the server buffer it.
 
 const HASHING_RETRY_AFTER_SECONDS = 5;
 
@@ -57,6 +59,8 @@ export interface EndpointContext<P, B> {
   readonly resource: Resource | undefined;
   /** the action authorized, for named-action endpoints */
   readonly action: string | null;
+  /** the raw bytes of an upload (binary endpoints), read after authorization within their limit */
+  readonly bytes: Uint8Array | null;
 }
 
 export interface EndpointDefinition<P, B> {
@@ -78,6 +82,13 @@ export interface EndpointDefinition<P, B> {
   readonly actionFrom?: (params: P) => string;
   /** false for /healthz, which must answer 503 by itself when the database is down */
   readonly platformClock?: boolean;
+  /** a JSON body above the default limit, read after authorization (Phase 2) */
+  readonly bodyLimitBytes?: number;
+  /**
+   * Raw bytes (application/octet-stream), read after authorization and cut at
+   * the limit of their place; the parameters carry the metadata (Phase 2 uploads).
+   */
+  readonly binary?: { readonly absoluteMaxBytes: number; readonly maxBytes: (params: P, resource: Resource | undefined) => number };
 }
 
 export interface EndpointHandler {
@@ -111,11 +122,11 @@ function pathParams(pattern: string, pathname: string): Record<string, string> |
   return out;
 }
 
-async function readBody(req: Request): Promise<{ ok: true; value: unknown } | { ok: false; code: 'PAYLOAD_TOO_LARGE' | 'INVALID_INPUT' }> {
-  const max = SECURITY_POLICY.body.maxBytes;
+/** The request body as bytes, cut at `max`: a body beyond it is never read to its end. */
+async function readBytes(req: Request, max: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; code: 'PAYLOAD_TOO_LARGE' }> {
   const declared = Number(req.headers.get('content-length') ?? '0');
   if (Number.isFinite(declared) && declared > max) return { ok: false, code: 'PAYLOAD_TOO_LARGE' };
-  if (!req.body) return { ok: true, value: {} };
+  if (!req.body) return { ok: true, bytes: new Uint8Array() };
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -129,6 +140,14 @@ async function readBody(req: Request): Promise<{ ok: true; value: unknown } | { 
     }
     chunks.push(value);
   }
+  return { ok: true, bytes: new Uint8Array(Buffer.concat(chunks)) };
+}
+
+async function readBody(req: Request, max: number = SECURITY_POLICY.body.maxBytes): Promise<{ ok: true; value: unknown } | { ok: false; code: 'PAYLOAD_TOO_LARGE' | 'INVALID_INPUT' }> {
+  const read = await readBytes(req, max);
+  if (!read.ok) return read;
+  const size = read.bytes.byteLength;
+  const chunks = [read.bytes];
   if (size === 0) return { ok: true, value: {} };
   const type = req.headers.get('content-type') ?? '';
   if (!type.toLowerCase().startsWith('application/json')) return { ok: false, code: 'INVALID_INPUT' };
@@ -175,13 +194,22 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
       if (definition.platformClock !== false) await clock.refresh();
       clientIdHash = computeClientIdHash(req);
 
-      // 1. Method and body size.
+      // 1. Method and body size. A large body is only measured here: its
+      // declared length against the endpoint's ceiling; it is read at step 10.
       if (req.method !== definition.method) return await refuse('METHOD', 405, 'METHOD_NOT_ALLOWED');
       let rawBody: unknown = {};
-      if (definition.method === 'POST') {
+      const deferred = definition.binary !== undefined || definition.bodyLimitBytes !== undefined;
+      if (definition.method === 'POST' && !deferred) {
         const body = await readBody(req);
         if (!body.ok) return await refuse('BODY', body.code === 'PAYLOAD_TOO_LARGE' ? 413 : 422, body.code);
         rawBody = body.value;
+      }
+      if (deferred) {
+        const ceiling = definition.binary?.absoluteMaxBytes ?? definition.bodyLimitBytes ?? SECURITY_POLICY.body.maxBytes;
+        const declared = Number(req.headers.get('content-length') ?? '0');
+        if (Number.isFinite(declared) && declared > ceiling) return await refuse('BODY', 413, 'PAYLOAD_TOO_LARGE');
+        const type = (req.headers.get('content-type') ?? '').toLowerCase();
+        if (definition.binary && !type.startsWith('application/octet-stream')) return await refuse('BODY', 415, 'UNSUPPORTED_MEDIA_TYPE');
       }
 
       const access = definition.access;
@@ -285,7 +313,17 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
         }
       }
 
-      // 10. Body.
+      // 10. Body: a deferred body is read now, within its limit.
+      let bytes: Uint8Array | null = null;
+      if (definition.binary) {
+        const read = await readBytes(req, definition.binary.maxBytes(params, resource));
+        if (!read.ok) return await refuse('BODY', 413, read.code);
+        bytes = read.bytes;
+      } else if (definition.bodyLimitBytes !== undefined) {
+        const read = await readBody(req, definition.bodyLimitBytes);
+        if (!read.ok) return await refuse('BODY', read.code === 'PAYLOAD_TOO_LARGE' ? 413 : 422, read.code);
+        rawBody = read.value;
+      }
       let body = {} as B;
       if (definition.body) {
         const parsed = definition.body.safeParse(rawBody);
@@ -296,7 +334,7 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
       }
 
       // 11. Handler.
-      return await definition.handler({ req, params, body, session, subject, clientIdHash, resource, action });
+      return await definition.handler({ req, params, body, session, subject, clientIdHash, resource, action, bytes });
     } catch (error) {
       if (error instanceof HashingBusyError) {
         // Too many password checks waiting (review S-03): a temporary refusal, not a fault.

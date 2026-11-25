@@ -164,12 +164,10 @@ export const EVENT_TYPES = {
   // Phase 2: the filing path. Details never hold the card's content: names,
   // numbers and addresses stay in the draft and the file (memo row 25).
   'filing.draft.created': { outcome: 'DONE', details: detailsOf({ draftId: id, channel }) },
+  /** fields: the names of the parts changed, joined by «:» (CASE_TYPE, COURT, LOCALITY, CARD, ATTESTATION, BAILIFF, DEPOSITOR, LAWYER, APPLICATION_MODE) */
   'filing.draft.updated': {
     outcome: 'DONE',
-    details: detailsOf({
-      draftId: id,
-      fields: z.array(z.enum(['CASE_TYPE', 'COURT', 'LOCALITY', 'CARD', 'ATTESTATION', 'BAILIFF', 'DEPOSITOR', 'LAWYER', 'APPLICATION_MODE'])).max(9),
-    }),
+    details: detailsOf({ draftId: id, fields: z.string().regex(/^[A-Z_]{2,20}(:[A-Z_]{2,20}){0,9}$/) }),
   },
   'filing.application.pasted': { outcome: 'DONE', details: detailsOf({ draftId: id, paragraphs: count, characters: count }) },
   'filing.document.uploaded': {
@@ -196,23 +194,13 @@ export const EVENT_TYPES = {
     outcome: 'DONE',
     details: detailsOf({ caseFileId: id, draftId: id, number: count, code: count, year: count, channel }),
   },
-  /** recorded even when no referral is due (study, «المرحلة الثانية») */
+  /**
+   * Recorded even when no referral is due (study, «المرحلة الثانية»): the number
+   * of referrals, and each as TARGET/GROUND/article/item, joined by «:» (NONE when none).
+   */
   'case.referrals.reviewed': {
     outcome: 'DONE',
-    details: detailsOf({
-      caseFileId: id,
-      ruleVersion: code,
-      referrals: z
-        .array(
-          z.strictObject({
-            target: z.enum(['PROSECUTION', 'ROYAL_COMMISSIONER']),
-            ground: z.enum(['PRINCIPAL_PARTY', 'COMMUNICATION', 'ADMINISTRATIVE_COURT']),
-            article: count,
-            item: count.nullable(),
-          }),
-        )
-        .max(5),
-    }),
+    details: detailsOf({ caseFileId: id, ruleVersion: code, referrals: count, grounds: code }),
   },
   'case.registration.stamped': { outcome: 'DONE', details: detailsOf({ caseFileId: id }) },
   'case.registration.reclassified': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromCode: count, toCode: count }) },

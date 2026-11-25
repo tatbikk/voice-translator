@@ -7,7 +7,7 @@ import pg from 'pg';
 import { z } from 'zod';
 import { closeDb } from '@/server/db';
 import { appendStandaloneEvent } from '@/server/events/append';
-import { ruleSourceFiles } from '@/server/rules/store';
+import { ruleSourceFiles, type RuleKind } from '@/server/rules/store';
 
 const env = z.object({ MIGRATION_DATABASE_URL: z.string().min(1) }).safeParse(process.env);
 if (!env.success) {
@@ -17,7 +17,7 @@ if (!env.success) {
 
 const client = new pg.Client({ connectionString: env.data.MIGRATION_DATABASE_URL });
 await client.connect();
-const loaded: { kind: 'TIME_LIMITS' | 'FEES' | 'HOLIDAYS' | 'INTEREST'; version: string; contentSha256: string }[] = [];
+const loaded: { kind: RuleKind; version: string; contentSha256: string }[] = [];
 try {
   for (const table of ruleSourceFiles()) {
     const existing = await client.query<{ sha: string }>('SELECT "contentSha256" AS sha FROM "RuleSet" WHERE kind = $1 AND version = $2', [

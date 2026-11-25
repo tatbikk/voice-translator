@@ -38,6 +38,9 @@ function handlers(overrides: Partial<JobHandlers> = {}): JobHandlers & { readonl
     'events.verify-chain': record('events.verify-chain'),
     'maintenance.cleanup': record('maintenance.cleanup'),
     'security.throttle-summaries': record('security.throttle-summaries'),
+    'filing.fixed-copy': record('filing.fixed-copy'),
+    'payment.receipt': record('payment.receipt'),
+    'filing.receipt': record('filing.receipt'),
     ...overrides,
   };
 }

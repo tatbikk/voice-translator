@@ -6,13 +6,15 @@ import { clock } from '@/server/clock';
 import { closeDb } from '@/server/db';
 import { enforceBoot } from '@/server/boot/check';
 import { verifyEventChain } from '@/server/events/verify';
+import { JOB_HANDLERS } from '@/server/jobs/handlers';
 import { runDueJobs } from '@/server/jobs/queue';
 import { log, errorFields } from '@/server/log';
 import { cleanupExpired } from '@/server/security/maintenance';
 import { flushThrottleSummaries } from '@/server/security/refusals';
 import { createScheduler } from './scheduler';
 
-const QUEUE_EVERY_MS = 5_000;
+// The fixed copy of an application is awaited by its author: the queue is read often.
+const QUEUE_EVERY_MS = 2_000;
 const THROTTLE_EVERY_MS = 60_000;
 const MAINTENANCE_EVERY_MS = 10 * 60_000;
 
@@ -24,20 +26,7 @@ async function main(): Promise<void> {
       log.error('worker task failed', { task, ...errorFields(error) });
     },
   });
-  scheduler.every(QUEUE_EVERY_MS, 'jobs', (stopping) =>
-    runDueJobs(
-      {
-        'events.verify-chain': async (payload, { stopping: jobStopping }) => {
-          await verifyEventChain({ ...(payload.full === undefined ? {} : { full: payload.full }), stopping: jobStopping });
-        },
-        'maintenance.cleanup': () => cleanupExpired(),
-        'security.throttle-summaries': async () => {
-          await flushThrottleSummaries();
-        },
-      },
-      { stopping },
-    ),
-  );
+  scheduler.every(QUEUE_EVERY_MS, 'jobs', (stopping) => runDueJobs(JOB_HANDLERS, { stopping }));
   scheduler.every(THROTTLE_EVERY_MS, 'throttle-summaries', () => flushThrottleSummaries());
   scheduler.every(MAINTENANCE_EVERY_MS, 'chain-verification', (stopping) => verifyEventChain({ stopping }));
   scheduler.every(MAINTENANCE_EVERY_MS, 'cleanup', () => cleanupExpired());

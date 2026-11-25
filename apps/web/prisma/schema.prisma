@@ -1,4 +1,4 @@
-// Database schema of the digital court platform (Phases 0 and 1).
+// Database schema of the digital court platform (Phases 0 to 2).
 // Documented in docs/data-model.md. Raw-SQL protections (append-only event log,
 // one-way database stamp, monotonic platform clock) are appended to the
 // migration; runtime-role grants are applied by src/cli/db-roles.ts.
@@ -69,11 +69,19 @@ enum VerificationStatus {
   UNVERIFIED
 }
 
+enum CourtSpecialty {
+  GENERAL
+  COMMERCIAL
+  ADMINISTRATIVE
+}
+
 model Court {
   id            String      @id @default(uuid()) @db.Uuid
   code          String      @unique
   name          String
   degree        CourtDegree
+  /// Phase 2: the court's specialty; «محكمة إدارية» in the snapshot derives from it
+  specialty     CourtSpecialty @default(GENERAL)
   appealCourtId String?     @db.Uuid
   appealCourt   Court?      @relation("AppealCourt", fields: [appealCourtId], references: [id])
   firstInstance Court[]     @relation("AppealCourt")
@@ -83,6 +91,8 @@ model Court {
   roles     RoleAssignment[]
   caseFiles CaseFile[]
   hearings  Hearing[]
+  drafts    FilingDraft[]
+  sequences CaseSequence[]
 }
 
 model Panel {
@@ -135,6 +145,7 @@ model User {
   rapporteurOf     CaseFile[]          @relation("CaseRapporteur")
   representations  Representation[]
   signingCredential SigningCredential?
+  drafts           FilingDraft[]
 }
 
 model RoleAssignment {
@@ -150,6 +161,9 @@ model RoleAssignment {
   panel              Panel?             @relation(fields: [panelId], references: [id])
   verificationStatus VerificationStatus @default(UNVERIFIED)
   verificationSource String?
+  /// Phase 2 (art. 77): the lawyer's national number and bar, from the professional roster
+  professionalNumber String?
+  professionalBody   String?
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   revokedAt          DateTime?          @db.Timestamptz(3)
 
@@ -473,6 +487,14 @@ model CaseFile {
   /// procedural facts set by the transitions of later phases (CaseFact codes)
   facts                  String[]       @default([])
 
+  // Phase 2: how the file was filed (docs/data-model.md, «توسعة المرحلة 2»).
+  filingChannel            FilingChannel?
+  filedByUserId            String?        @db.Uuid
+  /// the bailiff the plaintiff designated (art. 87)
+  designatedBailiffUserId  String?        @db.Uuid
+  classificationCorrectedAt DateTime?     @db.Timestamptz(3)
+  referredToCommissionerAt DateTime?      @db.Timestamptz(3)
+
   parties       CaseParty[]
   claims        Claim[]
   documents     Document[]
@@ -487,8 +509,13 @@ model CaseFile {
   enforcement   EnforcementStep[]
   appealsFrom   Appeal[]       @relation("AppealLower")
   appealsTo     Appeal[]       @relation("AppealUpper")
+  filingDraft   FilingDraft?
+  referrals     CaseReferral[]
+  notes         CaseNote[]
 
   @@unique([courtId, number, code, year])
+  /// one register per court and year (decision 53): a number is never repeated, whatever the code
+  @@unique([courtId, number, year])
   @@index([rapporteurUserId])
   @@index([panelId])
 }
@@ -563,6 +590,11 @@ model CaseParty {
   litigantUserId      String?    @db.Uuid
   organizationId      String?    @db.Uuid
   eServiceAcceptedAt  DateTime?  @db.Timestamptz(3)
+  /// Phase 2: the kind of public-law person (art. 20, 605), the capacity (art. 18), the plaintiff's agent (art. 77)
+  publicEntityKind    String?
+  capacityStatus      String?
+  agentName           String?
+  agentAddress        String?
   /// procedural facts about the party (PartyFact codes)
   facts               String[]   @default([])
   position            Int        @default(0)
@@ -584,6 +616,9 @@ enum AddressKind {
   ELECTED
   ELECTRONIC
   PHONE
+  /// Phase 2 (art. 77): «محل الإقامة» and «مقر الفرع»
+  RESIDENCE
+  BRANCH
 }
 
 enum AddressSource {
@@ -695,8 +730,11 @@ model Document {
   simulated             Boolean            @default(false)
   withdrawnAt           DateTime?          @db.Timestamptz(3)
   visibility            DocumentVisibility @default(CASE)
+  /// Phase 2: pages of a scan (paper filing)
+  pageCount             Int?
 
-  circles SignatureCircle[]
+  circles    SignatureCircle[]
+  paragraphs DocumentParagraph[]
 
   @@index([caseFileId])
 }
@@ -858,8 +896,12 @@ model Appeal {
 
 model FeeAssessment {
   id         String   @id @default(uuid()) @db.Uuid
-  caseFileId String   @db.Uuid
-  caseFile   CaseFile @relation(fields: [caseFileId], references: [id])
+  /// null while the draft is not filed (Phase 2)
+  caseFileId String?  @db.Uuid
+  caseFile   CaseFile? @relation(fields: [caseFileId], references: [id], onDelete: Restrict)
+  draftId    String?  @db.Uuid
+  /// the digest of the claims, court and rule version the fee was computed on
+  inputsDigest String? @db.Char(64)
   filing     String
   ruleSetId  String   @db.Uuid
   totalCents BigInt
@@ -877,8 +919,14 @@ enum PaymentStatus {
 
 model Payment {
   id                String        @id @default(uuid()) @db.Uuid
-  caseFileId        String        @db.Uuid
-  caseFile          CaseFile      @relation(fields: [caseFileId], references: [id])
+  /// null until the draft it pays is registered (Phase 2)
+  caseFileId        String?       @db.Uuid
+  caseFile          CaseFile?     @relation(fields: [caseFileId], references: [id], onDelete: Restrict)
+  courtId           String?       @db.Uuid
+  draftId           String?       @db.Uuid
+  intentId          String?       @unique @db.Uuid
+  intent            PaymentIntent? @relation(fields: [intentId], references: [id], onDelete: Restrict)
+  method            PaymentMethod?
   purpose           String
   amountCents       BigInt
   payerUserId       String?       @db.Uuid
@@ -886,15 +934,21 @@ model Payment {
   status            PaymentStatus
   operationRef      String
   receiptDocumentId String?       @db.Uuid
+  /// the time of the operation, successful or not (art. 628)
   paidAt            DateTime      @db.Timestamptz(3)
 
   @@index([caseFileId])
+  @@index([courtId, paidAt])
+  @@index([draftId])
 }
 
 model TreasuryEntry {
   id                     String   @id @default(uuid()) @db.Uuid
-  caseFileId             String   @db.Uuid
-  caseFile               CaseFile @relation(fields: [caseFileId], references: [id])
+  /// null until the draft it pays is registered (Phase 2)
+  caseFileId             String?  @db.Uuid
+  caseFile               CaseFile? @relation(fields: [caseFileId], references: [id], onDelete: Restrict)
+  courtId                String?  @db.Uuid
+  draftId                String?  @db.Uuid
   paymentId              String?  @db.Uuid
   direction              String
   amountCents            BigInt
@@ -904,6 +958,7 @@ model TreasuryEntry {
   at                     DateTime @db.Timestamptz(3)
 
   @@index([caseFileId])
+  @@index([courtId, at])
 }
 
 model EnforcementStep {
@@ -997,4 +1052,220 @@ model Signature {
   providerRef            String
 
   @@unique([circleId, position])
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: the filing path, the payment, the register, referrals and notes
+// (docs/data-model.md, «توسعة المرحلة 2»). Every legal time is platform time.
+
+enum FilingChannel {
+  ELECTRONIC
+  PAPER
+}
+
+enum FilingStatus {
+  DRAFT
+  FILED
+}
+
+enum ApplicationMode {
+  UPLOAD
+  PASTE
+  SCAN
+}
+
+enum FixedCopyStatus {
+  NONE
+  PENDING
+  READY
+  FAILED
+}
+
+/// A filing draft: its author alone sees it (Phase 2 memo, row 2).
+model FilingDraft {
+  id                      String          @id @default(uuid()) @db.Uuid
+  ownerUserId             String          @db.Uuid
+  owner                   User            @relation(fields: [ownerUserId], references: [id])
+  ownerRoleAssignmentId   String          @db.Uuid
+  channel                 FilingChannel
+  status                  FilingStatus    @default(DRAFT)
+  courtId                 String?         @db.Uuid
+  court                   Court?          @relation(fields: [courtId], references: [id], onDelete: Restrict)
+  suggestedCourtId        String?         @db.Uuid
+  caseType                String?
+  defendantLocality       String?
+  procedure               ProcedureKind   @default(WRITTEN)
+  /// the case card, validated against the core's schema (FilingCardSchema)
+  card                    Json            @default("{\"parties\":[],\"summary\":\"\",\"claims\":[]}")
+  /// section code → digest of the section's content when attested «مطابق للمقال»
+  attestations            Json            @default("{}")
+  applicationMode         ApplicationMode?
+  /// the pasted application as deposited, and its numbered paragraphs
+  applicationText         String?
+  applicationParagraphs   Json?
+  fixedCopyStatus         FixedCopyStatus @default(NONE)
+  designatedBailiffUserId String?         @db.Uuid
+  /// the person who deposits on paper: name, identity number, capacity
+  paperDepositor          Json?
+  paperLawyerUserId       String?         @db.Uuid
+  createdAt               DateTime        @db.Timestamptz(3)
+  updatedAt               DateTime        @db.Timestamptz(3)
+  filedAt                 DateTime?       @db.Timestamptz(3)
+  caseFileId              String?         @unique @db.Uuid
+  caseFile                CaseFile?       @relation(fields: [caseFileId], references: [id], onDelete: Restrict)
+
+  documents FilingDocument[]
+  intents   PaymentIntent[]
+
+  @@index([ownerUserId, status])
+}
+
+enum FilingDocumentKind {
+  APPLICATION_ORIGINAL
+  APPLICATION_COPY
+  EXHIBIT
+  PAYMENT_RECEIPT
+}
+
+model FilingDocument {
+  id                    String             @id @default(uuid()) @db.Uuid
+  draftId               String             @db.Uuid
+  draft                 FilingDraft        @relation(fields: [draftId], references: [id])
+  kind                  FilingDocumentKind
+  /// generated name in the document bucket, never chosen by the depositor
+  storageKey            String             @unique
+  sha256                String             @db.Char(64)
+  byteSize              Int
+  mediaType             String
+  title                 String?
+  declaredNature        DocumentNature?
+  pageCount             Int?
+  paperOriginalLocation String?
+  position              Int                @default(0)
+  generated             Boolean            @default(false)
+  uploadedAt            DateTime           @db.Timestamptz(3)
+  removedAt             DateTime?          @db.Timestamptz(3)
+  /// the document of the file once filed (same stored object)
+  documentId            String?            @unique @db.Uuid
+
+  @@index([draftId])
+}
+
+enum PaymentIntentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentMethod {
+  ONLINE
+  COUNTER
+}
+
+/// A payment opened on the simulated gateway (prompt, «الأداء»).
+model PaymentIntent {
+  id              String              @id @default(uuid()) @db.Uuid
+  draftId         String              @db.Uuid
+  draft           FilingDraft         @relation(fields: [draftId], references: [id])
+  purpose         String
+  /// computed by the server, never received from the client
+  amountCents     BigInt
+  inputsDigest    String              @db.Char(64)
+  breakdown       Json
+  ruleSetId       String              @db.Uuid
+  method          PaymentMethod
+  status          PaymentIntentStatus @default(PENDING)
+  createdByUserId String              @db.Uuid
+  createdAt       DateTime            @db.Timestamptz(3)
+  expiresAt       DateTime            @db.Timestamptz(3)
+  completedAt     DateTime?           @db.Timestamptz(3)
+
+  payment Payment?
+
+  @@index([draftId])
+}
+
+/// The court's register for a year: one row, incremented under lock (decision 53).
+model CaseSequence {
+  courtId    String @db.Uuid
+  court      Court  @relation(fields: [courtId], references: [id])
+  year       Int
+  lastNumber Int
+
+  @@id([courtId, year])
+}
+
+enum ReferralTarget {
+  PROSECUTION
+  ROYAL_COMMISSIONER
+}
+
+enum ReferralGround {
+  PRINCIPAL_PARTY
+  COMMUNICATION
+  ADMINISTRATIVE_COURT
+}
+
+model CaseReferral {
+  id         String         @id @default(uuid()) @db.Uuid
+  caseFileId String         @db.Uuid
+  caseFile   CaseFile       @relation(fields: [caseFileId], references: [id])
+  target     ReferralTarget
+  ground     ReferralGround
+  article    Int
+  item       Int?
+  reasonCode String
+  ruleSetId  String         @db.Uuid
+  createdAt  DateTime       @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+enum NoteReason {
+  FEE_SHORTFALL
+  CLASSIFICATION
+  PARTIES
+  OTHER
+}
+
+/// The registry office's note to the judge: never shown to a party or a lawyer.
+model CaseNote {
+  id                String     @id @default(uuid()) @db.Uuid
+  caseFileId        String     @db.Uuid
+  caseFile          CaseFile   @relation(fields: [caseFileId], references: [id])
+  authorUserId      String     @db.Uuid
+  authorRole        RoleCode
+  reason            NoteReason
+  text              String
+  addressedToUserId String?    @db.Uuid
+  createdAt         DateTime   @db.Timestamptz(3)
+
+  @@index([caseFileId])
+}
+
+/// The numbered paragraphs of a fixed copy generated from a pasted text or a Word document.
+model DocumentParagraph {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id])
+  position   Int
+  text       String
+
+  @@unique([documentId, position])
+}
+
+enum RegistryKind {
+  COMMERCIAL_REGISTER
+}
+
+/// The simulated commercial register (prompt, «السجلات ومنصة البيانات»): fictitious entries only.
+model SimulatedRegistryEntry {
+  id       String       @id @default(uuid()) @db.Uuid
+  registry RegistryKind
+  key      String
+  data     Json
+
+  @@unique([registry, key])
 }

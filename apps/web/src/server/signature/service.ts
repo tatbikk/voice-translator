@@ -1,6 +1,7 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 import { SECURITY_POLICY, openCircle, signCircle, type RoleCode, type SignatureCircleState } from '@mahkama/core';
+import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getDb } from '../db';
 import { asJson } from '../json';
@@ -123,26 +124,8 @@ export async function signDocument(input: SignerRef & { circleId: string; secret
   const role = await roleOf(input);
   if (role !== next.role) return refuse('NOT_YOUR_TURN');
 
-  // The signing secret: lock first, then the attempt is counted before the check.
-  const identifierHash = signingIdentifier(input.userId);
-  if (await activeLock(identifierHash, DEFAULT_BUCKET)) return refuse('LOCKED');
-  const credential = await getDb().signingCredential.findUnique({ where: { userId: input.userId }, select: { secretHash: true } });
-  if (!credential) return refuse('NO_SECRET');
-  const policy = SECURITY_POLICY.signaturePin;
-  const attemptId = await reserveAttempt('SIGNING_SECRET', { identifierHash, bucket: DEFAULT_BUCKET, clientIdHash: null });
-  const since = await lastEndedLockForSigning(identifierHash);
-  const failures = (await attemptsFor('SIGNING_SECRET', identifierHash, DEFAULT_BUCKET, policy.windowMs, since)).filter((a) => !a.ok).length;
-  if (failures > policy.maxFailures) return refuse('LOCKED');
-  if (!(await verifyPassword(credential.secretHash, input.secret))) {
-    if (failures >= policy.maxFailures) {
-      const now = clock.systemNow();
-      await getDb().lockout.create({
-        data: { identifierHash, bucket: DEFAULT_BUCKET.storage, cause: 'SIGNING_SECRET', createdAt: now, until: new Date(now.getTime() + policy.lockMs) },
-      });
-    }
-    return refuse('INVALID_SECRET');
-  }
-  await markAttemptSucceeded(attemptId);
+  const secretCheck = await checkSigningSecret(input.userId, input.secret);
+  if (secretCheck !== 'OK') return refuse(secretCheck);
 
   // The document must still have the hash the circle was opened on.
   const current = await documentBytes(circle.document);
@@ -205,6 +188,80 @@ export async function signDocument(input: SignerRef & { circleId: string; secret
   });
   if (!recorded) return refuse('CIRCLE_CLOSED');
   return { ok: true, completed, stampKey: record.simulated ? SIMULATED_STAMP_KEY : 'signature.stamp.qualified' };
+}
+
+/**
+ * The personal signing secret: the lock first, then the attempt is counted
+ * before the check (decision 39); the third failure locks it fifteen minutes.
+ */
+export async function checkSigningSecret(userId: string, secret: string): Promise<'OK' | 'INVALID_SECRET' | 'LOCKED' | 'NO_SECRET'> {
+  const identifierHash = signingIdentifier(userId);
+  if (await activeLock(identifierHash, DEFAULT_BUCKET)) return 'LOCKED';
+  const credential = await getDb().signingCredential.findUnique({ where: { userId }, select: { secretHash: true } });
+  if (!credential) return 'NO_SECRET';
+  const policy = SECURITY_POLICY.signaturePin;
+  const attemptId = await reserveAttempt('SIGNING_SECRET', { identifierHash, bucket: DEFAULT_BUCKET, clientIdHash: null });
+  const since = await lastEndedLockForSigning(identifierHash);
+  const failures = (await attemptsFor('SIGNING_SECRET', identifierHash, DEFAULT_BUCKET, policy.windowMs, since)).filter((a) => !a.ok).length;
+  if (failures > policy.maxFailures) return 'LOCKED';
+  if (!(await verifyPassword(credential.secretHash, secret))) {
+    if (failures >= policy.maxFailures) {
+      const now = clock.systemNow();
+      await getDb().lockout.create({
+        data: { identifierHash, bucket: DEFAULT_BUCKET.storage, cause: 'SIGNING_SECRET', createdAt: now, until: new Date(now.getTime() + policy.lockMs) },
+      });
+    }
+    return 'INVALID_SECRET';
+  }
+  await markAttemptSucceeded(attemptId);
+  return 'OK';
+}
+
+/**
+ * Signs, inside the caller's transaction, a document with a single signer whose
+ * secret was checked just before (the filing of an application, art. 76): the
+ * circle is opened, signed and completed at once, on the document's hash.
+ */
+export async function signAloneInTransaction(
+  tx: Prisma.TransactionClient,
+  input: { documentId: string; documentSha256: string; caseFileId: string; purpose: string; signer: SignerRef & { role: RoleCode }; actor: EventActor | null },
+): Promise<{ circleId: string }> {
+  const circleId = randomUUID();
+  const signers: StoredSigner[] = [{ userId: input.signer.userId, roleAssignmentId: input.signer.roleAssignmentId, role: input.signer.role }];
+  openCircle({ documentSha256: input.documentSha256, signers: signers.map((s) => ({ userId: s.userId, role: s.role })) });
+  const now = clock.now();
+  await tx.signatureCircle.create({
+    data: { id: circleId, documentId: input.documentId, purpose: input.purpose, signers: asJson(signers), documentSha256: input.documentSha256, openedAt: now },
+  });
+  await appendEvent(tx, {
+    action: 'signature.circle.opened',
+    details: { circleId, documentId: input.documentId, documentSha256: input.documentSha256, signers: 1, purpose: input.purpose },
+    caseFileId: input.caseFileId,
+    actor: input.actor,
+  });
+  const record = await signatureProvider().sign({ documentSha256: input.documentSha256, signerUserId: input.signer.userId, signerRole: input.signer.role, at: now });
+  await tx.signature.create({
+    data: {
+      circleId,
+      position: 0,
+      signerUserId: input.signer.userId,
+      signerRoleAssignmentId: input.signer.roleAssignmentId,
+      signerRole: input.signer.role,
+      documentSha256: record.documentSha256,
+      signedAt: record.signedAt,
+      provider: signatureProvider().component.implementation === 'simulated' ? 'SIMULATED' : 'QUALIFIED',
+      providerRef: record.providerRef,
+    },
+  });
+  await tx.signatureCircle.update({ where: { id: circleId }, data: { status: 'COMPLETED', completedAt: now } });
+  await appendEvent(tx, {
+    action: 'signature.signed',
+    details: { circleId, documentId: input.documentId, position: 0, documentSha256: record.documentSha256, provider: record.simulated ? 'SIMULATED' : 'QUALIFIED' },
+    caseFileId: input.caseFileId,
+    actor: input.actor,
+  });
+  await appendEvent(tx, { action: 'signature.circle.completed', details: { circleId, documentId: input.documentId }, caseFileId: input.caseFileId, actor: input.actor });
+  return { circleId };
 }
 
 async function lastEndedLockForSigning(identifierHash: string): Promise<Date | null> {

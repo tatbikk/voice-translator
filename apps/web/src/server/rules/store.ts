@@ -3,6 +3,10 @@ import { createHash } from 'node:crypto';
 import {
   moroccoDay,
   ruleInForce,
+  type CaseTypeRuleSet,
+  type DistrictRuleSet,
+  type JurisdictionRuleSet,
+  type ReferralRuleSet,
   type FeeRuleSet,
   type HolidayCalendar,
   type InterestRuleSet,
@@ -12,6 +16,10 @@ import feesData from '../../../../../rules/fees.json';
 import holidaysData from '../../../../../rules/holidays.json';
 import interestData from '../../../../../rules/interest.json';
 import timeLimitsData from '../../../../../rules/time-limits.json';
+import caseTypesData from '../../../../../rules/case-types.json';
+import districtsData from '../../../../../rules/districts.json';
+import referralsData from '../../../../../rules/referrals.json';
+import jurisdictionData from '../../../../../rules/jurisdiction.json';
 import { getDb } from '../db';
 
 // The dated, sourced rule tables (prompt, rule 5: «القواعد القانونية معطيات لا
@@ -20,7 +28,7 @@ import { getDb } from '../db';
 // the application reads them from there only, by the date of the act. The
 // runtime role may read the table and never write it (src/cli/db-roles.ts).
 
-export type RuleKind = 'TIME_LIMITS' | 'FEES' | 'HOLIDAYS' | 'INTEREST';
+export type RuleKind = 'TIME_LIMITS' | 'FEES' | 'HOLIDAYS' | 'INTEREST' | 'CASE_TYPES' | 'DISTRICTS' | 'REFERRALS' | 'JURISDICTION';
 
 export interface HolidayRuleSet {
   readonly version: string;
@@ -35,6 +43,10 @@ const SOURCE_FILES: Readonly<Record<RuleKind, readonly { version: string; validF
   FEES: feesData,
   HOLIDAYS: holidaysData,
   INTEREST: interestData,
+  CASE_TYPES: caseTypesData,
+  DISTRICTS: districtsData,
+  REFERRALS: referralsData,
+  JURISDICTION: jurisdictionData,
 };
 
 const canonical = (value: unknown) => JSON.stringify(value);
@@ -57,17 +69,24 @@ export function ruleSourceFiles(): { kind: RuleKind; version: string; validFrom:
 // The tables are read from the database once per process: they change only
 // with a release, which restarts the processes. An empty read is not kept.
 let cache: Map<RuleKind, unknown[]> | null = null;
+/** the row id of each loaded version, for the records that cite the rule they applied */
+let ids: Map<string, string> | null = null;
 
 async function setsOf<T>(kind: RuleKind): Promise<T[]> {
   if (!cache) {
-    const rows = await getDb().ruleSet.findMany({ select: { kind: true, content: true } });
+    const rows = await getDb().ruleSet.findMany({ select: { id: true, kind: true, version: true, content: true } });
     const sets = new Map<RuleKind, unknown[]>();
+    const rowIds = new Map<string, string>();
     for (const row of rows) {
       const list = sets.get(row.kind as RuleKind) ?? [];
       list.push(row.content);
       sets.set(row.kind as RuleKind, list);
+      rowIds.set(`${row.kind}|${row.version}`, row.id);
     }
-    if (rows.length > 0) cache = sets;
+    if (rows.length > 0) {
+      cache = sets;
+      ids = rowIds;
+    }
     return (sets.get(kind) ?? []) as T[];
   }
   return (cache.get(kind) ?? []) as T[];
@@ -75,6 +94,7 @@ async function setsOf<T>(kind: RuleKind): Promise<T[]> {
 
 export function forgetRuleCache(): void {
   cache = null;
+  ids = null;
 }
 
 export class NoRuleInForceError extends Error {
@@ -92,6 +112,19 @@ async function inForce<T extends { version: string; validFrom: string; validTo: 
 }
 
 export const timeLimitRules = (at: Date) => inForce<TimeLimitRuleSet>('TIME_LIMITS', at);
+// Phase 2: case types, districts, referrals, the threshold of art. 35.
+export const caseTypeRules = (at: Date) => inForce<CaseTypeRuleSet>('CASE_TYPES', at);
+export const districtRules = (at: Date) => inForce<DistrictRuleSet>('DISTRICTS', at);
+export const referralRules = (at: Date) => inForce<ReferralRuleSet>('REFERRALS', at);
+export const jurisdictionRules = (at: Date) => inForce<JurisdictionRuleSet>('JURISDICTION', at);
+
+/** The RuleSet row of a version in force, for the records that cite the rule they applied. */
+export async function ruleSetId(kind: RuleKind, version: string): Promise<string> {
+  await setsOf(kind);
+  const id = ids?.get(`${kind}|${version}`);
+  if (!id) throw new NoRuleInForceError(kind, version);
+  return id;
+}
 export const feeSchedule = (at: Date) => inForce<FeeRuleSet>('FEES', at);
 export const interestRules = (at: Date) => inForce<InterestRuleSet>('INTEREST', at);
 
