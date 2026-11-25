@@ -23,6 +23,7 @@ import { storeDocument } from '@/server/documents/service';
 import { DocumentGenerationError, generatePdf, type GenerateInput, type TemplateName } from '@/server/documents/generate';
 import { openSignatureCircle, setSigningSecret, signDocument } from '@/server/signature/service';
 import { feeSchedule, holidayCalendar, timeLimitRules } from '@/server/rules/store';
+import { lawArticlesText } from '@/i18n/legal-basis';
 import { translator } from '@/i18n/translate';
 import { DEMO_CASE_CONTENT, DEMO_TEXTS, type DemoCaseContent } from './seed-data/cases';
 import { demoEmail, type DemoCourtKey, type DemoPanelKey } from './seed-data/accounts';
@@ -65,8 +66,9 @@ function articlesOf(action: string): number[] {
   return [...rule.articles];
 }
 
+/** «المادة …»، «المادتين … و…» or «المواد … و… و…», after «بناء على» in the order (review P1-L-38). */
 function basisText(action: string): string {
-  return DEMO_TEXTS.basis.replace('{articles}', articlesOf(action).join(DEMO_TEXTS.articleJoiner));
+  return lawArticlesText(t, articlesOf(action));
 }
 
 /** A small, valid PDF standing for a document deposited by a party (fictitious content). */
