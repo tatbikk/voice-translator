@@ -135,8 +135,6 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
   // The timeline shows only what the viewer may know (review P1-S-01): nothing
   // about a document hidden from them, and nothing of the deliberation outside the panel.
   const visibleDocumentIds = new Set(file.documents.filter((d) => documentVisible(subject, snapshot, d.visibility, d.id)).map((d) => d.id));
-  const uncertainCodes = new Set((rules?.rules ?? []).filter((r) => r.uncertain).map((r) => r.code));
-  const electronicUncertain = rules?.settings.electronicCounting.uncertain ?? true;
 
   return {
     header: {
@@ -215,7 +213,7 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
         endsAt: t.endsAt,
         lastDay: t.lastDay,
         status: t.status,
-        uncertain: uncertainCodes.has(t.ruleCode) || (t.electronic && electronicUncertain),
+        uncertain: computationUncertain(t.computation),
         articles: rule?.articles ?? [],
       };
     }),
@@ -245,6 +243,16 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       .filter((d) => d.pronouncedAt !== null || !['JUDGMENT', 'APPELLATE_DECISION'].includes(d.kind) || panelSide)
       .map((d) => ({ id: d.id, kind: d.kind, subjectCode: d.subjectCode, issuedAt: d.issuedAt, pronouncedAt: d.pronouncedAt, final: d.final })),
   };
+}
+
+/**
+ * «قيمة مؤقتة غير مؤكدة» for a stored time limit, from what its computation
+ * relied on as recorded with it (review P1-A-09), not from the rule table in
+ * force today. A computation that does not record it is shown uncertain.
+ */
+export function computationUncertain(computation: unknown): boolean {
+  const uncertainties = (typeof computation === 'object' && computation !== null ? computation : {}) as { uncertainties?: unknown };
+  return !Array.isArray(uncertainties.uncertainties) || uncertainties.uncertainties.length > 0;
 }
 
 function isLawBasis(value: unknown): value is { kind: 'LAW'; articles: number[] } {

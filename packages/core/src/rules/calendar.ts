@@ -96,8 +96,16 @@ export function weekday(day: string): number {
 export interface HolidayCalendar {
   /** official holidays, YYYY-MM-DD */
   readonly dates: readonly string[];
-  /** weekly days off, 0 for Sunday to 6 for Saturday */
+  /**
+   * weekly days off, 0 for Sunday to 6 for Saturday. The time-limit engine
+   * counts them as holidays only when the table's setting weekendIsHoliday
+   * says so (art. 603, س32).
+   */
   readonly weekendDays: readonly number[];
+  /** holidays among `dates` whose day is an estimate until it is announced (س33) */
+  readonly uncertainDates: readonly string[];
+  /** the last day the list of holidays is complete for; null when the table declares none (review P1-A-08) */
+  readonly coversUntil: string | null;
 }
 
 export function isHoliday(calendar: HolidayCalendar, day: string): boolean {

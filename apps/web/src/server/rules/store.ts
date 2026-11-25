@@ -100,13 +100,18 @@ export const timeLimitRules = (at: Date) => inForce<TimeLimitRuleSet>('TIME_LIMI
 export const feeSchedule = (at: Date) => inForce<FeeRuleSet>('FEES', at);
 export const interestRules = (at: Date) => inForce<InterestRuleSet>('INTEREST', at);
 
-/** The calendar of holidays and days off in force on a day (art. 603). */
-export async function holidayCalendar(at: Date): Promise<HolidayCalendar & { uncertainDates: readonly string[] }> {
+/**
+ * The calendar of holidays and days off in force on a day (art. 603), with its
+ * version and its horizon. Saturday and Sunday are the weekly days off; the
+ * engine counts them as holidays only as the time-limit table's setting says.
+ */
+export async function holidayCalendar(at: Date): Promise<HolidayCalendar & { version: string }> {
   const holidays = await inForce<HolidayRuleSet>('HOLIDAYS', at);
-  const limits = await timeLimitRules(at);
   return {
+    version: holidays.version,
     dates: holidays.holidays.map((h) => h.date),
     uncertainDates: holidays.holidays.filter((h) => h.uncertain).map((h) => h.date),
-    weekendDays: limits.settings.weekendIsHoliday.value ? [6, 0] : [],
+    weekendDays: [6, 0],
+    coversUntil: holidays.coversUntil ?? null,
   };
 }

@@ -30,6 +30,14 @@ describe('the rule files of the repository', () => {
   it('are all valid, and no two versions of one kind overlap', () => {
     expect(ruleFileProblems(files)).toEqual([]);
   });
+
+  it('declare the horizon of the holiday list in force (review P1-A-08)', () => {
+    const current = files.filter((f) => f.kind === 'HOLIDAYS' && f.validTo === null);
+    expect(current).toHaveLength(1);
+    const content = current[0]?.content as { coversUntil?: string; holidays: { date: string }[] };
+    expect(content.coversUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(content.holidays.some((h) => h.date > (content.coversUntil ?? '')), 'no holiday listed past the horizon').toBe(false);
+  });
 });
 
 describe('an invalid rule file is refused before loading (review P1-S-10)', () => {

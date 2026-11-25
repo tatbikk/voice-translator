@@ -7,7 +7,7 @@
 import { join } from 'node:path';
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ruleSourceFiles } from '@/server/rules/store';
+import { ruleContentSha256, ruleSourceFiles } from '@/server/rules/store';
 import { migrateDeploy, runProcess, type ProcessResult } from '../helpers/cli';
 import { count, events, ownerClient, sql } from '../helpers/db';
 import { useFreshDatabase } from '../helpers/reset';
@@ -94,6 +94,47 @@ describe('loading the rule tables (review P1-S-10, P1-A-07)', () => {
     // Back to the files' state for the next tests.
     await sql(`UPDATE "RuleSet" SET "contentSha256" = $3 WHERE kind = $1 AND version = $2`, [changed.kind, changed.version, changed.contentSha256]);
     expect(loadRules().status).toBe(0);
+  }, 120_000);
+});
+
+describe('a version loaded open-ended is closed when its successor comes (review P1-A-18)', () => {
+  it('upgrades the holiday table loaded by Phase 1: closes it, loads the version with a horizon, records both', async () => {
+    const closed = files.find((f) => f.kind === 'HOLIDAYS' && f.validTo !== null);
+    const successor = files.find((f) => f.kind === 'HOLIDAYS' && f.validTo === null);
+    if (!closed || !successor) throw new Error('rules/holidays.json holds a closed version and its successor');
+    expect(successor.validFrom).toBe(closed.validTo);
+    expect((successor.content as { coversUntil?: string }).coversUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    // The database as Phase 1 left it: the first version open-ended, no successor.
+    const asLoaded = { ...(closed.content as Record<string, unknown>), validTo: null };
+    await sql(`DELETE FROM "RuleSet" WHERE kind = 'HOLIDAYS'`);
+    await sql(
+      `INSERT INTO "RuleSet" (id, kind, version, "validFrom", "validTo", "contentSha256", content, "loadedAt")
+       VALUES (gen_random_uuid(), 'HOLIDAYS', $1, $2, NULL, $3, $4::jsonb, now())`,
+      [closed.version, closed.validFrom, ruleContentSha256(asLoaded), JSON.stringify(asLoaded)],
+    );
+    const seq = Number((await sql<{ seq: string }>(`SELECT coalesce(max(seq), 0)::text AS seq FROM "Event"`))[0]?.seq ?? 0);
+
+    const result = loadRules();
+    expect(result.status, result.output.slice(-2000)).toBe(0);
+    const rows = await sql<{ version: string; validTo: string | null; contentSha256: string; contentValidTo: string | null }>(
+      `SELECT version, "validTo", "contentSha256", content->>'validTo' AS "contentValidTo" FROM "RuleSet" WHERE kind = 'HOLIDAYS' ORDER BY "validFrom"`,
+    );
+    expect(rows).toEqual([
+      { version: closed.version, validTo: closed.validTo, contentSha256: closed.contentSha256, contentValidTo: closed.validTo },
+      { version: successor.version, validTo: null, contentSha256: successor.contentSha256, contentValidTo: null },
+    ]);
+    const appended = (await events()).filter((e) => e.seq > seq);
+    expect(appended.map((e) => [e.action, e.details])).toEqual([
+      [
+        'rules.closed',
+        { kind: 'HOLIDAYS', version: closed.version, validTo: closed.validTo, previousSha256: ruleContentSha256(asLoaded), contentSha256: closed.contentSha256 },
+      ],
+      ['rules.loaded', { kind: 'HOLIDAYS', version: successor.version, contentSha256: successor.contentSha256 }],
+    ]);
+    // And nothing more on the next release.
+    expect(loadRules().status).toBe(0);
+    expect((await events()).filter((e) => e.seq > seq)).toHaveLength(2);
   }, 120_000);
 });
 

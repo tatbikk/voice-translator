@@ -206,7 +206,16 @@ async function timeLimit(caseFileId: string, code: string, partyId: string, trig
       lastDay: result.lastDay,
       electronic,
       status: result.endsAt.getTime() > now.getTime() ? 'RUNNING' : 'ELAPSED',
-      computation: { steps: result.steps, articles: result.articles, ruleVersion: rules.version },
+      // What the computation relied on, kept with it (review P1-A-09): the tables' versions, the
+      // calendar's horizon, and whatever unsettled it rests on, from which the case page reads its flag.
+      computation: asJson({
+        steps: result.steps,
+        articles: result.articles,
+        ruleVersion: rules.version,
+        calendarVersion: calendar.version,
+        coversUntil: calendar.coversUntil,
+        uncertainties: result.uncertainties,
+      }),
     },
   });
 }
