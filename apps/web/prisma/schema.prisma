@@ -923,6 +923,9 @@ model EnforcementStep {
 // Dated, sourced rule tables (prompt, rule 5). Written by the release step only:
 // the runtime role reads them (src/cli/db-roles.ts).
 
+// The kinds, the days (YYYY-MM-DD, validTo after validFrom) and the absence of
+// overlap between the versions of one kind are enforced in the database
+// (migration 20261125150000_rules_constraints, review P1-A-18).
 model RuleSet {
   id            String   @id @default(uuid()) @db.Uuid
   kind          String

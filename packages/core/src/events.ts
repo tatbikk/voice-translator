@@ -167,6 +167,11 @@ export const EVENT_TYPES = {
     outcome: 'FAILED',
     details: detailsOf({ brokenAtSeq: count, reason: code }),
   },
+  /** a rule table loaded open-ended receives its end date, nothing else changed (load-rules, review P1-A-18) */
+  'rules.closed': {
+    outcome: 'DONE',
+    details: detailsOf({ kind: code, version: code, validTo: z.iso.date(), previousSha256: hash, contentSha256: hash }),
+  },
   'system.boot': {
     outcome: 'DONE',
     details: detailsOf({ mode: z.enum(['demo', 'production']), simulatedComponents: count, process: z.enum(['web', 'worker']) }),

@@ -27,6 +27,8 @@ export interface HolidayRuleSet {
   readonly validFrom: string;
   readonly validTo: string | null;
   readonly source: string;
+  /** the last day the list is complete for (review P1-A-08); absent: no declared horizon */
+  readonly coversUntil?: string;
   readonly holidays: readonly { date: string; name: string; uncertain: boolean }[];
 }
 
@@ -40,6 +42,9 @@ const SOURCE_FILES: Readonly<Record<RuleKind, readonly { version: string; validF
 const canonical = (value: unknown) => JSON.stringify(value);
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 
+/** The hash of a table's canonical content, as recorded in RuleSet.contentSha256. */
+export const ruleContentSha256 = (set: unknown): string => sha256(canonical(set));
+
 /** The tables of rules/*.json with the hash of their canonical content (load-rules). */
 export function ruleSourceFiles(): { kind: RuleKind; version: string; validFrom: string; validTo: string | null; contentSha256: string; content: unknown }[] {
   return (Object.entries(SOURCE_FILES) as [RuleKind, (typeof SOURCE_FILES)[RuleKind]][]).flatMap(([kind, sets]) =>
@@ -48,7 +53,7 @@ export function ruleSourceFiles(): { kind: RuleKind; version: string; validFrom:
       version: set.version,
       validFrom: set.validFrom,
       validTo: set.validTo,
-      contentSha256: sha256(canonical(set)),
+      contentSha256: ruleContentSha256(set),
       content: set,
     })),
   );
