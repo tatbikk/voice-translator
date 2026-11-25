@@ -3,6 +3,7 @@
 // carries the environment line while the signature component is simulated.
 import { describe, expect, it } from 'vitest';
 import { documentHtml, generatePdf, type GenerateInput } from '@/server/documents/generate';
+import { pdfPages, readsRightToLeft } from '../helpers/pdf-text';
 import { useFreshDatabase } from '../helpers/reset';
 
 useFreshDatabase();
@@ -43,5 +44,9 @@ describe('document generation', () => {
     const pdf = await generatePdf(input);
     expect(Buffer.from(pdf.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
     expect(pdf.byteLength).toBeGreaterThan(10_000);
+    // Read in the PDF itself (review P1-S-15), not in the HTML before printing.
+    const pages = pdfPages(pdf);
+    expect(pages.length).toBeGreaterThan(0);
+    for (const page of pages) expect(readsRightToLeft(page, input.environmentLine ?? '')).toBe(true);
   }, 60_000);
 });

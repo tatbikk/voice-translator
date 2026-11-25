@@ -147,7 +147,14 @@ export async function signDocument(input: SignerRef & { circleId: string; secret
     return refuse(outcome.reason);
   }
 
-  const record = await signatureProvider().sign({ documentSha256: currentSha, signerUserId: next.userId, signerRole: next.role, at: clock.now() });
+  const record = await signatureProvider().sign({
+    documentSha256: currentSha,
+    signerUserId: next.userId,
+    signerRole: next.role,
+    circleId: circle.id,
+    position: state.signedCount,
+    at: clock.now(),
+  });
   const completed = outcome.circle.status === 'COMPLETED';
   const recorded = await eventTransaction(async (tx) => {
     // The circle is locked and read again: a concurrent signature or voiding wins (review P1-S-04).
@@ -239,7 +246,7 @@ export async function signAloneInTransaction(
     caseFileId: input.caseFileId,
     actor: input.actor,
   });
-  const record = await signatureProvider().sign({ documentSha256: input.documentSha256, signerUserId: input.signer.userId, signerRole: input.signer.role, at: now });
+  const record = await signatureProvider().sign({ documentSha256: input.documentSha256, signerUserId: input.signer.userId, signerRole: input.signer.role, circleId, position: 0, at: now });
   await tx.signature.create({
     data: {
       circleId,
@@ -296,7 +303,19 @@ export async function verifyDocumentSignatures(documentId: string, actor: EventA
   });
   const views: SignatureView[] = [];
   for (const s of signatures) {
-    const status = await signatureProvider().verify({ documentSha256: s.documentSha256, providerRef: s.providerRef, signedAt: s.signedAt }, currentSha);
+    // Who signed, with which role, where and when: from the row, never from the reference (review P1-S-09).
+    const status = await signatureProvider().verify(
+      {
+        documentSha256: s.documentSha256,
+        providerRef: s.providerRef,
+        signedAt: s.signedAt,
+        signerUserId: s.signerUserId,
+        signerRole: s.signerRole,
+        circleId: s.circleId,
+        position: s.position,
+      },
+      currentSha,
+    );
     views.push({
       signatureId: s.id,
       circleId: s.circleId,

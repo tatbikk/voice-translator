@@ -81,6 +81,13 @@ export type EnvelopeCondition =
 
 const RAPPORTEUR_ROLES: readonly RoleCode[] = ['JUDGE_RAPPORTEUR', 'JUDGE_IN_CHARGE', 'COUNSELLOR_RAPPORTEUR'];
 
+/**
+ * The roles that sit on a panel: its president and members, and the judges who
+ * prepare its files. Only they hold the PANEL relation, whatever panel another
+ * role assignment may carry (review P1-S-12).
+ */
+export const PANEL_ROLES: readonly RoleCode[] = ['PANEL_PRESIDENT', 'PANEL_MEMBER', ...RAPPORTEUR_ROLES];
+
 export function deadlineState(
   deadlines: readonly RunningDeadline[],
   code: DeadlineCode,
@@ -126,7 +133,12 @@ export function holdsRelation(subject: UserSubject, snapshot: CaseSnapshot, rela
     case 'RAPPORTEUR':
       return RAPPORTEUR_ROLES.includes(subject.role) && snapshot.rapporteurUserId === user && subject.courtId === snapshot.courtId;
     case 'PANEL':
-      return snapshot.panelId !== null && subject.panelId === snapshot.panelId && subject.courtId === snapshot.courtId;
+      return (
+        PANEL_ROLES.includes(subject.role) &&
+        snapshot.panelId !== null &&
+        subject.panelId === snapshot.panelId &&
+        subject.courtId === snapshot.courtId
+      );
     case 'COURT_STAFF':
       return subject.courtId !== null && subject.courtId === snapshot.courtId;
     case 'PROSECUTION':

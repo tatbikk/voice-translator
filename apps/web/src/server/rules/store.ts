@@ -35,6 +35,8 @@ export interface HolidayRuleSet {
   readonly validFrom: string;
   readonly validTo: string | null;
   readonly source: string;
+  /** the last day the list is complete for (review P1-A-08); absent: no declared horizon */
+  readonly coversUntil?: string;
   readonly holidays: readonly { date: string; name: string; uncertain: boolean }[];
 }
 
@@ -52,6 +54,9 @@ const SOURCE_FILES: Readonly<Record<RuleKind, readonly { version: string; validF
 const canonical = (value: unknown) => JSON.stringify(value);
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
 
+/** The hash of a table's canonical content, as recorded in RuleSet.contentSha256. */
+export const ruleContentSha256 = (set: unknown): string => sha256(canonical(set));
+
 /** The tables of rules/*.json with the hash of their canonical content (load-rules). */
 export function ruleSourceFiles(): { kind: RuleKind; version: string; validFrom: string; validTo: string | null; contentSha256: string; content: unknown }[] {
   return (Object.entries(SOURCE_FILES) as [RuleKind, (typeof SOURCE_FILES)[RuleKind]][]).flatMap(([kind, sets]) =>
@@ -60,7 +65,7 @@ export function ruleSourceFiles(): { kind: RuleKind; version: string; validFrom:
       version: set.version,
       validFrom: set.validFrom,
       validTo: set.validTo,
-      contentSha256: sha256(canonical(set)),
+      contentSha256: ruleContentSha256(set),
       content: set,
     })),
   );
@@ -128,13 +133,18 @@ export async function ruleSetId(kind: RuleKind, version: string): Promise<string
 export const feeSchedule = (at: Date) => inForce<FeeRuleSet>('FEES', at);
 export const interestRules = (at: Date) => inForce<InterestRuleSet>('INTEREST', at);
 
-/** The calendar of holidays and days off in force on a day (art. 603). */
-export async function holidayCalendar(at: Date): Promise<HolidayCalendar & { uncertainDates: readonly string[] }> {
+/**
+ * The calendar of holidays and days off in force on a day (art. 603), with its
+ * version and its horizon. Saturday and Sunday are the weekly days off; the
+ * engine counts them as holidays only as the time-limit table's setting says.
+ */
+export async function holidayCalendar(at: Date): Promise<HolidayCalendar & { version: string }> {
   const holidays = await inForce<HolidayRuleSet>('HOLIDAYS', at);
-  const limits = await timeLimitRules(at);
   return {
+    version: holidays.version,
     dates: holidays.holidays.map((h) => h.date),
     uncertainDates: holidays.holidays.filter((h) => h.uncertain).map((h) => h.date),
-    weekendDays: limits.settings.weekendIsHoliday.value ? [6, 0] : [],
+    weekendDays: [6, 0],
+    coversUntil: holidays.coversUntil ?? null,
   };
 }

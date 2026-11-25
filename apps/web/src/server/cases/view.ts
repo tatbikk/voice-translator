@@ -147,8 +147,6 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
   // The timeline shows only what the viewer may know (review P1-S-01): nothing
   // about a document hidden from them, and nothing of the deliberation outside the panel.
   const visibleDocumentIds = new Set(file.documents.filter((d) => documentVisible(subject, snapshot, d.visibility, d.id)).map((d) => d.id));
-  const uncertainCodes = new Set((rules?.rules ?? []).filter((r) => r.uncertain).map((r) => r.code));
-  const electronicUncertain = rules?.settings.electronicCounting.uncertain ?? true;
 
   return {
     header: {
@@ -235,7 +233,7 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
         endsAt: t.endsAt,
         lastDay: t.lastDay,
         status: t.status,
-        uncertain: uncertainCodes.has(t.ruleCode) || (t.electronic && electronicUncertain),
+        uncertain: computationUncertain(t.computation),
         articles: rule?.articles ?? [],
       };
     }),
@@ -270,6 +268,16 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
 /** The registry office and the president of the court read every note of the file. */
 const NOTE_READERS: ReadonlySet<string> = new Set(['CLERK_REGISTRATION', 'CHIEF_CLERK', 'COURT_PRESIDENT']);
 const PRIVATE_ADDRESS_KINDS: ReadonlySet<string> = new Set(['ELECTRONIC', 'PHONE']);
+
+/**
+ * «قيمة مؤقتة غير مؤكدة» for a stored time limit, from what its computation
+ * relied on as recorded with it (review P1-A-09), not from the rule table in
+ * force today. A computation that does not record it is shown uncertain.
+ */
+export function computationUncertain(computation: unknown): boolean {
+  const uncertainties = (typeof computation === 'object' && computation !== null ? computation : {}) as { uncertainties?: unknown };
+  return !Array.isArray(uncertainties.uncertainties) || uncertainties.uncertainties.length > 0;
+}
 
 function isLawBasis(value: unknown): value is { kind: 'LAW'; articles: number[] } {
   return typeof value === 'object' && value !== null && (value as { kind?: unknown }).kind === 'LAW' && Array.isArray((value as { articles?: unknown }).articles);

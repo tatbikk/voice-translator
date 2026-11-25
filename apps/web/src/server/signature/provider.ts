@@ -1,5 +1,5 @@
 import 'server-only';
-import { createHmac } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ReplaceableComponent } from '@mahkama/core';
 import { masterKey } from '../keys';
 
@@ -12,6 +12,9 @@ export interface SignRequest {
   readonly documentSha256: string;
   readonly signerUserId: string;
   readonly signerRole: string;
+  /** the circle and the signer's position in it: a signature belongs to one place of one circle */
+  readonly circleId: string;
+  readonly position: number;
   readonly at: Date;
 }
 
@@ -23,20 +26,51 @@ export interface SignatureRecord {
   readonly simulated: boolean;
 }
 
+/**
+ * A signature as the platform recorded it (the row of "Signature"). Verification
+ * reads who signed, with which role, where and when from this record, never from
+ * the provider's reference (review P1-S-09).
+ */
+export interface SignedRecord {
+  readonly providerRef: string;
+  readonly documentSha256: string;
+  readonly signedAt: Date;
+  readonly signerUserId: string;
+  readonly signerRole: string;
+  readonly circleId: string;
+  readonly position: number;
+}
+
+export type VerificationStatus = 'VALID' | 'DOCUMENT_CHANGED' | 'INVALID';
+
 export interface SignatureProvider {
   readonly component: ReplaceableComponent;
   sign(request: SignRequest): Promise<SignatureRecord>;
-  verify(record: { documentSha256: string; providerRef: string; signedAt: Date }, currentSha256: string): Promise<'VALID' | 'DOCUMENT_CHANGED' | 'INVALID'>;
+  verify(record: SignedRecord, currentSha256: string): Promise<VerificationStatus>;
 }
 
 const HASH = /^[0-9a-f]{64}$/;
+const REF_PREFIX = 'sim-v2:';
+
+/** Constant-time comparison of two references (review P1-S-09). */
+export function sameReference(a: string, b: string): boolean {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  return left.length === right.length && timingSafeEqual(left, right);
+}
 
 function simulatedProvider(): SignatureProvider {
-  // The reference is an HMAC of what was signed, under a key derived from the
-  // master key: a signature row whose hash or time was altered in the database
-  // no longer verifies.
+  // The reference is an HMAC, under a key derived from the master key, of
+  // everything the signature attests: the document's hash, the signer, the role,
+  // the circle, the position in it and the platform time. A signature row whose
+  // hash, time, signer, role, circle or position was altered or copied in the
+  // database no longer verifies. References made before these fields were bound
+  // (prefix "sim:") are no longer accepted: they verify INVALID.
   const key = () => masterKey('signature-simulated-v1');
-  const refOf = (sha: string, user: string, at: Date) => createHmac('sha256', key()).update(`${sha}|${user}|${at.toISOString()}`).digest('hex');
+  const refOf = (r: { documentSha256: string; signerUserId: string; signerRole: string; circleId: string; position: number; at: Date }) =>
+    `${REF_PREFIX}${createHmac('sha256', key())
+      .update(JSON.stringify([r.documentSha256, r.signerUserId, r.signerRole, r.circleId, r.position, r.at.toISOString()]))
+      .digest('hex')}`;
   return {
     component: {
       id: 'signature',
@@ -48,8 +82,9 @@ function simulatedProvider(): SignatureProvider {
     async sign(request) {
       await Promise.resolve();
       if (!HASH.test(request.documentSha256)) throw new Error('invalid document hash');
+      if (!Number.isInteger(request.position) || request.position < 0) throw new Error('invalid position');
       return {
-        providerRef: `sim:${request.signerUserId}:${refOf(request.documentSha256, request.signerUserId, request.at)}`,
+        providerRef: refOf(request),
         documentSha256: request.documentSha256,
         signedAt: request.at,
         simulated: true,
@@ -57,9 +92,9 @@ function simulatedProvider(): SignatureProvider {
     },
     async verify(record, currentSha256) {
       await Promise.resolve();
-      const [, user = '', mac = ''] = record.providerRef.split(':');
-      if (refOf(record.documentSha256, user, record.signedAt) !== mac) return 'INVALID';
-      return record.documentSha256 === currentSha256 ? 'VALID' : 'DOCUMENT_CHANGED';
+      if (!HASH.test(record.documentSha256) || !Number.isInteger(record.position)) return 'INVALID';
+      if (!sameReference(record.providerRef, refOf({ ...record, at: record.signedAt }))) return 'INVALID';
+      return sameReference(record.documentSha256, currentSha256) ? 'VALID' : 'DOCUMENT_CHANGED';
     },
   };
 }

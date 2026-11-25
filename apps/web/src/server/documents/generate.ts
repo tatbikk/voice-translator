@@ -109,8 +109,21 @@ export class DocumentGenerationError extends Error {
 
 /** Prints the document to PDF in an isolated, offline browser. */
 export async function generatePdf(input: GenerateInput): Promise<Uint8Array> {
+  const pageText = input.pageLabel.replace('{page}', '<span class="pageNumber"></span>').replace('{pages}', '<span class="totalPages"></span>');
+  return printPdf(documentHtml(input), {
+    headerHtml: headerFooter(input.environmentLine ? escapeLine(input.environmentLine) : ''),
+    footerHtml: headerFooter(pageText),
+  });
+}
+
+/**
+ * Prints a page the server built to PDF, in the isolated browser: no script,
+ * no network (offline, and every request aborted), no download, no service
+ * worker. Exported for the test that gives it a page full of outbound
+ * references (review P1-S-15); the platform calls it through generatePdf only.
+ */
+export async function printPdf(html: string, margins: { readonly headerHtml: string; readonly footerHtml: string }): Promise<Uint8Array> {
   const { chromium } = await import('playwright-core');
-  const html = documentHtml(input);
   let browser: Awaited<ReturnType<typeof chromium.launch>>;
   try {
     const executablePath = getEnv().pdfBrowserPath ?? undefined;
@@ -127,13 +140,12 @@ export async function generatePdf(input: GenerateInput): Promise<Uint8Array> {
     await context.route('**/*', (route) => route.abort());
     const page = await context.newPage();
     await page.setContent(html, { waitUntil: 'load', timeout: 20_000 });
-    const pageText = input.pageLabel.replace('{page}', '<span class="pageNumber"></span>').replace('{pages}', '<span class="totalPages"></span>');
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
       displayHeaderFooter: true,
-      headerTemplate: headerFooter(input.environmentLine ? escapeLine(input.environmentLine) : ''),
-      footerTemplate: headerFooter(pageText),
+      headerTemplate: margins.headerHtml,
+      footerTemplate: margins.footerHtml,
       margin: { top: '30mm', bottom: '22mm', left: '18mm', right: '18mm' },
     });
     return new Uint8Array(pdf);
