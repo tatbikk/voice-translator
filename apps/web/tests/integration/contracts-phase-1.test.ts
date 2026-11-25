@@ -31,6 +31,11 @@ function memoryStore(): DocumentStore {
   };
 }
 
+/** An unkeyed digest of everything signed: enough for a second implementation of the contract. */
+function refOf(sha: string, user: string, role: string, circleId: string, position: number, at: Date): string {
+  return createHash('sha256').update(JSON.stringify([sha, user, role, circleId, position, at.toISOString()])).digest('hex');
+}
+
 function hashOnlyProvider(): SignatureProvider {
   return {
     component: {
@@ -43,11 +48,13 @@ function hashOnlyProvider(): SignatureProvider {
     async sign(request) {
       await Promise.resolve();
       if (!/^[0-9a-f]{64}$/.test(request.documentSha256)) throw new Error('invalid hash');
-      const ref = createHash('sha256').update(`${request.documentSha256}:${request.signerUserId}:${request.at.toISOString()}`).digest('hex');
+      const ref = refOf(request.documentSha256, request.signerUserId, request.signerRole, request.circleId, request.position, request.at);
       return { providerRef: ref, documentSha256: request.documentSha256, signedAt: request.at, simulated: true };
     },
     async verify(record, currentSha256) {
       await Promise.resolve();
+      const expected = refOf(record.documentSha256, record.signerUserId, record.signerRole, record.circleId, record.position, record.signedAt);
+      if (record.providerRef !== expected) return 'INVALID';
       return record.documentSha256 === currentSha256 ? 'VALID' : 'DOCUMENT_CHANGED';
     },
   };
