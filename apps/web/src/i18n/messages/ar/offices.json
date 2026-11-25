@@ -29,6 +29,8 @@
   "cashier.intro": "الأداءات الواردة على المحكمة ومطابقتها للرسم المحتسب على الطلبات، والمبالغ المودعة على ذمة إجراءات التحقيق.",
   "cashier.incoming": "الأداءات الواردة",
   "cashier.deposits": "المبالغ المودعة على ذمة إجراءات التحقيق",
+  "cashier.paymentsTable": "تفصيل العمليات المؤداة",
+  "cashier.depositsTable": "تفصيل مبالغ التحقيق",
   "cashier.emptyPayments": "لم يرد أي أداء.",
   "cashier.emptyDeposits": "لا يوجد مبلغ مودع على ذمة إجراءات التحقيق.",
   "cashier.notFiled": "مشروع لم يودع بعد",

@@ -27,11 +27,11 @@ export default async function CashierPage() {
       </PageHeader>
       <section aria-labelledby="payments-title" className="mb-10">
         <h2 id="payments-title" className="mb-4 text-2xl">{t('cashier.incoming')}</h2>
-        <Ledger t={t} rows={ledger.payments} empty={t('cashier.emptyPayments')} label={t('cashier.incoming')} match />
+        <Ledger t={t} rows={ledger.payments} empty={t('cashier.emptyPayments')} label={t('cashier.paymentsTable')} match />
       </section>
       <section aria-labelledby="deposits-title">
         <h2 id="deposits-title" className="mb-4 text-2xl">{t('cashier.deposits')}</h2>
-        <Ledger t={t} rows={ledger.deposits} empty={t('cashier.emptyDeposits')} label={t('cashier.deposits')} match={false} />
+        <Ledger t={t} rows={ledger.deposits} empty={t('cashier.emptyDeposits')} label={t('cashier.depositsTable')} match={false} />
       </section>
     </Frame>
   );

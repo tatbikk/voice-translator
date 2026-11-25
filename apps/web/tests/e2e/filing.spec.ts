@@ -23,6 +23,9 @@ const account = (key: string) => {
 
 const PDF = (note: string) => Buffer.from(`%PDF-1.4\n% ${note}\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n`, 'latin1');
 
+/** The confirmation window of an act (an alert dialog, as in the other specs). */
+const dialogOf = (page: Page) => page.getByRole('alertdialog').or(page.getByRole('dialog')).first();
+
 async function next(page: Page, step: number): Promise<void> {
   await page.getByRole('button', { name: FILING.next }).click();
   await expect(page.getByRole('heading', { level: 2, name: FILING.steps[step] ?? '' })).toBeVisible();
@@ -116,7 +119,7 @@ async function fileModelCase(page: Page): Promise<string> {
   await page.getByLabel(FILING.bailiff).selectOption({ index: 1 });
   await page.getByLabel(FILING.signingSecret).fill(secrets().seedPassword);
   await page.getByRole('button', { name: FILING.signAndFile }).click();
-  const dialog = page.getByRole('dialog');
+  const dialog = dialogOf(page);
   await expect(dialog).toContainText(/76/);
   await dialog.getByRole('button', { name: FORMS.account.confirm }).click();
 
@@ -167,8 +170,8 @@ test.describe('the filing and the registration (Phase 2)', () => {
     await expect(page.getByRole('button', { name: /رد المقال|رفض المقال|رد|رفض/ })).toHaveCount(0);
 
     await first.getByRole('button', { name: OFFICES.stamp }).click();
-    await page.getByRole('dialog').getByRole('button', { name: FORMS.account.confirm }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await dialogOf(page).getByRole('button', { name: FORMS.account.confirm }).click();
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
     // «إيداع ورقي»: the scan, its page count and the place of its paper original.
     await page.getByRole('button', { name: OFFICES.paperFiling }).click();
