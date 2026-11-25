@@ -78,6 +78,12 @@ export interface EndpointDefinition<P, B> {
    */
   readonly resource?: (params: P, context: { session: SessionContext | null; rawBody: unknown }) => Promise<Resource | null>;
   readonly handler: (context: EndpointContext<P, B>) => Promise<Response>;
+  /**
+   * The answer to give, instead of 403, when the core refuses for a condition of
+   * a resource the subject may otherwise hold (its own payment that lapsed, say):
+   * the refusal is recorded as any other. Null keeps the 403.
+   */
+  readonly conditionAnswer?: (resource: Resource) => { readonly status: number; readonly code: ErrorCode } | null;
   /** named-action endpoints: the action named by the parameters */
   readonly actionFrom?: (params: P) => string;
   /** false for /healthz, which must answer 503 by itself when the database is down */
@@ -310,7 +316,11 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
           resource = loaded;
         }
         const decision = authorize(subject, action, resource, authContext);
-        if (!decision.allowed) return await refuseDecision(decision.reason);
+        if (!decision.allowed) {
+          const answer = decision.reason === 'CONDITION_NOT_MET' && resource && definition.conditionAnswer ? definition.conditionAnswer(resource) : null;
+          if (answer) return await refuse('AUTHZ', answer.status, answer.code);
+          return await refuseDecision(decision.reason);
+        }
       }
 
       // 9. Recent re-authentication. A session created by the demo switcher never carries one.

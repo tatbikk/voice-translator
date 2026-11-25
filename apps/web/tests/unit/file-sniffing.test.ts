@@ -176,6 +176,26 @@ describe('a hostile Word document is read in linear time, or refused (review P2-
     }
   });
 
+  it('refuses an object embedded in a header or under another name, whatever part declares it (verification of the review fixes)', () => {
+    const text = wordXml('<w:p><w:r><w:t>نص</w:t></w:r></w:p>');
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const header = '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:object><o:OLEObject ProgID="Package"/></w:object></w:r></w:p></w:hdr>';
+    const inHeader = docxFromXml(text, { extraEntries: [{ name: 'word/header1.xml', data: enc(header) }] });
+    const chunkInFooter = docxFromXml(text, { extraEntries: [{ name: 'word/footer1.xml', data: enc('<w:ftr><w:altChunk r:id="rId1"/></w:ftr>') }] });
+    const headerRels = docxFromXml(text, {
+      extraEntries: [
+        { name: 'word/media/image2.emf', data: new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]) },
+        { name: 'word/_rels/header1.xml.rels', data: enc(documentRels('oleObject', 'media/image2.emf', false)) },
+      ],
+    });
+    for (const [name, bytes] of [['OLE in a header', inHeader], ['chunk in a footer', chunkInFooter], ['OLE relationship of a header', headerRels]] as const) {
+      expect(docx('maqal.docx', bytes), name).toMatchObject({ ok: false, reason: 'UNSAFE' });
+    }
+    // A plain header stays.
+    const plain = docxFromXml(text, { extraEntries: [{ name: 'word/header1.xml', data: enc('<w:hdr><w:p><w:r><w:t>رأس</w:t></w:r></w:p></w:hdr>') }] });
+    expect(docx('maqal.docx', plain).ok).toBe(true);
+  });
+
   it('accepts the printer settings Word writes, and no other binary part (fix review L8)', () => {
     const text = wordXml('<w:p><w:r><w:t>نص</w:t></w:r></w:p>');
     const printer = docxFromXml(text, { extraEntries: [{ name: 'word/printerSettings/printerSettings1.bin', data: new Uint8Array([0x01, 0x02]) }] });

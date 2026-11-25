@@ -101,9 +101,9 @@ describe('a payment covers the claims and the court it was opened on (audit G025
     const changed = await updateDraft(lawyer, draftId, { card: withDebt(50_000_000), attest: [...CARD_SECTIONS] });
     expect(changed.status, describeResponse(changed)).toBe(200);
     expect(await intentStatus(intentId)).toBe('EXPIRED');
-    // The page of a lapsed payment is closed: refused at authorization, or at its lock.
+    // The page of a lapsed payment says so (verification of the review fixes, L6).
     const late = await settle(lawyer, intentId, 'SUCCEEDED');
-    expect([403, 409], describeResponse(late)).toContain(late.status);
+    expect({ status: late.status, code: late.code }, describeResponse(late)).toEqual({ status: 409, code: 'PAYMENT_LAPSED' });
     expect(await paymentsOf(draftId)).toBe(0);
     expect(await treasuryOf(draftId)).toBe(0);
     expect((await getDraft(lawyer, draftId)).claimsLocked).toBe(false);
@@ -305,6 +305,40 @@ describe('the fixes hold under the review that followed them', () => {
     const changed = await updateDraft(clerk, draftId, { paperDepositor: { name: 'السيد قاف' } });
     expect({ status: changed.status, code: changed.code }).toEqual({ status: 409, code: 'DEPOSITOR_LOCKED' });
     expect((await updateDraft(clerk, draftId, { paperDepositor: { name: 'السيد صاد' } })).status).toBe(200);
+  });
+
+  it('lets a pending counter payment lapse when the depositor changes, and records none without a depositor (verification of L4)', async () => {
+    const clerk = await as('clerk');
+    const draftId = await paperDraft(null, 'السيد طاء');
+    const first = await openPayment(clerk, draftId);
+    // Another depositor while the payment is pending: the receipt would name the wrong person.
+    expect((await updateDraft(clerk, draftId, { paperDepositor: { name: 'السيد ظاء' } })).status).toBe(200);
+    expect(await intentStatus(first.intentId)).toBe('EXPIRED');
+    const late = await settle(clerk, first.intentId, 'SUCCEEDED');
+    expect({ status: late.status, code: late.code }).toEqual({ status: 409, code: 'PAYMENT_LAPSED' });
+    // The depositor erased behind the page while a payment is pending: nothing is recorded.
+    const second = await openPayment(clerk, draftId);
+    await sql(`UPDATE "FilingDraft" SET "paperDepositor" = NULL WHERE id = $1`, [draftId]);
+    const blank = await settle(clerk, second.intentId, 'SUCCEEDED');
+    expect({ status: blank.status, code: blank.code }).toEqual({ status: 409, code: 'PAYMENT_LAPSED' });
+    expect(await paymentsOf(draftId)).toBe(0);
+    // A depositor entered again, the fee is paid and the draft can be filed.
+    expect((await updateDraft(clerk, draftId, { paperDepositor: { name: 'السيد ظاء' } })).status).toBe(200);
+    const third = await openPayment(clerk, draftId);
+    expect((await settle(clerk, third.intentId, 'SUCCEEDED')).status).toBe(200);
+    await runJobs();
+    const filed = await submit(clerk, draftId, {});
+    expect(filed.status, describeResponse(filed)).toBe(200);
+  });
+
+  it('attests no section the server rewrote while saving it (verification of L2)', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    const borrowed = { ...MODEL_CASE, parties: MODEL_CASE.parties.map((p) => (p.key === 'baa' ? { ...p, name: 'شركة أخرى للصناعة' } : p)) };
+    expect((await updateDraft(lawyer, draftId, { card: borrowed, attest: [...CARD_SECTIONS] })).status).toBe(200);
+    const view = await getDraft(lawyer, draftId);
+    const unattested = view.checks.filter((c) => c.code === 'SECTION_NOT_ATTESTED').map((c) => c.section);
+    expect(unattested).toEqual(['DEFENDANTS']);
   });
 
   it('keeps «السجل التجاري» only for the company the register names, with the register’s locality (L2)', async () => {

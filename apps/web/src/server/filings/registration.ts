@@ -143,7 +143,10 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     if (!filingReady(await checksOf(fresh, now))) return { ok: false, status: 409, code: 'DRAFT_INCOMPLETE' };
     // The bailiff designated is still one of the court's district (art. 87, review P2-S-08).
     if (fresh.designatedBailiffUserId) {
-      const bailiff = await tx.roleAssignment.findFirst({ where: { userId: fresh.designatedBailiffUserId, role: 'BAILIFF', courtId: fresh.courtId, revokedAt: null }, select: { id: true } });
+      const bailiff = await tx.roleAssignment.findFirst({
+        where: { userId: fresh.designatedBailiffUserId, role: 'BAILIFF', courtId: fresh.courtId, revokedAt: null, user: { disabledAt: null } },
+        select: { id: true },
+      });
       if (!bailiff) return { ok: false, status: 409, code: 'DRAFT_CHANGED' };
     }
     // The lawyer the clerk picked is still on the roster: he becomes counsel of the plaintiffs (fix review L1).

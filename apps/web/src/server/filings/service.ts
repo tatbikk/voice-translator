@@ -7,6 +7,7 @@ import {
   FilingCardSchema,
   SECURITY_POLICY,
   canonicalJson,
+  type CardSection,
   type FilingCard,
   type UserSubject,
 } from '@mahkama/core';
@@ -105,6 +106,9 @@ export const UpdateDraftBody = z
 export type UpdateDraftInput = z.infer<typeof UpdateDraftBody>;
 
 const sameClaims = (a: FilingCard, b: FilingCard) => canonicalJson(a.claims) === canonicalJson(b.claims);
+/** The depositor recorded on a paper draft, if a name was. */
+const hasDepositor = (value: unknown) => typeof (value as { name?: unknown } | null)?.name === 'string' && (value as { name: string }).name.trim() !== '';
+const depositorDiffers = (a: unknown, b: unknown) => canonicalJson(a ?? null) !== canonicalJson(b ?? null);
 
 function cardFieldErrors(error: z.ZodError): Record<string, string> {
   const fields: Record<string, string> = {};
@@ -141,10 +145,11 @@ async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
         if (!address) continue;
         const given = field === 'registeredOffice' ? entry?.registeredOffice : field === 'branch' ? entry?.branch : null;
         if (!sameCompany || !given || !sameText(given, address.value)) next[field] = { ...address, source: 'DECLARED' };
-        else if (field === 'registeredOffice') {
-          // The register's own locality, never one typed beside its address.
+        else {
+          // The register's own locality for the address it gives (it gives one for the registered
+          // office only), never one typed beside it.
           const { locality: _typed, ...rest } = address;
-          const locality = entry.locality && LOCALITY_CODE.test(entry.locality) ? entry.locality : null;
+          const locality = field === 'registeredOffice' && entry.locality && LOCALITY_CODE.test(entry.locality) ? entry.locality : null;
           next[field] = { ...rest, ...(locality ? { locality } : {}) };
         }
       }
@@ -154,6 +159,15 @@ async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
   return { ...card, parties };
 }
 
+/** The attested sections whose parties the server changed while saving the card. */
+function sectionsRewritten(sent: FilingCard, saved: FilingCard): CardSection[] {
+  const out = new Set<CardSection>();
+  for (const [index, party] of saved.parties.entries()) {
+    if (canonicalJson(party) !== canonicalJson(sent.parties[index])) out.add(party.side === 'PLAINTIFF' ? 'PLAINTIFFS' : 'DEFENDANTS');
+  }
+  return [...out];
+}
+
 export async function updateDraft(draft: DraftWithParts, subject: UserSubject, body: UpdateDraftInput, actor: EventActor): Promise<Outcome> {
   const now = clock.now();
   const invalid = (field: string) => refused(draft.id, actor, 422, 'INVALID_INPUT', { [field]: 'errors.field.invalid' });
@@ -161,12 +175,16 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   const data: Prisma.FilingDraftUpdateInput = {};
   const current = parseCard(draft.card);
   let card = current;
+  let rewritten: CardSection[] = [];
   const locked = claimsLocked(draft.intents);
 
   if (body.card !== undefined) {
     const parsed = FilingCardSchema.safeParse(body.card);
     if (!parsed.success) return refused(draft.id, actor, 422, 'INVALID_INPUT', cardFieldErrors(parsed.error));
     card = await withRegisterSources(parsed.data);
+    // A section the server rewrote (an address no longer «from the register») is not attested in
+    // this request: the depositor attests what he sees, and sees it again first.
+    rewritten = sectionsRewritten(parsed.data, card);
     // Once paid, the claims the fee was computed on do not change (decision 57).
     if (locked && !sameClaims(card, current)) return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');
     data.card = asJson(card);
@@ -205,8 +223,9 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   }
   if (body.paperDepositor !== undefined) {
     if (draft.channel !== 'PAPER') return invalid('paperDepositor');
-    // The payment receipt names the depositor (art. 628): once paid, he no longer changes (fix review L4).
-    if (locked && canonicalJson(body.paperDepositor ?? null) !== canonicalJson(draft.paperDepositor ?? null)) return refused(draft.id, actor, 409, 'DEPOSITOR_LOCKED');
+    // The payment receipt names the depositor (art. 628): once paid, he no longer changes (fix review L4);
+    // a draft paid with no depositor recorded may still have one entered, and be filed.
+    if (locked && hasDepositor(draft.paperDepositor) && depositorDiffers(body.paperDepositor, draft.paperDepositor)) return refused(draft.id, actor, 409, 'DEPOSITOR_LOCKED');
     data.paperDepositor = body.paperDepositor === null ? { set: null } : asJson(body.paperDepositor);
     changed.push('DEPOSITOR');
   }
@@ -218,7 +237,7 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   }
   if (body.attest !== undefined) changed.push('ATTESTATION');
   // The attestation of a section holds while its content does not change.
-  data.attestations = attestationsFor(card, draft.attestations, body.attest ?? []);
+  data.attestations = attestationsFor(card, draft.attestations, (body.attest ?? []).filter((s) => !rewritten.includes(s)));
   if (changed.includes('CASE_TYPE') || changed.includes('LOCALITY') || changed.includes('CARD')) {
     const suggestion = await suggestionFor(
       { caseType: body.caseType !== undefined ? body.caseType : draft.caseType, defendantLocality: body.defendantLocality !== undefined ? body.defendantLocality : draft.defendantLocality },
@@ -229,21 +248,26 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   }
   data.updatedAt = now;
 
-  // A payment opened on other claims or another court covers nothing: it lapses now,
-  // before the page offers to complete it (audit G025).
-  const feeInputsChanged = !sameClaims(card, current) || courtId !== draft.courtId;
-  const applied = await eventTransaction(async (tx): Promise<boolean | 'LOCKED'> => {
+  const applied = await eventTransaction(async (tx): Promise<boolean | 'LOCKED' | 'DEPOSITOR'> => {
     if (!(await lockOpenDraft(tx, draft.id))) return false;
+    // What this update writes is compared with the draft as stored under its lock, not as read before.
+    const stored = await tx.filingDraft.findUniqueOrThrow({ where: { id: draft.id }, select: { card: true, courtId: true, paperDepositor: true } });
+    const storedCard = parseCard(stored.card);
+    const claimsChange = body.card !== undefined && !sameClaims(card, storedCard);
+    const courtChange = body.courtId !== undefined && courtId !== stored.courtId;
+    const depositorChange = body.paperDepositor !== undefined && depositorDiffers(body.paperDepositor, stored.paperDepositor);
     // A payment recorded since the draft was read locks its claims, its court and its depositor
-    // too: what this update would change is checked again under the lock (fix review M1).
+    // too (fix review M1).
     if (!locked && (await tx.paymentIntent.count({ where: { draftId: draft.id, status: 'SUCCEEDED' } })) > 0) {
-      const stored = await tx.filingDraft.findUniqueOrThrow({ where: { id: draft.id }, select: { card: true, courtId: true, paperDepositor: true } });
-      const depositorChanged = body.paperDepositor !== undefined && canonicalJson(body.paperDepositor ?? null) !== canonicalJson(stored.paperDepositor ?? null);
-      if (!sameClaims(card, parseCard(stored.card)) || courtId !== stored.courtId || depositorChanged) return 'LOCKED';
+      if (claimsChange || courtChange) return 'LOCKED';
+      if (depositorChange && hasDepositor(stored.paperDepositor)) return 'DEPOSITOR';
     }
     await tx.filingDraft.update({ where: { id: draft.id }, data });
     await appendEvent(tx, { action: 'filing.draft.updated', details: { draftId: draft.id, fields: changed.length ? changed.join(':') : 'ATTESTATION' }, actor });
-    if (feeInputsChanged) {
+    // A payment opened on other claims, another court or, at the counter, another depositor
+    // covers nothing: it lapses now, before the page offers to complete it (audit G025;
+    // the receipt of a counter payment names its depositor, fix review L4).
+    if (claimsChange || courtChange || depositorChange) {
       const pending = await tx.paymentIntent.findMany({ where: { draftId: draft.id, status: 'PENDING' }, select: { id: true } });
       for (const intent of pending) {
         await tx.paymentIntent.update({ where: { id: intent.id }, data: { status: 'EXPIRED', completedAt: now } });
@@ -253,6 +277,7 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
     return true;
   });
   if (applied === 'LOCKED') return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');
+  if (applied === 'DEPOSITOR') return refused(draft.id, actor, 409, 'DEPOSITOR_LOCKED');
   if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
   return done(undefined);
 }

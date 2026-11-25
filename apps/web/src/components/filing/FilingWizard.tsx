@@ -114,7 +114,9 @@ export function FilingWizard({ initial, dict, initialStep, demo, submitLines }: 
       >
         {step === 0 ? <CourtStep {...props} /> : null}
         {step === 1 ? <ApplicationStep {...props} /> : null}
-        {step === 2 ? <CardStep {...props} /> : null}
+        {/* Remounted when the stored card changes: the form shows what the server kept (an address it
+            no longer holds «from the register», an attestation it dropped), never only what was typed. */}
+        {step === 2 ? <CardStep key={contentKey(view.draft.card, view.draft.attestations)} {...props} /> : null}
         {step === 3 ? <DocumentsStep {...props} /> : null}
         {step === 4 ? <FeeStep {...props} /> : null}
         {step === 5 ? <SignStep {...props} submitLines={submitLines} paper={paper} /> : null}
@@ -334,10 +336,11 @@ function ApplicationStep({ view, t, busy, run, refresh, base }: StepProps) {
 
 function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: StepProps & { submitLines: WizardProps['submitLines']; paper: boolean }) {
   const d = view.draft;
-  const [bailiff, setBailiff] = useState(d.designatedBailiffUserId ?? '');
+  // A choice no longer on its list (a bailiff or a lawyer who left) starts empty, so that saving clears it.
+  const [bailiff, setBailiff] = useState(view.bailiffs.some((b) => b.userId === d.designatedBailiffUserId) ? (d.designatedBailiffUserId ?? '') : '');
   const [secret, setSecret] = useState('');
   const [depositor, setDepositor] = useState({ name: d.paperDepositor?.name ?? '', idNumber: d.paperDepositor?.idNumber ?? '', quality: d.paperDepositor?.quality ?? '' });
-  const [lawyer, setLawyer] = useState(d.paperLawyerUserId ?? '');
+  const [lawyer, setLawyer] = useState(view.lawyers.some((l) => l.userId === d.paperLawyerUserId) ? (d.paperLawyerUserId ?? '') : '');
   const [open, setOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -345,21 +348,30 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
   const warnings = view.checks.filter((c) => c.level === 'WARNING');
   const paid = view.payment.status === 'SUCCEEDED';
 
+  // The receipt of a counter payment names the depositor: once paid, the recorded one stays (fix review L4).
+  const depositorLocked = paid && (d.paperDepositor?.name ?? '').trim() !== '';
+  const shownDepositor = depositorLocked ? { name: d.paperDepositor?.name ?? '', idNumber: d.paperDepositor?.idNumber ?? '', quality: d.paperDepositor?.quality ?? '' } : depositor;
+
   // What this screen holds and the draft does not yet: saved by «حفظ», and again before filing.
-  // Only what differs from the draft is sent (fix review L5): the depositor, once paid, is not sent at all (L4).
+  // Only what differs from the draft is sent, compared as the server stores it, trimmed (fix review L5).
   const changes = (): Record<string, unknown> => {
     const out: Record<string, unknown> = {};
     if ((d.designatedBailiffUserId ?? '') !== bailiff) out.bailiffUserId = bailiff === '' ? null : bailiff;
     if (paper) {
-      const typed = depositor.name.trim() === '' ? null : { name: depositor.name, ...(depositor.idNumber ? { idNumber: depositor.idNumber } : {}), ...(depositor.quality ? { quality: depositor.quality } : {}) };
-      const stored = d.paperDepositor ? { name: d.paperDepositor.name, ...(d.paperDepositor.idNumber ? { idNumber: d.paperDepositor.idNumber } : {}), ...(d.paperDepositor.quality ? { quality: d.paperDepositor.quality } : {}) } : null;
-      if (!paid && JSON.stringify(typed) !== JSON.stringify(stored)) out.paperDepositor = typed;
+      const of = (p: { name?: string; idNumber?: string; quality?: string } | null | undefined) => {
+        const name = (p?.name ?? '').trim();
+        const idNumber = (p?.idNumber ?? '').trim();
+        const quality = (p?.quality ?? '').trim();
+        return name === '' ? null : { name, ...(idNumber ? { idNumber } : {}), ...(quality ? { quality } : {}) };
+      };
+      const typed = of(depositor);
+      if (!depositorLocked && JSON.stringify(typed) !== JSON.stringify(of(d.paperDepositor))) out.paperDepositor = typed;
       if ((d.paperLawyerUserId ?? '') !== lawyer) out.paperLawyerUserId = lawyer === '' ? null : lawyer;
     }
     return out;
   };
-  // A depositor typed on this screen is saved before filing: its check does not hold the button back.
-  const holding = blocking.filter((c) => !(c.code === 'PAPER_DEPOSITOR_MISSING' && depositor.name.trim() !== ''));
+  // A depositor typed on this screen, before payment, is saved before filing: its check does not hold the button back.
+  const holding = blocking.filter((c) => !(c.code === 'PAPER_DEPOSITOR_MISSING' && !depositorLocked && depositor.name.trim() !== ''));
 
   const file = async () => {
     setWorking(true);
@@ -427,13 +439,13 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
         <fieldset className="mb-6 rounded border border-line px-4 py-4">
           <legend className="px-1 font-semibold">{t('filing.paper.depositor')}</legend>
           <LabeledInput id="depositorName" label={t('filing.paper.depositorName')}>
-            <input id="depositorName" className={CONTROL} disabled={paid} value={depositor.name} onChange={(e) => { setDepositor({ ...depositor, name: e.target.value }); }} />
+            <input id="depositorName" className={CONTROL} disabled={depositorLocked} value={shownDepositor.name} onChange={(e) => { setDepositor({ ...depositor, name: e.target.value }); }} />
           </LabeledInput>
           <LabeledInput id="depositorId" label={t('filing.paper.depositorId')}>
-            <input id="depositorId" className={CONTROL} disabled={paid} value={depositor.idNumber} onChange={(e) => { setDepositor({ ...depositor, idNumber: e.target.value }); }} />
+            <input id="depositorId" className={CONTROL} disabled={depositorLocked} value={shownDepositor.idNumber} onChange={(e) => { setDepositor({ ...depositor, idNumber: e.target.value }); }} />
           </LabeledInput>
           <LabeledInput id="depositorQuality" label={t('filing.paper.depositorQuality')}>
-            <input id="depositorQuality" className={CONTROL} disabled={paid} value={depositor.quality} onChange={(e) => { setDepositor({ ...depositor, quality: e.target.value }); }} />
+            <input id="depositorQuality" className={CONTROL} disabled={depositorLocked} value={shownDepositor.quality} onChange={(e) => { setDepositor({ ...depositor, quality: e.target.value }); }} />
           </LabeledInput>
           <Field id="paperLawyer" label={t('filing.paper.lawyer')} hint={t('filing.paper.lawyerHint')}>
             <select id="paperLawyer" className={CONTROL} value={lawyer} onChange={(e) => { setLawyer(e.target.value); }}>
@@ -494,6 +506,14 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
       />
     </div>
   );
+}
+
+/** A short key for a content: a change of the card or of its attestations remounts the form. */
+function contentKey(...parts: readonly unknown[]): string {
+  const text = JSON.stringify(parts);
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  return `${String(text.length)}:${String(hash >>> 0)}`;
 }
 
 export function checkText(t: StepProps['t'], view: DraftView, check: DraftView['checks'][number]): ReactNode {

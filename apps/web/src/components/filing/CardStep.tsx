@@ -157,7 +157,12 @@ export function CardStep({ view, t, busy, update }: StepProps) {
                 onChange={(e) => {
                   const personKind = e.target.value as Party['personKind'];
                   // Capacity is a natural person's: it does not stay hidden on a company (fix review M2).
-                  setParty(index, personKind === 'NATURAL' ? { personKind } : { personKind, capacityStatus: undefined });
+                  // Capacity is a natural person's, the public kind a public-law person's: neither stays hidden.
+                  setParty(index, {
+                    personKind,
+                    ...(personKind === 'NATURAL' ? {} : { capacityStatus: undefined }),
+                    ...(personKind === 'PUBLIC' ? {} : { publicEntityKind: undefined }),
+                  });
                 }}
               >
                 {PERSON_KINDS.map((k) => (

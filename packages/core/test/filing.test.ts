@@ -162,6 +162,8 @@ describe('the case card (art. 77)', () => {
     expect(FilingCardSchema.safeParse({ ...MODEL, parties: [...MODEL.parties, { ...natural, personKind: 'LEGAL' }] }).success).toBe(false);
     expect(FilingCardSchema.safeParse({ ...MODEL, parties: [{ ...plaintiff, agent: { name: 'السيد هاء', address: 'الدار البيضاء' } }, ...others] }).success).toBe(true);
     expect(FilingCardSchema.safeParse({ ...MODEL, parties: [plaintiff, { ...others[0]!, agent: { name: 'السيد هاء' } }, ...others.slice(1)] }).success).toBe(false);
+    // The kind of a public-law person is a public-law person's only.
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [...MODEL.parties, { ...natural, capacityStatus: undefined, personKind: 'LEGAL', publicEntityKind: 'STATE_JUDICIAL_AGENT' }] }).success).toBe(false);
     // Whatever reaches the rule from elsewhere, a capacity on a company refers nothing.
     const company = referralsFor({ courtSpecialty: 'COMMERCIAL', caseType: null, parties: [{ personKind: 'LEGAL', capacityStatus: 'INCAPABLE' }], rules: referrals });
     expect(company).toEqual([]);

@@ -116,7 +116,8 @@ function judicialAgentChecks(input: CheckInput): FilingCheck[] {
   const { card, caseType, referrals } = input;
   const out: FilingCheck[] = [];
   const debtors = card.parties.filter((p) => p.side !== 'PLAINTIFF' && p.personKind === 'PUBLIC');
-  const present = new Set(card.parties.map((p) => p.publicEntityKind).filter((k) => k !== undefined));
+  // Only a public-law person is a judicial agent: a kind kept from another person counts for nothing.
+  const present = new Set(card.parties.filter((p) => p.personKind === 'PUBLIC').map((p) => p.publicEntityKind).filter((k) => k !== undefined));
   for (const rule of referrals.judicialAgents) {
     if (caseType && rule.exemptFlags.some((flag) => caseType.flags.includes(flag))) continue;
     if (!debtors.some((p) => p.publicEntityKind !== undefined && rule.debtorKinds.includes(p.publicEntityKind))) continue;

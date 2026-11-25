@@ -103,7 +103,10 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
       SELECT status::text AS status, "expiresAt" FROM "PaymentIntent" WHERE id = ${intentId}::uuid FOR UPDATE`;
     const row = locked[0];
     const now = clock.now();
-    if (!row || row.status !== 'PENDING') return null;
+    if (!row) return null;
+    // Lapsed already (its time, its claims, its court or its depositor changed): said so, not «already recorded».
+    if (row.status === 'EXPIRED') return 'LAPSED' as const;
+    if (row.status !== 'PENDING') return null;
     if (row.expiresAt.getTime() <= now.getTime()) {
       await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
       await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
@@ -111,13 +114,15 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
     }
     const intent = await tx.paymentIntent.findUniqueOrThrow({ where: { id: intentId }, select: { draftId: true, amountCents: true, method: true, breakdown: true, inputsDigest: true, ruleSetId: true } });
     // Read under the draft's lock: its claims and court cannot change while the payment is recorded.
-    const draft = await tx.filingDraft.findUniqueOrThrow({ where: { id: intent.draftId }, select: { id: true, courtId: true, card: true, status: true } });
+    const draft = await tx.filingDraft.findUniqueOrThrow({ where: { id: intent.draftId }, select: { id: true, courtId: true, card: true, status: true, paperDepositor: true } });
     // A draft is paid once (review P2-S-10): not again once paid or filed, whatever intent is presented.
     const paidBefore = await tx.paymentIntent.count({ where: { draftId: intent.draftId, status: 'SUCCEEDED', id: { not: intentId } } });
     // The claims or the court changed since the payment was opened: it covers nothing any more,
     // and is not recorded as paid (audit G025).
     const stale = intent.inputsDigest !== feeDigest(parseCard(draft.card), draft.courtId, intentVersion(intent));
-    if (draft.status !== 'DRAFT' || paidBefore > 0 || stale) {
+    // At the counter the receipt names the depositor (art. 628): no payment is recorded without one (fix review L4).
+    const nobodyPays = intent.method === 'COUNTER' && !(typeof (draft.paperDepositor as { name?: unknown } | null)?.name === 'string' && (draft.paperDepositor as { name: string }).name.trim() !== '');
+    if (draft.status !== 'DRAFT' || paidBefore > 0 || stale || nobodyPays) {
       // The intent lapses: nothing is asked of the gateway, nothing is recorded as paid.
       await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
       await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });

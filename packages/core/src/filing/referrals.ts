@@ -49,6 +49,11 @@ export function referralsFor(input: ReferralInput): Referral[] {
     add({ target: 'ROYAL_COMMISSIONER', ground: 'ADMINISTRATIVE_COURT', article: royalCommissioner.article, item: null, reasonCode: 'ADMINISTRATIVE_COURT' });
   }
 
-  const order = (r: Referral) => (r.target === 'PROSECUTION' ? (r.ground === 'PRINCIPAL_PARTY' ? 0 : 1) : 2);
-  return found.sort((a, b) => order(a) - order(b));
+  return sortReferrals(found);
+}
+
+/** The order referrals are recorded in, at registration and after a reclassification alike. */
+export function sortReferrals<T extends Pick<Referral, 'target' | 'ground'>>(referrals: readonly T[]): T[] {
+  const order = (r: T) => (r.target === 'PROSECUTION' ? (r.ground === 'PRINCIPAL_PARTY' ? 0 : 1) : 2);
+  return [...referrals].sort((a, b) => order(a) - order(b));
 }

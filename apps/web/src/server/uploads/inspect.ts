@@ -185,8 +185,17 @@ const WORD_MAIN = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 const ACTIVE_PART = /(^|\/)(vba[^/]*|activeX\/[^/]*|embeddings\/[^/]*|[^/]*\.bin)$/i;
 /** The printer settings Word writes into a document: plain data, never run (fix review L8). */
 const PRINTER_SETTINGS = /^word\/printerSettings\/printerSettings\d{0,4}\.bin$/i;
-/** Elements of the document part that pull content from elsewhere or embed an object. */
+/** Elements of a part that pull content from elsewhere or embed an object. */
 const ACTIVE_ELEMENTS = ['<w:altChunk', '<w:object', '<o:OLEObject', '<w:control', '<w:subDoc'];
+/**
+ * Content types and relationship types of an embedded object, a control or an
+ * imported chunk, whatever name the part is given (an OLE object stored as an
+ * image, say): refused wherever they are declared.
+ */
+const ACTIVE_CONTENT_TYPE = /oleObject|activeX|officedocument\.package|vbaProject|macroEnabled/i;
+const ACTIVE_RELATIONSHIP = /\/(oleObject|package|control|activeXControl|subDocument|aFChunk|vbaProject)["']/i;
+/** The XML parts of the document's text: the body, headers, footers, notes, comments, glossary. */
+const TEXT_PART = /^word\/(glossary\/)?[^/]{1,120}\.xml$/i;
 
 /** The types of the relationships of a .rels part whose target is outside the package. */
 function externalRelationships(relsXml: string): string[] {
@@ -217,6 +226,7 @@ function wordDocumentXml(bytes: Uint8Array): { ok: true; xml: string } | { ok: f
     const typesXml = Buffer.from(readEntry(bytes, types)).toString('utf8');
     if (!typesXml.includes(WORD_MAIN)) return { ok: false, reason: 'TYPE_NOT_ACCEPTED', detail: 'NOT_A_WORD_DOCUMENT' };
     if (/macroEnabled|vbaProject/i.test(typesXml)) return { ok: false, reason: 'UNSAFE', detail: 'MACRO' };
+    if (ACTIVE_CONTENT_TYPE.test(typesXml)) return { ok: false, reason: 'UNSAFE', detail: 'EMBEDDED_OBJECT' };
     // A relationship that points outside the package and is fetched when the document opens
     // (a remote template, a linked image or file) is refused; a hyperlink, followed only on a click, is not.
     for (const rels of entries.filter((e) => e.name.endsWith('.rels'))) {
@@ -225,12 +235,17 @@ function wordDocumentXml(bytes: Uint8Array): { ok: true; xml: string } | { ok: f
       if (externalRelationships(relsXml).some((type) => !type.endsWith('/hyperlink')) || relsXml.includes('/attachedTemplate"')) {
         return { ok: false, reason: 'UNSAFE', detail: 'EXTERNAL_RELATIONSHIP' };
       }
+      // An object embedded by any part, the body or a header, a footer or a note.
+      if (ACTIVE_RELATIONSHIP.test(relsXml)) return { ok: false, reason: 'UNSAFE', detail: 'EMBEDDED_OBJECT' };
     }
+    if (/<!DOCTYPE|<!ENTITY/i.test(typesXml)) return { ok: false, reason: 'UNSAFE', detail: 'XML_DOCTYPE' };
     const xml = Buffer.from(readEntry(bytes, main)).toString('utf8');
-    for (const part of [typesXml, xml]) {
-      if (/<!DOCTYPE|<!ENTITY/i.test(part)) return { ok: false, reason: 'UNSAFE', detail: 'XML_DOCTYPE' };
+    // Every part of the text is read for what embeds or imports, not the body alone.
+    for (const part of entries.filter((e) => TEXT_PART.test(e.name))) {
+      const partXml = part === main ? xml : Buffer.from(readEntry(bytes, part)).toString('utf8');
+      if (/<!DOCTYPE|<!ENTITY/i.test(partXml)) return { ok: false, reason: 'UNSAFE', detail: 'XML_DOCTYPE' };
+      if (ACTIVE_ELEMENTS.some((tag) => partXml.includes(tag))) return { ok: false, reason: 'UNSAFE', detail: 'EMBEDDED_OBJECT' };
     }
-    if (ACTIVE_ELEMENTS.some((tag) => xml.includes(tag))) return { ok: false, reason: 'UNSAFE', detail: 'EMBEDDED_OBJECT' };
     return { ok: true, xml };
   } catch (error) {
     if (error instanceof ArchiveRefused) return { ok: false, reason: 'UNSAFE', detail: error.detail };

@@ -324,7 +324,7 @@ describe('no filing without payment (memo rows 3, 4, 5, 27)', () => {
     } finally {
       await sql(`ALTER TABLE "PaymentIntent" ENABLE TRIGGER payment_intent_guard`);
     }
-    await expectRefused(() => settle(lawyer, intentId, 'SUCCEEDED'), 403, 'FORBIDDEN');
+    await expectRefused(() => settle(lawyer, intentId, 'SUCCEEDED'), 409, 'PAYMENT_LAPSED');
     await expectRefused(() => submit(lawyer, draftId, { secret }), 403, 'FORBIDDEN');
   });
 
@@ -376,7 +376,7 @@ describe('no filing without payment (memo rows 3, 4, 5, 27)', () => {
     const [a, b] = await Promise.all([settle(lawyer, intentId, 'SUCCEEDED'), settle(lawyer.clone(), intentId, 'SUCCEEDED')]);
     expect([a.status, b.status].filter((s) => s === 200)).toHaveLength(1);
     expect([403, 409]).toContain([a, b].find((r) => r.status !== 200)!.status);
-    await expectRefused(() => settle(lawyer, intentId, 'SUCCEEDED'), 403, 'FORBIDDEN');
+    await expectRefused(() => settle(lawyer, intentId, 'SUCCEEDED'), 409, 'PAYMENT_ALREADY_COMPLETED');
     expect(await count('SELECT count(*) FROM "Payment" WHERE "intentId" = $1', [intentId])).toBe(1);
     expect(await count('SELECT count(*) FROM "TreasuryEntry" WHERE "draftId" = $1', [draftId])).toBe(1);
   });

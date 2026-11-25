@@ -10,6 +10,12 @@ const id = z.uuid();
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const code = z.string().regex(/^[A-Za-z0-9_.:\-/[\]]{1,96}$/);
+/**
+ * The referrals of a file, each TARGET/GROUND/article/item joined by «:». A file
+ * can carry three at once (arts. 18, 20 and 101), longer than one code (fix of the
+ * verification of the review fixes): its own bound, from the same characters.
+ */
+const groundsList = z.string().regex(/^[A-Za-z0-9_.:\-/]{1,400}$/);
 const iso = z.iso.datetime({ offset: false, precision: 3 });
 const roleCode = z.string().regex(/^[A-Z_]{2,40}$/);
 
@@ -200,7 +206,7 @@ export const EVENT_TYPES = {
    */
   'case.referrals.reviewed': {
     outcome: 'DONE',
-    details: detailsOf({ caseFileId: id, ruleVersion: code, referrals: count, grounds: code }),
+    details: detailsOf({ caseFileId: id, ruleVersion: code, referrals: count, grounds: groundsList }),
   },
   'case.registration.stamped': { outcome: 'DONE', details: detailsOf({ caseFileId: id }) },
   'case.registration.reclassified': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromCode: count, toCode: count }) },

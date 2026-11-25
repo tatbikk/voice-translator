@@ -119,6 +119,9 @@ export const FilingCardSchema = z
       if (party.capacityStatus !== undefined && party.personKind !== 'NATURAL') {
         ctx.addIssue({ code: 'custom', path: ['parties', index, 'capacityStatus'], message: 'capacity is a natural person’s' });
       }
+      if (party.publicEntityKind !== undefined && party.personKind !== 'PUBLIC') {
+        ctx.addIssue({ code: 'custom', path: ['parties', index, 'publicEntityKind'], message: 'the kind of a public-law person' });
+      }
       if (party.agent !== undefined && party.side !== 'PLAINTIFF') {
         ctx.addIssue({ code: 'custom', path: ['parties', index, 'agent'], message: 'the agent of art. 77 is the plaintiff’s' });
       }
