@@ -218,7 +218,10 @@ export function roleLoopAccount(accounts: readonly DemoAccount[], role: string):
 }
 
 /** An account no other spec logs in with (for the lock test). */
+/** Accounts the case-page spec logs in with, by e-mail (Phase 1). */
+export const CASE_PAGE_ACCOUNTS: readonly string[] = ['clerk.notification', 'bank', 'lawyer.defendants'].map((key) => `${key}@demo.mahkama.example`);
+
 export function untouchedAccount(accounts: readonly DemoAccount[], roles: readonly string[]): DemoAccount | undefined {
-  const used = new Set(roles.map((role) => roleLoopAccount(accounts, role)?.email));
+  const used = new Set([...roles.map((role) => roleLoopAccount(accounts, role)?.email), ...CASE_PAGE_ACCOUNTS]);
   return accounts.find((a) => !used.has(a.email) && a.roleAssignmentCount === 1 && a.role !== 'SYSTEM_ADMIN');
 }
