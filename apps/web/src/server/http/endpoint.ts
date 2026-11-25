@@ -123,7 +123,7 @@ function pathParams(pattern: string, pathname: string): Record<string, string> |
 }
 
 /** The request body as bytes, cut at `max`: a body beyond it is never read to its end. */
-async function readBytes(req: Request, max: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; code: 'PAYLOAD_TOO_LARGE' }> {
+async function readBytes(req: Request, max: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; code: 'PAYLOAD_TOO_LARGE' | 'INVALID_INPUT' }> {
   const declared = Number(req.headers.get('content-length') ?? '0');
   if (Number.isFinite(declared) && declared > max) return { ok: false, code: 'PAYLOAD_TOO_LARGE' };
   if (!req.body) return { ok: true, bytes: new Uint8Array() };
@@ -131,7 +131,14 @@ async function readBytes(req: Request, max: number): Promise<{ ok: true; bytes: 
   const chunks: Uint8Array[] = [];
   let size = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch {
+      // The client went away before its body was sent: a refused request, not a fault of the platform.
+      return { ok: false, code: 'INVALID_INPUT' };
+    }
+    const { done, value } = chunk;
     if (done) break;
     size += value.byteLength;
     if (size > max) {
@@ -317,7 +324,7 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
       let bytes: Uint8Array | null = null;
       if (definition.binary) {
         const read = await readBytes(req, definition.binary.maxBytes(params, resource));
-        if (!read.ok) return await refuse('BODY', 413, read.code);
+        if (!read.ok) return await refuse('BODY', read.code === 'PAYLOAD_TOO_LARGE' ? 413 : 400, read.code);
         bytes = read.bytes;
       } else if (definition.bodyLimitBytes !== undefined) {
         const read = await readBody(req, definition.bodyLimitBytes);
