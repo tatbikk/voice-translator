@@ -31,6 +31,70 @@ export const PAGE_TITLES = {
   adminAccountsNew: 'إنشاء حساب', // contract §7
   demoOutbox: 'صندوق الرسائل الصادرة', // contract §7, prompt
   caseFile: 'صفحة الملف', // study «العناصر المشتركة» (Phase 1)
+  // Phase 2 (docs/phases/phase-2.md)
+  filings: 'مشاريع الإيداع', // proposed: the lawyer's saved drafts, with «دعوى جديدة»
+  filing: 'دعوى جديدة', // study «واجهة المحامي»: the path «دعوى جديدة»
+  receipt: 'وصل الإيداع', // study «المرحلة الأولى»
+  payment: 'أداء (محاكاة)', // prompt, «الأداء»
+  registry: 'مكتب التقييد', // study «واجهة كتابة الضبط», glossary roles.CLERK_REGISTRATION
+  cashier: 'الصندوق', // study «واجهة كتابة الضبط»
+  cases: 'لائحة الملفات', // study «واجهة المحامي»: «جلسات الأسبوع ولائحة الملفات»
+} as const;
+
+/** The path «دعوى جديدة» (study «واجهة المحامي» and «المرحلة الأولى»; prompt «الأداء»). */
+export const FILING = {
+  newCase: 'دعوى جديدة', // study
+  steps: ['نوع القضية والمحكمة', 'المقال', 'بطاقة الدعوى', 'المستندات', 'الرسم القضائي', 'التوقيع والإيداع'] as const, // study, the six screens (proposed short titles)
+  demoNotice: /لا ترفعوا وثائق حقيقية/, // prompt rule 11
+  caseType: 'نوع القضية', // study
+  defendantLocality: 'موطن المدعى عليه', // study («تسأل المنصة عن نوع القضية وعن المدعى عليه»)
+  suggestedCourt: 'المحكمة المقترحة', // study
+  court: 'المحكمة', // study
+  uploadFile: 'تحميل ملف', // study
+  pasteText: 'لصق النص', // study
+  applicationText: 'نص المقال', // proposed
+  fixedCopyReady: /النسخة الثابتة جاهزة/, // proposed (study: «نسخة ثابتة غير قابلة للتعديل»)
+  conforms: 'مطابق للمقال', // study
+  lookupRegister: 'جلب البيانات من السجل التجاري', // proposed (study: «جلب بيانات الشركة المدعى عليها من السجل التجاري»)
+  registerNumber: 'رقم التقييد في السجل التجاري', // proposed
+  simulatedSource: 'مصدر محاكى', // prompt, «السجلات ومنصة البيانات»
+  addParty: 'إضافة طرف', // proposed
+  addClaim: 'إضافة طلب', // proposed
+  addExhibit: 'إضافة مستند', // proposed
+  natures: { ORIGINAL: 'أصلية', CERTIFIED_COPY: 'نسخة مطابقة للأصل', PHOTOCOPY: 'صورة شمسية' } as const, // study, art. 631
+  next: 'التالي', // proposed
+  save: 'حفظ', // proposed
+  pay: 'أداء الرسم', // proposed (study: «وسيلة أدائه»)
+  uncertain: 'قيمة مؤقتة غير مؤكدة', // prompt rule 5
+  succeed: 'نجاح الأداء', // prompt
+  fail: 'فشل الأداء', // prompt
+  cancel: 'إلغاء', // prompt
+  paymentReceipt: 'وصل الأداء', // proposed (art. 628: «بوصل يتضمن تاريخ وساعة الإجراء»)
+  backToDraft: 'العودة إلى مشروع الإيداع', // proposed
+  checks: 'مراقبة البيانات قبل التوقيع', // prompt Phase 2
+  bailiff: 'المفوض القضائي', // study, art. 87
+  signingSecret: 'الرمز السري للتوقيع', // Phase 1 signature service
+  signAndFile: 'التوقيع والإيداع', // study
+  paperFile: 'المصادقة على البطاقة وتسليم الوصل', // proposed (study: «ويصادق الموظف على البطاقة بحضور المودع، ويسلمه الوصل»)
+  pages: 'عدد الصفحات', // study
+  originalLocation: 'مكان حفظ الأصل', // study
+} as const;
+
+/** The registry office, the cashier and the prosecution (study «دفتر الواجهات»). */
+export const OFFICES = {
+  incoming: 'الملفات الواردة', // study
+  stamp: 'تأشير', // study
+  reclassify: 'تصحيح التصنيف', // study
+  noteToJudge: 'ملاحظة إلى القاضي', // study
+  paperFiling: 'إيداع ورقي', // study
+  caseCard: 'بطاقة الدعوى', // study
+  incomingPayments: 'الأداءات الواردة', // study («لائحة الأداءات الواردة ومطابقتها للطلبات»)
+  deposits: 'المبالغ المودعة على ذمة إجراءات التحقيق', // study
+  referrals: 'الإحالات', // study («تعرض لوحة البداية الإحالات»)
+  principalParty: 'قضايا تكون فيها طرفا أصليا', // study
+  communication: 'قضايا تبلغ إليها عملا بالمادة 20', // study
+  viewCase: 'الاطلاع على الملف', // study
+  conclusions: 'إيداع مستنتجات كتابية', // study
 } as const;
 
 export const WORDMARK = 'منصة المحكمة الرقمية'; // prompt rule 10, contract §7

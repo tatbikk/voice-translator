@@ -13,6 +13,9 @@
 // Phase 1 adds the endpoints of a case file: the matrix file belongs to the
 // court of the test users, has no counsel, no panel and no rapporteur, so that
 // only the court's own staff are related to it (interface book).
+// Phase 2 adds the filing path: the draft and its payment belong to a lawyer
+// of the fixtures, so that every other holder of the action meets a draft that
+// does not exist (404) and every other role is refused the action (403).
 import { randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { ROLE_CODES, moroccoCalendarDate, type RoleCode } from '@mahkama/core';
@@ -32,6 +35,10 @@ import {
 } from '../helpers/factories';
 import { Client, describeResponse, loadEndpoints, routePattern, type ApiResponse, type EndpointEntry } from '../helpers/http';
 import { useFreshDatabase } from '../helpers/reset';
+import { loadRuleTables, makeModelCourt } from '../helpers/rules';
+import { createDraft, fileCase, giveSigningSecret, openPayment, payDraft, prepareDraft, upload } from '../helpers/filings';
+import { MODEL_CASE, COMMERCIAL_PAYMENT, PUBLIC_DEFENDANT_CASE, PUBLIC_ESTABLISHMENT, withParties } from '../acceptance/model-case-filing.fixture';
+import { pdfBytes } from '../helpers/samples';
 import { storeDocument } from '@/server/documents/service';
 
 const ENDPOINTS: readonly EndpointEntry[] = await loadEndpoints();
@@ -113,6 +120,13 @@ const staff = (s: Subject) => s.is.kind === 'active' && s.is.roleCount === 1 && 
 const caseRead = (s: Subject): Expectation => (none(s) ? GATE : !active(s) ? SESSION : staff(s) ? USABLE : UNRELATED);
 /** stamping a file already in preparation: refused to its staff, unknown to the others */
 const caseStamp = (s: Subject): Expectation => (none(s) ? GATE : !active(s) ? SESSION : staff(s) ? NOT_PERMITTED : UNRELATED);
+/** an action of these roles only, with no resource: usable by them, refused to the others */
+const rolesOnly = (roles: readonly RoleCode[]) => (s: Subject): Expectation =>
+  none(s) ? GATE : !active(s) ? SESSION : s.is.kind === 'active' && s.is.roleCount === 1 && roles.includes(s.is.role) ? USABLE : FORBIDDEN;
+/** a draft or a payment of someone else: unknown to the holders of the action, refused to the others */
+const someoneElses = (holders: readonly RoleCode[]) => (s: Subject): Expectation =>
+  none(s) ? GATE : !active(s) ? SESSION : s.is.kind === 'active' && s.is.roleCount === 1 && holders.includes(s.is.role) ? UNRELATED : FORBIDDEN;
+const FILERS: readonly RoleCode[] = ['LAWYER', 'CLERK_REGISTRATION'];
 
 const EXPECTED: Readonly<Record<string, (s: Subject) => Expectation>> = {
   'GET /healthz': () => HEALTHY,
@@ -142,6 +156,19 @@ const EXPECTED: Readonly<Record<string, (s: Subject) => Expectation>> = {
   'POST /api/v1/cases/:caseId/actions/:action': caseStamp,
   'GET /api/v1/cases/:caseId/documents/:documentId/file': caseRead,
   'GET /api/v1/cases/:caseId/documents/:documentId/signatures': caseRead,
+  'POST /api/v1/cases/:caseId/uploads/:action': caseStamp,
+  'POST /api/v1/filings': rolesOnly(['LAWYER']),
+  'POST /api/v1/filings/paper': rolesOnly(['CLERK_REGISTRATION']),
+  'GET /api/v1/filings/:draftId': someoneElses(FILERS),
+  'POST /api/v1/filings/:draftId': someoneElses(FILERS),
+  'POST /api/v1/filings/:draftId/application-text': someoneElses(FILERS),
+  'POST /api/v1/filings/:draftId/documents': someoneElses(FILERS),
+  'POST /api/v1/filings/:draftId/documents/:documentId': someoneElses(FILERS),
+  'GET /api/v1/filings/:draftId/documents/:documentId/file': someoneElses(FILERS),
+  'POST /api/v1/filings/:draftId/payment': someoneElses(FILERS),
+  'POST /api/v1/filings/:draftId/submit': someoneElses(FILERS),
+  'POST /api/v1/payments/:intentId/outcome': someoneElses(FILERS),
+  'GET /api/v1/registers/commercial': rolesOnly(FILERS),
   'GET /api/demo/outbox': gateLevel,
   'GET /api/demo/accounts': gateLevel,
   'POST /api/demo/switch-account': gateLevel,
@@ -193,6 +220,19 @@ const EXPECTED_ACCESS: Readonly<Record<string, { kinds: readonly string[]; actio
   'POST /api/v1/cases/:caseId/actions/:action': { kinds: ['named-action'] },
   'GET /api/v1/cases/:caseId/documents/:documentId/file': { kinds: ['action'], action: 'case.document.read' },
   'GET /api/v1/cases/:caseId/documents/:documentId/signatures': { kinds: ['action'], action: 'case.document.read' },
+  'POST /api/v1/cases/:caseId/uploads/:action': { kinds: ['named-action'] },
+  'POST /api/v1/filings': { kinds: ['action'], action: 'filing.new' },
+  'POST /api/v1/filings/paper': { kinds: ['action'], action: 'filing.paper' },
+  'GET /api/v1/filings/:draftId': { kinds: ['action'], action: 'filing.draft.read' },
+  'POST /api/v1/filings/:draftId': { kinds: ['action'], action: 'filing.draft.edit' },
+  'POST /api/v1/filings/:draftId/application-text': { kinds: ['action'], action: 'filing.draft.edit' },
+  'POST /api/v1/filings/:draftId/documents': { kinds: ['action'], action: 'filing.draft.edit' },
+  'POST /api/v1/filings/:draftId/documents/:documentId': { kinds: ['action'], action: 'filing.draft.edit' },
+  'GET /api/v1/filings/:draftId/documents/:documentId/file': { kinds: ['action'], action: 'filing.draft.read' },
+  'POST /api/v1/filings/:draftId/payment': { kinds: ['action'], action: 'filing.draft.pay' },
+  'POST /api/v1/filings/:draftId/submit': { kinds: ['action'], action: 'filing.draft.submit' },
+  'POST /api/v1/payments/:intentId/outcome': { kinds: ['action'], action: 'payment.simulate' },
+  'GET /api/v1/registers/commercial': { kinds: ['action'], action: 'registers.commercial.lookup' },
   'GET /api/demo/outbox': { kinds: ['demo'], action: 'demo.outbox.view' },
   'GET /api/demo/accounts': { kinds: ['demo'], action: 'demo.accounts.list' },
   'POST /api/demo/switch-account': { kinds: ['demo'], action: 'demo.account.switch' },
@@ -221,6 +261,10 @@ interface Fixtures {
   readonly someoneElse: TestUser;
   readonly someoneElsesNotification: string;
   readonly documentId: string;
+  /** Phase 2: a draft of another lawyer, one of its documents, and its pending payment */
+  readonly draftId: string;
+  readonly draftDocumentId: string;
+  readonly intentId: string;
 }
 
 let fixtures!: Fixtures;
@@ -279,6 +323,28 @@ const PROBES: Readonly<Record<string, Probe>> = {
     client.get(`/api/v1/cases/${fixtures.caseFile.id}/documents/${fixtures.documentId}/file`),
   'GET /api/v1/cases/:caseId/documents/:documentId/signatures': ({ client }) =>
     client.get(`/api/v1/cases/${fixtures.caseFile.id}/documents/${fixtures.documentId}/signatures`),
+  'POST /api/v1/cases/:caseId/uploads/:action': ({ client }) =>
+    client.post(`/api/v1/cases/${fixtures.caseFile.id}/uploads/case.prosecution.conclusions`, undefined, {
+      query: { name: 'conclusions.pdf' },
+      rawBody: Buffer.from(pdfBytes('matrix conclusions')),
+      headers: { 'content-type': 'application/octet-stream' },
+    }),
+  'POST /api/v1/filings': ({ client }) => client.post('/api/v1/filings', {}),
+  'POST /api/v1/filings/paper': ({ client }) => client.post('/api/v1/filings/paper', {}),
+  'GET /api/v1/filings/:draftId': ({ client }) => client.get(`/api/v1/filings/${fixtures.draftId}`),
+  'POST /api/v1/filings/:draftId': ({ client }) => client.post(`/api/v1/filings/${fixtures.draftId}`, { card: MODEL_CASE }),
+  'POST /api/v1/filings/:draftId/application-text': ({ client }) =>
+    client.post(`/api/v1/filings/${fixtures.draftId}/application-text`, { text: 'نص المقال' }),
+  'POST /api/v1/filings/:draftId/documents': ({ client }) =>
+    upload(client, fixtures.draftId, { kind: 'EXHIBIT', name: 'matrix.pdf', bytes: pdfBytes('matrix'), nature: 'ORIGINAL' }),
+  'POST /api/v1/filings/:draftId/documents/:documentId': ({ client }) =>
+    client.post(`/api/v1/filings/${fixtures.draftId}/documents/${fixtures.draftDocumentId}`, { title: 'عنوان' }),
+  'GET /api/v1/filings/:draftId/documents/:documentId/file': ({ client }) =>
+    client.get(`/api/v1/filings/${fixtures.draftId}/documents/${fixtures.draftDocumentId}/file`),
+  'POST /api/v1/filings/:draftId/payment': ({ client }) => client.post(`/api/v1/filings/${fixtures.draftId}/payment`, {}),
+  'POST /api/v1/filings/:draftId/submit': ({ client }) => client.post(`/api/v1/filings/${fixtures.draftId}/submit`, { secret: 'Not-the-secret-2026' }),
+  'POST /api/v1/payments/:intentId/outcome': ({ client }) => client.post(`/api/v1/payments/${fixtures.intentId}/outcome`, { outcome: 'SUCCEEDED' }),
+  'GET /api/v1/registers/commercial': ({ client }) => client.get('/api/v1/registers/commercial', { query: { number: 'RC-DEMO-0000' } }),
   'GET /api/demo/outbox': ({ client }) => client.get('/api/demo/outbox'),
   'GET /api/demo/accounts': ({ client }) => client.get('/api/demo/accounts'),
   'POST /api/demo/switch-account': ({ client }) =>
@@ -370,6 +436,8 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
 
   beforeAll(async () => {
     const court = await theCourt();
+    loadRuleTables();
+    await makeModelCourt(court.id);
     const startsAt = new Date(Date.now() + 2 * 24 * 3600 * 1000);
     startsAt.setUTCHours(10, 0, 0, 0);
     const hearingId = await createHearing(court.id, startsAt);
@@ -390,8 +458,19 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
       depositedByUserId: null,
       depositedByPartyId: null,
     });
+    const draftOwner = await createUser({ roles: ['LAWYER'], label: 'draft-owner' });
+    const ownerClient = await login(draftOwner);
+    const draftId = await createDraft(ownerClient);
+    const uploaded = await upload(ownerClient, draftId, { kind: 'APPLICATION', name: 'maqal.pdf', bytes: pdfBytes('matrix application') });
+    expect(uploaded.status, describeResponse(uploaded)).toBe(200);
+    const set = await ownerClient.post(`/api/v1/filings/${draftId}`, { caseType: COMMERCIAL_PAYMENT, courtId: court.id, card: MODEL_CASE, attest: ['PLAINTIFFS', 'DEFENDANTS', 'SUMMARY', 'CLAIMS'] });
+    expect(set.status, describeResponse(set)).toBe(200);
+    const { intentId } = await openPayment(ownerClient, draftId);
     fixtures = {
       documentId: document.id,
+      draftId,
+      draftDocumentId: uploaded.data!.documentId,
+      intentId,
       caseFile,
       hearingDate: moroccoCalendarDate(startsAt),
       unactivated,
@@ -431,13 +510,13 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
       }
     });
 
-    it('reaches only the reading of a case file, and the action endpoint that executes nothing (Phase 1, memo row 9)', () => {
+    it('reaches a case file only through its reading and the two endpoints that name the action (Phase 1 memo row 9, Phase 2)', () => {
       const reads = ['case.view', 'case.actions.list', 'case.document.read'];
       for (const endpoint of ENDPOINTS) {
         const action = endpoint.access.action ?? '';
         if (action.startsWith('case.')) expect(reads, endpoint.id).toContain(action);
       }
-      expect(ENDPOINTS.filter((e) => e.access.kind === 'named-action').map((e) => e.id)).toEqual(['cases.action']);
+      expect(ENDPOINTS.filter((e) => e.access.kind === 'named-action').map((e) => e.id).sort()).toEqual(['cases.action', 'cases.upload']);
     });
 
     it('declares the demo endpoints as demo-only, behind a demo action', () => {
@@ -519,8 +598,6 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
     /** Endpoints with no success path, and why. */
     const NO_SUCCESS_PATH: Readonly<Record<string, string>> = {
       'POST /api/*': 'answers 404 NOT_FOUND to every request (unknown path)',
-      'POST /api/v1/cases/:caseId/actions/:action':
-        'Phase 1 executes no procedural action: an authorized request is answered 409 ACTION_NOT_EXECUTABLE_HERE (case-access.test.ts)',
     };
 
     /** Each fixture prepares the state, then returns the successful request. */
@@ -619,6 +696,86 @@ describe('refusal matrix over the endpoint registry (memo row 2, contract §13.5
             return res;
           },
           actions: ['admin.account.activation-reissued'],
+        };
+      },
+      'POST /api/v1/filings': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        await client.csrf();
+        return { run: () => client.post('/api/v1/filings', {}), actions: ['filing.draft.created'] };
+      },
+      'POST /api/v1/filings/paper': async () => {
+        const client = await login(await createUser({ roles: ['CLERK_REGISTRATION'] }));
+        await client.csrf();
+        return { run: () => client.post('/api/v1/filings/paper', {}), actions: ['filing.draft.created'] };
+      },
+      'POST /api/v1/filings/:draftId': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        const draftId = await createDraft(client);
+        return { run: () => client.post(`/api/v1/filings/${draftId}`, { caseType: COMMERCIAL_PAYMENT }), actions: ['filing.draft.updated'] };
+      },
+      'POST /api/v1/filings/:draftId/application-text': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        const draftId = await createDraft(client);
+        return { run: () => client.post(`/api/v1/filings/${draftId}/application-text`, { text: 'نص المقال' }), actions: ['filing.application.pasted'] };
+      },
+      'POST /api/v1/filings/:draftId/documents': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        const draftId = await createDraft(client);
+        return {
+          run: () => upload(client, draftId, { kind: 'EXHIBIT', name: 'exhibit.pdf', bytes: pdfBytes('exhibit'), nature: 'ORIGINAL' }),
+          actions: ['filing.document.uploaded'],
+        };
+      },
+      'POST /api/v1/filings/:draftId/documents/:documentId': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        const draftId = await createDraft(client);
+        const res = await upload(client, draftId, { kind: 'EXHIBIT', name: 'exhibit.pdf', bytes: pdfBytes('exhibit') });
+        return {
+          run: () => client.post(`/api/v1/filings/${draftId}/documents/${res.data!.documentId}`, { nature: 'PHOTOCOPY' }),
+          actions: ['filing.document.updated'],
+        };
+      },
+      'POST /api/v1/filings/:draftId/payment': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        const draftId = await prepareDraft(client, { exhibits: 1 });
+        return { run: () => client.post(`/api/v1/filings/${draftId}/payment`, {}), actions: ['payment.intent.opened'] };
+      },
+      'POST /api/v1/payments/:intentId/outcome': async () => {
+        const client = await login(await createUser({ roles: ['LAWYER'] }));
+        const draftId = await prepareDraft(client, { exhibits: 1 });
+        const { intentId } = await openPayment(client, draftId);
+        return { run: () => client.post(`/api/v1/payments/${intentId}/outcome`, { outcome: 'SUCCEEDED' }), actions: ['payment.succeeded'] };
+      },
+      'POST /api/v1/filings/:draftId/submit': async () => {
+        const lawyer = await createUser({ roles: ['LAWYER'] });
+        const secret = await giveSigningSecret(lawyer.id);
+        const client = await login(lawyer);
+        const draftId = await prepareDraft(client, { exhibits: 1 });
+        await payDraft(client, draftId);
+        return { run: () => client.post(`/api/v1/filings/${draftId}/submit`, { secret }), actions: ['filing.submitted', 'case.registered'] };
+      },
+      'POST /api/v1/cases/:caseId/actions/:action': async () => {
+        const lawyer = await createUser({ roles: ['LAWYER'] });
+        const secret = await giveSigningSecret(lawyer.id);
+        const filed = await fileCase(await login(lawyer), secret, { exhibits: 1 });
+        const registry = await login(await createUser({ roles: ['CLERK_REGISTRATION'] }));
+        await registry.csrf();
+        return { run: () => registry.post(`/api/v1/cases/${filed.caseFileId}/actions/case.registration.stamp`, {}), actions: ['case.registration.stamped'] };
+      },
+      'POST /api/v1/cases/:caseId/uploads/:action': async () => {
+        const lawyer = await createUser({ roles: ['LAWYER'] });
+        const secret = await giveSigningSecret(lawyer.id);
+        const filed = await fileCase(await login(lawyer), secret, { exhibits: 1, card: withParties(PUBLIC_DEFENDANT_CASE, [PUBLIC_ESTABLISHMENT]) });
+        const prosecutor = await login(await createUser({ roles: ['PUBLIC_PROSECUTOR'] }));
+        await prosecutor.csrf();
+        return {
+          run: () =>
+            prosecutor.post(`/api/v1/cases/${filed.caseFileId}/uploads/case.prosecution.conclusions`, undefined, {
+              query: { name: 'conclusions.pdf' },
+              rawBody: Buffer.from(pdfBytes('conclusions')),
+              headers: { 'content-type': 'application/octet-stream' },
+            }),
+          actions: ['case.document.filed'],
         };
       },
       'POST /api/demo/switch-account': async () => {

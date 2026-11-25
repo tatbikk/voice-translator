@@ -79,6 +79,13 @@ const passingResource: Partial<Record<string, Resource>> = {
   'case.actions.list': counselledCase,
   'case.document.read': { ...counselledCase, kind: 'case-document', visibility: 'CASE', documentId: OTHER_ID },
   'demo.account.switch': { kind: 'demo-account', userId: OTHER_ID, isDemo: true },
+  // Phase 2: a draft of the subject's own, not yet paid (filing it needs a paid one), and its payment.
+  'filing.draft.read': { kind: 'filing-draft', ownerUserId: USER_ID, channel: 'ELECTRONIC', courtId: null, status: 'DRAFT', paid: false },
+  'filing.draft.edit': { kind: 'filing-draft', ownerUserId: USER_ID, channel: 'ELECTRONIC', courtId: null, status: 'DRAFT', paid: false },
+  'filing.draft.pay': { kind: 'filing-draft', ownerUserId: USER_ID, channel: 'ELECTRONIC', courtId: null, status: 'DRAFT', paid: false },
+  'filing.draft.submit': { kind: 'filing-draft', ownerUserId: USER_ID, channel: 'ELECTRONIC', courtId: null, status: 'DRAFT', paid: true },
+  'payment.simulate': { kind: 'payment-intent', ownerUserId: USER_ID, status: 'PENDING' },
+  'payment.view': { kind: 'payment-intent', ownerUserId: USER_ID, status: 'SUCCEEDED' },
 };
 
 // Independent statement of who may do what in Phase 0 (contract §4.2). It is
@@ -101,6 +108,42 @@ const EXPECTED: Record<(typeof ACTION_CODES)[number], readonly RoleCode[] | type
   'demo.accounts.list': ALL,
   'demo.account.switch': ALL,
   'demo.outbox.view': ALL,
+  // Phase 2 (docs/phases/phase-2.md): the lawyer's drafts, the simulated payment,
+  // the registry office, the cashier, the prosecution's referrals, the register
+  // lookup, and the list of files (whoever may open a file).
+  'filing.drafts.list': ['LAWYER', 'CLERK_REGISTRATION'],
+  'filing.draft.read': ['LAWYER'],
+  'filing.draft.edit': ['LAWYER'],
+  'filing.draft.pay': ['LAWYER'],
+  'filing.draft.submit': ['LAWYER'],
+  'payment.simulate': ['LAWYER', 'CLERK_REGISTRATION'],
+  'payment.view': ['LAWYER', 'CLERK_REGISTRATION'],
+  'registers.commercial.lookup': ['LAWYER', 'CLERK_REGISTRATION'],
+  'registry.incoming.list': ['CLERK_REGISTRATION'],
+  'cashier.ledger.view': ['CLERK_CASHIER'],
+  'prosecution.referrals.list': ['PUBLIC_PROSECUTOR'],
+  'cases.list': [
+    'LAWYER',
+    'JUDGE_RAPPORTEUR',
+    'JUDGE_IN_CHARGE',
+    'COUNSELLOR_RAPPORTEUR',
+    'PANEL_PRESIDENT',
+    'PANEL_MEMBER',
+    'COURT_PRESIDENT',
+    'ENFORCEMENT_JUDGE',
+    'CLERK_REGISTRATION',
+    'CLERK_CASHIER',
+    'CLERK_NOTIFICATION',
+    'CLERK_HEARING',
+    'CLERK_COPIES_ENFORCEMENT',
+    'CHIEF_CLERK',
+    'PUBLIC_PROSECUTOR',
+    'ROYAL_COMMISSIONER',
+    'LITIGANT',
+    'PUBLIC_ADMIN_SUPERVISOR',
+    'PUBLIC_ADMIN_LITIGATION',
+    'STATE_JUDICIAL_AGENT',
+  ],
 };
 
 describe('authorization matrix: every role against every action', () => {

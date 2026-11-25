@@ -1,4 +1,4 @@
-// The pages of Phases 0 and 1 and their guards, stated independently from the page
+// The pages of Phases 0 to 2 and their guards, stated independently from the page
 // registry (contract §7 table). The architecture tests compare PAGES with this
 // list; the end-to-end page matrix walks it.
 import { PAGE_TITLES } from './labels';
@@ -39,6 +39,14 @@ export const EXPECTED_PAGES: readonly ExpectedPage[] = [
   { path: '/account', guards: ['page'], actions: ['account.view-own'], title: PAGE_TITLES.account, session: 'active' },
   // Phase 1: the case page, for whoever the core relates to the file (study «العناصر المشتركة»).
   { path: '/cases/:caseId', guards: ['page'], actions: ['case.view'], title: PAGE_TITLES.caseFile, session: 'active' },
+  // Phase 2: the filing path, the simulated payment page, the registry office, the cashier, the list of files.
+  { path: '/cases', guards: ['page'], actions: ['cases.list'], title: PAGE_TITLES.cases, session: 'active' },
+  { path: '/filings', guards: ['page'], actions: ['filing.drafts.list'], title: PAGE_TITLES.filings, session: 'active' },
+  { path: '/filings/:draftId', guards: ['page'], actions: ['filing.draft.read'], title: PAGE_TITLES.filing, session: 'active' },
+  { path: '/filings/:draftId/receipt', guards: ['page'], actions: ['filing.draft.read'], title: PAGE_TITLES.receipt, session: 'active' },
+  { path: '/payments/:intentId', guards: ['page'], actions: ['payment.view'], title: PAGE_TITLES.payment, session: 'active' },
+  { path: '/registry', guards: ['page'], actions: ['registry.incoming.list'], title: PAGE_TITLES.registry, session: 'active' },
+  { path: '/cashier', guards: ['page'], actions: ['cashier.ledger.view'], title: PAGE_TITLES.cashier, session: 'active' },
   { path: '/reauth', guards: ['page'], actions: ['account.view-own'], title: PAGE_TITLES.reauth, session: 'active' },
   {
     path: '/admin/accounts',
