@@ -1,7 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { ACTIONS, authorize, CAPACITY_STATUSES, PUBLIC_ENTITY_KINDS, referralsFor, SECURITY_POLICY, stripInvisible, type CaseSnapshot, type CaseTypeRule, type NotifyTarget, type ReferralRuleSet, type UserSubject } from '@mahkama/core';
+import { ACTIONS, authorize, CAPACITY_STATUSES, PUBLIC_ENTITY_KINDS, referralsFor, SECURITY_POLICY, stripInvisible, type CaseSnapshot, type CaseTypeRule, type NotifyTarget, type Referral, type ReferralRuleSet, type UserSubject } from '@mahkama/core';
 import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getEnv } from '../config/env';
@@ -159,7 +159,7 @@ const reclassify: Executor<{ caseType: string; rule: CaseTypeRule; rules: Referr
         referredToCommissionerAt: true,
         court: { select: { specialty: true } },
         parties: { select: { personKind: true, publicEntityKind: true, capacityStatus: true } },
-        referrals: { select: { target: true, ground: true } },
+        referrals: { select: { target: true, ground: true, article: true, item: true, reasonCode: true } },
       },
     });
     const toCode = Number(value.caseType);
@@ -191,9 +191,15 @@ const reclassify: Executor<{ caseType: string; rule: CaseTypeRule; rules: Referr
         data: { ...(toProsecution ? { referredToProsecutionAt: now } : {}), ...(toCommissioner ? { referredToCommissionerAt: now } : {}) },
       });
     }
+    // The review records every referral the file now has, those made before included: «none due»
+    // is written only when there is none (fix review M4).
+    const standing: Referral[] = [
+      ...file.referrals.map((r) => ({ target: r.target, ground: r.ground, article: r.article, item: r.item, reasonCode: r.reasonCode }) as Referral),
+      ...added,
+    ];
     await appendEvent(tx, {
       action: 'case.referrals.reviewed',
-      details: { caseFileId, ruleVersion: value.rules.version, referrals: added.length, grounds: groundsText(added) },
+      details: { caseFileId, ruleVersion: value.rules.version, referrals: standing.length, grounds: groundsText(standing) },
       caseFileId,
       legalBasis: referralArticles(value.rules),
     });

@@ -90,7 +90,7 @@ export async function intentResource(intentId: string): Promise<Resource | null>
 
 export type SettleOutcome =
   | { readonly ok: true; readonly status: GatewayOutcome; readonly paymentId: string; readonly operationRef: string; readonly paidAt: Date; readonly amountCents: number }
-  | { readonly ok: false; readonly code: 'PAYMENT_ALREADY_COMPLETED' };
+  | { readonly ok: false; readonly code: 'PAYMENT_ALREADY_COMPLETED' | 'PAYMENT_LAPSED' };
 
 /** Records the outcome the payer chose on «أداء (محاكاة)»: once, under the intent's lock (memo row 5). */
 export async function settlePayment(intentId: string, subject: UserSubject, chosen: GatewayOutcome, actor: EventActor): Promise<SettleOutcome> {
@@ -107,7 +107,7 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
     if (row.expiresAt.getTime() <= now.getTime()) {
       await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
       await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
-      return null;
+      return 'LAPSED' as const;
     }
     const intent = await tx.paymentIntent.findUniqueOrThrow({ where: { id: intentId }, select: { draftId: true, amountCents: true, method: true, breakdown: true, inputsDigest: true, ruleSetId: true } });
     // Read under the draft's lock: its claims and court cannot change while the payment is recorded.
@@ -121,7 +121,7 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
       // The intent lapses: nothing is asked of the gateway, nothing is recorded as paid.
       await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
       await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
-      return null;
+      return 'LAPSED' as const;
     }
     const result = await paymentGateway().settle({ intentId, amountCents: intent.amountCents, chosen, at: now });
     const paymentId = randomUUID();
@@ -166,9 +166,11 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
     }
     return { status: result.status, paymentId, operationRef: result.operationRef, paidAt: now, amountCents: Number(intent.amountCents) };
   });
-  if (!outcome) {
-    await appendStandaloneEvent({ action: 'filing.refused', details: { draftId: null, reason: 'PAYMENT_ALREADY_COMPLETED' }, actor });
-    return { ok: false, code: 'PAYMENT_ALREADY_COMPLETED' };
+  // An outcome already recorded, or an intent that lapsed (its time, its claims or its draft): each with its own answer (fix review L6).
+  if (!outcome || outcome === 'LAPSED') {
+    const code = outcome === 'LAPSED' ? 'PAYMENT_LAPSED' : 'PAYMENT_ALREADY_COMPLETED';
+    await appendStandaloneEvent({ action: 'filing.refused', details: { draftId: null, reason: code }, actor });
+    return { ok: false, code };
   }
   return { ok: true, ...outcome };
 }

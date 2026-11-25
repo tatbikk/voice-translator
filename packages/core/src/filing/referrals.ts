@@ -33,7 +33,8 @@ export function referralsFor(input: ReferralInput): Referral[] {
   const typed = input.caseType?.prosecution;
   if (typed) add({ target: 'PROSECUTION', ground: 'PRINCIPAL_PARTY', article: typed.article, item: typed.item, reasonCode: 'CASE_TYPE' });
   for (const party of input.parties) {
-    const item = party.capacityStatus ? prosecution.principalParty.capacityStatuses[party.capacityStatus] : undefined;
+    // A natural person's only: a field kept from another kind of person refers nothing (fix review M2).
+    const item = party.personKind === 'NATURAL' && party.capacityStatus ? prosecution.principalParty.capacityStatuses[party.capacityStatus] : undefined;
     if (item !== undefined) add({ target: 'PROSECUTION', ground: 'PRINCIPAL_PARTY', article: prosecution.principalParty.article, item, reasonCode: 'PARTY_CAPACITY' });
   }
 

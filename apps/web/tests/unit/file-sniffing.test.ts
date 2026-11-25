@@ -175,6 +175,16 @@ describe('a hostile Word document is read in linear time, or refused (review P2-
       expect(docx('maqal.docx', bytes), name).toMatchObject({ ok: false, reason: 'UNSAFE' });
     }
   });
+
+  it('accepts the printer settings Word writes, and no other binary part (fix review L8)', () => {
+    const text = wordXml('<w:p><w:r><w:t>نص</w:t></w:r></w:p>');
+    const printer = docxFromXml(text, { extraEntries: [{ name: 'word/printerSettings/printerSettings1.bin', data: new Uint8Array([0x01, 0x02]) }] });
+    expect(docx('maqal.docx', printer).ok).toBe(true);
+    for (const name of ['word/printerSettings/../vbaProject.bin', 'word/media/printerSettings1.bin', 'printerSettings/printerSettings1.bin', 'word/printerSettings/printerSettings1.bin.exe/x.bin']) {
+      const other = docxFromXml(text, { extraEntries: [{ name, data: new Uint8Array([0x01]) }] });
+      expect(docx('maqal.docx', other), name).toMatchObject({ ok: false });
+    }
+  });
 });
 
 describe('a PDF that opens, plays or fetches outside content is refused (review P2-S-12)', () => {

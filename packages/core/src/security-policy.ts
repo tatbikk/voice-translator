@@ -77,6 +77,8 @@ export const SECURITY_POLICY = {
    */
   filing: {
     maxOpenDrafts: 50,
+    /** a draft untouched for this long no longer counts toward the cap: no account is locked out for good */
+    openDraftWindowMs: 30 * DAY,
     writesPerSession: { max: 600, windowMs: HOUR },
     pastesPerSession: { max: 60, windowMs: HOUR },
   },

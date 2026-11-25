@@ -183,6 +183,8 @@ const WORD_MAIN = 'application/vnd.openxmlformats-officedocument.wordprocessingm
 
 /** Parts that carry executable or opaque content inside a Word package (review P2-S-03). */
 const ACTIVE_PART = /(^|\/)(vba[^/]*|activeX\/[^/]*|embeddings\/[^/]*|[^/]*\.bin)$/i;
+/** The printer settings Word writes into a document: plain data, never run (fix review L8). */
+const PRINTER_SETTINGS = /^word\/printerSettings\/printerSettings\d{0,4}\.bin$/i;
 /** Elements of the document part that pull content from elsewhere or embed an object. */
 const ACTIVE_ELEMENTS = ['<w:altChunk', '<w:object', '<o:OLEObject', '<w:control', '<w:subDoc'];
 
@@ -211,7 +213,7 @@ function wordDocumentXml(bytes: Uint8Array): { ok: true; xml: string } | { ok: f
     if (entries.some((e) => /(^|\/)vba[^/]*$/i.test(e.name))) {
       return { ok: false, reason: 'UNSAFE', detail: 'MACRO' };
     }
-    if (entries.some((e) => ACTIVE_PART.test(e.name))) return { ok: false, reason: 'UNSAFE', detail: 'EMBEDDED_OBJECT' };
+    if (entries.some((e) => ACTIVE_PART.test(e.name) && !PRINTER_SETTINGS.test(e.name))) return { ok: false, reason: 'UNSAFE', detail: 'EMBEDDED_OBJECT' };
     const typesXml = Buffer.from(readEntry(bytes, types)).toString('utf8');
     if (!typesXml.includes(WORD_MAIN)) return { ok: false, reason: 'TYPE_NOT_ACCEPTED', detail: 'NOT_A_WORD_DOCUMENT' };
     if (/macroEnabled|vbaProject/i.test(typesXml)) return { ok: false, reason: 'UNSAFE', detail: 'MACRO' };

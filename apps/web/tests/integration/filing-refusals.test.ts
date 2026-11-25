@@ -364,7 +364,7 @@ describe('no filing without payment (memo rows 3, 4, 5, 27)', () => {
          FROM "PaymentIntent" WHERE id = $1`,
       [first, second],
     );
-    await expectRefused(() => settle(lawyer, second, 'SUCCEEDED'), 409, 'PAYMENT_ALREADY_COMPLETED');
+    await expectRefused(() => settle(lawyer, second, 'SUCCEEDED'), 409, 'PAYMENT_LAPSED');
     expect(await count('SELECT count(*) FROM "Payment" WHERE "draftId" = $1', [draftId])).toBe(1);
     expect(await count('SELECT count(*) FROM "TreasuryEntry" WHERE "draftId" = $1', [draftId])).toBe(1);
   });

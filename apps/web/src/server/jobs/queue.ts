@@ -201,7 +201,8 @@ export async function runDueJobs(handlers: JobHandlers, options: RunOptions = {}
     });
     const jobStopping: StopCheck = () => limit.timedOut || stopping();
     const context: JobContext = { stopping: jobStopping, signal: abort.signal, lastAttempt: job.attempts >= JOB_POLICY.maxAttempts };
-    const running = (handlers[type] as (payload: unknown, context: JobContext) => Promise<void>)(parsed.data, context);
+    // Started inside a promise: a handler that throws at once fails its job like any other (fix review L3).
+    const running = Promise.resolve().then(() => (handlers[type] as (payload: unknown, context: JobContext) => Promise<void>)(parsed.data, context));
     try {
       await Promise.race([running, deadline]);
       clearTimeout(timer);

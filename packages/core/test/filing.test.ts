@@ -10,6 +10,7 @@ import {
   authorize,
   availableActions,
   preSignatureChecks,
+  referralsFor,
   ruleInForce,
   type AuthorizationContext,
   type CaseSnapshot,
@@ -151,6 +152,21 @@ describe('the case card (art. 77)', () => {
       const card = { ...MODEL, parties: [plaintiff, ...others.map((p) => (p.key === other.key ? { ...p, representedByFiler: true } : p))] };
       expect(FilingCardSchema.safeParse(card).success, other.side).toBe(false);
     }
+  });
+
+  it('keeps capacity to a natural person and the agent of art. 77 to a plaintiff, and refers no company for a capacity (fix review M2)', () => {
+    const plaintiff = MODEL.parties.find((p) => p.side === 'PLAINTIFF')!;
+    const others = MODEL.parties.filter((p) => p.side !== 'PLAINTIFF');
+    const natural = { key: 'n', side: 'DEFENDANT' as const, personKind: 'NATURAL' as const, name: 'السيد دال', capacityStatus: 'INCAPABLE' as const };
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [...MODEL.parties, natural] }).success).toBe(true);
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [...MODEL.parties, { ...natural, personKind: 'LEGAL' }] }).success).toBe(false);
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [{ ...plaintiff, agent: { name: 'السيد هاء', address: 'الدار البيضاء' } }, ...others] }).success).toBe(true);
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [plaintiff, { ...others[0]!, agent: { name: 'السيد هاء' } }, ...others.slice(1)] }).success).toBe(false);
+    // Whatever reaches the rule from elsewhere, a capacity on a company refers nothing.
+    const company = referralsFor({ courtSpecialty: 'COMMERCIAL', caseType: null, parties: [{ personKind: 'LEGAL', capacityStatus: 'INCAPABLE' }], rules: referrals });
+    expect(company).toEqual([]);
+    const person = referralsFor({ courtSpecialty: 'COMMERCIAL', caseType: null, parties: [{ personKind: 'NATURAL', capacityStatus: 'INCAPABLE' }], rules: referrals });
+    expect(person.map((r) => [r.target, r.ground, r.article])).toEqual([['PROSECUTION', 'PRINCIPAL_PARTY', 18]]);
   });
 
   it('keeps no invisible or direction-overriding character in the card, which would make a name read otherwise (review P2-S-11)', () => {

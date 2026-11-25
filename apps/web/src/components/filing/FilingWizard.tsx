@@ -346,12 +346,15 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
   const paid = view.payment.status === 'SUCCEEDED';
 
   // What this screen holds and the draft does not yet: saved by «حفظ», and again before filing.
+  // Only what differs from the draft is sent (fix review L5): the depositor, once paid, is not sent at all (L4).
   const changes = (): Record<string, unknown> => {
     const out: Record<string, unknown> = {};
     if ((d.designatedBailiffUserId ?? '') !== bailiff) out.bailiffUserId = bailiff === '' ? null : bailiff;
     if (paper) {
-      out.paperDepositor = depositor.name.trim() === '' ? null : { name: depositor.name, ...(depositor.idNumber ? { idNumber: depositor.idNumber } : {}), ...(depositor.quality ? { quality: depositor.quality } : {}) };
-      out.paperLawyerUserId = lawyer === '' ? null : lawyer;
+      const typed = depositor.name.trim() === '' ? null : { name: depositor.name, ...(depositor.idNumber ? { idNumber: depositor.idNumber } : {}), ...(depositor.quality ? { quality: depositor.quality } : {}) };
+      const stored = d.paperDepositor ? { name: d.paperDepositor.name, ...(d.paperDepositor.idNumber ? { idNumber: d.paperDepositor.idNumber } : {}), ...(d.paperDepositor.quality ? { quality: d.paperDepositor.quality } : {}) } : null;
+      if (!paid && JSON.stringify(typed) !== JSON.stringify(stored)) out.paperDepositor = typed;
+      if ((d.paperLawyerUserId ?? '') !== lawyer) out.paperLawyerUserId = lawyer === '' ? null : lawyer;
     }
     return out;
   };
@@ -424,13 +427,13 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
         <fieldset className="mb-6 rounded border border-line px-4 py-4">
           <legend className="px-1 font-semibold">{t('filing.paper.depositor')}</legend>
           <LabeledInput id="depositorName" label={t('filing.paper.depositorName')}>
-            <input id="depositorName" className={CONTROL} value={depositor.name} onChange={(e) => { setDepositor({ ...depositor, name: e.target.value }); }} />
+            <input id="depositorName" className={CONTROL} disabled={paid} value={depositor.name} onChange={(e) => { setDepositor({ ...depositor, name: e.target.value }); }} />
           </LabeledInput>
           <LabeledInput id="depositorId" label={t('filing.paper.depositorId')}>
-            <input id="depositorId" className={CONTROL} value={depositor.idNumber} onChange={(e) => { setDepositor({ ...depositor, idNumber: e.target.value }); }} />
+            <input id="depositorId" className={CONTROL} disabled={paid} value={depositor.idNumber} onChange={(e) => { setDepositor({ ...depositor, idNumber: e.target.value }); }} />
           </LabeledInput>
           <LabeledInput id="depositorQuality" label={t('filing.paper.depositorQuality')}>
-            <input id="depositorQuality" className={CONTROL} value={depositor.quality} onChange={(e) => { setDepositor({ ...depositor, quality: e.target.value }); }} />
+            <input id="depositorQuality" className={CONTROL} disabled={paid} value={depositor.quality} onChange={(e) => { setDepositor({ ...depositor, quality: e.target.value }); }} />
           </LabeledInput>
           <Field id="paperLawyer" label={t('filing.paper.lawyer')} hint={t('filing.paper.lawyerHint')}>
             <select id="paperLawyer" className={CONTROL} value={lawyer} onChange={(e) => { setLawyer(e.target.value); }}>
@@ -453,7 +456,7 @@ function SignStep({ view, t, busy, update, base, submitLines, paper, dict }: Ste
       <div className="flex flex-wrap items-center gap-4">
         <Button
           variant="quiet"
-          disabled={busy || working}
+          disabled={busy || working || Object.keys(changes()).length === 0}
           onClick={() => {
             const pending = changes();
             if (Object.keys(pending).length > 0) void update(pending);

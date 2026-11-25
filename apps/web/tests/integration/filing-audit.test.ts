@@ -10,16 +10,18 @@
 //   - «تصحيح التصنيف» offers the case types of the court's specialty only (G067);
 //   - the signed application carries the stamp «توقيع تجريبي» (G046).
 import { beforeAll, describe, expect, it } from 'vitest';
-import { CARD_SECTIONS, type UserSubject } from '@mahkama/core';
+import { CARD_SECTIONS, SECURITY_POLICY, type UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { caseView } from '@/server/cases/view';
 import { cashierLedger } from '@/server/offices/cashier';
 import { caseTypesOfCourt } from '@/server/offices/registry';
-import { COMMERCIAL_PAYMENT, MODEL_CASE } from '../acceptance/model-case-filing.fixture';
+import { loadDraft } from '@/server/filings/drafts';
+import { updateDraft as updateDraftDirectly } from '@/server/filings/service';
+import { COMMERCIAL_PAYMENT, MODEL_CASE, PUBLIC_DEFENDANT_CASE, PUBLIC_ESTABLISHMENT, withParties } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
 import { capturingEvents, count, one, sql } from '../helpers/db';
 import { createCourt, createUser, theCourt, type TestUser } from '../helpers/factories';
-import { createPaperDraft, fileCase, getDraft, giveSigningSecret, openPayment, prepareDraft, runJobs, settle, submit, updateDraft, upload } from '../helpers/filings';
+import { createPaperDraft, fileCase, getDraft, giveSigningSecret, openPayment, payDraft, prepareDraft, runJobs, settle, submit, updateDraft, upload } from '../helpers/filings';
 import { describeResponse, type Client } from '../helpers/http';
 import { useFreshDatabase } from '../helpers/reset';
 import { loadRuleTables, makeModelCourt } from '../helpers/rules';
@@ -113,7 +115,7 @@ describe('a payment covers the claims and the court it was opened on (audit G025
     const { intentId } = await openPayment(lawyer, draftId);
     await sql(`UPDATE "FilingDraft" SET card = jsonb_set(card, '{claims,0,amountCents}', '60000000'::jsonb) WHERE id = $1`, [draftId]);
     const { result, events } = await capturingEvents(() => settle(lawyer, intentId, 'SUCCEEDED'));
-    expect(result.status, describeResponse(result)).toBe(409);
+    expect({ status: result.status, code: result.code }, describeResponse(result)).toEqual({ status: 409, code: 'PAYMENT_LAPSED' });
     expect(events.some((e) => e.action === 'payment.expired')).toBe(true);
     expect(await intentStatus(intentId)).toBe('EXPIRED');
     expect(await paymentsOf(draftId)).toBe(0);
@@ -217,5 +219,106 @@ describe('the signed application carries the stamp «توقيع تجريبي» (
     const application = view!.documents.find((d) => d.docType === 'APPLICATION');
     expect(application?.signatures).toBeGreaterThan(0);
     expect(application?.simulatedSignature).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The independent review of these fixes (docs/security/phase-2-review.md, «مراجعة الإصلاحات»).
+
+const actorOf = (user: TestUser, role: string) => ({ userId: user.id, roleAssignmentId: user.roleAssignmentId, role, viaDemoSwitch: false });
+
+/** A paper draft of the model case, ready to be paid at the counter. */
+async function paperDraft(lawyerUserId: string | null, depositor = 'السيد نون'): Promise<string> {
+  const clerk = await as('clerk');
+  const draftId = await createPaperDraft(clerk);
+  const card = { ...MODEL_CASE, parties: MODEL_CASE.parties.map((p) => ({ ...p, representedByFiler: false })) };
+  const saved = await updateDraft(clerk, draftId, {
+    caseType: COMMERCIAL_PAYMENT,
+    card,
+    paperDepositor: { name: depositor },
+    ...(lawyerUserId ? { paperLawyerUserId: lawyerUserId } : {}),
+    attest: [...CARD_SECTIONS],
+  });
+  expect(saved.status, describeResponse(saved)).toBe(200);
+  expect((await upload(clerk, draftId, { kind: 'APPLICATION', name: 'scan.pdf', bytes: pdfBytes('scan'), pages: 1, location: 'خزانة التقييد' })).status).toBe(200);
+  return draftId;
+}
+
+describe('the fixes hold under the review that followed them', () => {
+  it('re-checks under the lock a payment recorded since the draft was read: the paid claims stay (M1)', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    const stale = await loadDraft(draftId);
+    await payDraft(lawyer, draftId);
+    const outcome = await updateDraftDirectly(stale!, await subjectOf(cast.lawyer), { card: withDebt(50_000_000) }, actorOf(cast.lawyer, 'LAWYER'));
+    expect(outcome).toMatchObject({ ok: false, status: 409, code: 'CLAIMS_LOCKED' });
+    const stored = await one<{ amount: string }>(`SELECT card->'claims'->0->>'amountCents' AS amount FROM "FilingDraft" WHERE id = $1`, [draftId]);
+    expect(Number(stored.amount)).toBe(MODEL_CASE.claims[0]!.amountCents);
+  });
+
+  it('counts toward the cap only the drafts touched within its window: an abandoned draft locks no one out (M3)', async () => {
+    const user = await createUser({ roles: ['LAWYER'], label: 'old-drafts' });
+    const client = await login(user);
+    await client.csrf();
+    await sql(
+      `INSERT INTO "FilingDraft" (id, "ownerUserId", "ownerRoleAssignmentId", channel, card, attestations, "createdAt", "updatedAt")
+       SELECT gen_random_uuid(), $1, $2, 'ELECTRONIC', '{"parties":[],"summary":"","claims":[]}'::jsonb, '{}'::jsonb, now() - interval '90 days', now() - interval '60 days'
+         FROM generate_series(1, $3)`,
+      [user.id, user.roleAssignmentId, SECURITY_POLICY.filing.maxOpenDrafts],
+    );
+    const created = await client.post('/api/v1/filings', {});
+    expect(created.status, describeResponse(created)).toBe(200);
+  });
+
+  it('records after a reclassification every referral the file has, not only the new ones (M4)', async () => {
+    const referred = await fileCase(await as('lawyer'), secret, { card: withParties(PUBLIC_DEFENDANT_CASE, [PUBLIC_ESTABLISHMENT]), exhibits: 1 });
+    const standing = await count('SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1', [referred.caseFileId]);
+    expect(standing).toBeGreaterThan(0);
+    const res = await (await as('clerk')).post(`/api/v1/cases/${referred.caseFileId}/actions/case.registration.reclassify`, { caseType: '8203' });
+    expect(res.status, describeResponse(res)).toBe(200);
+    const last = await one<{ referrals: number }>(
+      `SELECT (details->>'referrals')::int AS referrals FROM "Event" WHERE "caseFileId" = $1 AND action = 'case.referrals.reviewed' ORDER BY seq DESC LIMIT 1`,
+      [referred.caseFileId],
+    );
+    expect(last.referrals).toBe(standing);
+  });
+
+  it('refuses the paper filing when the lawyer picked has left the roster since (L1)', async () => {
+    const leaving = await createUser({ roles: ['LAWYER'], label: 'leaving-lawyer' });
+    const clerk = await as('clerk');
+    const draftId = await paperDraft(leaving.id);
+    const { intentId } = await openPayment(clerk, draftId);
+    expect((await settle(clerk, intentId, 'SUCCEEDED')).status).toBe(200);
+    await runJobs();
+    await sql(`UPDATE "RoleAssignment" SET "revokedAt" = now() WHERE "userId" = $1`, [leaving.id]);
+    const before = await count('SELECT count(*) FROM "CaseFile"');
+    const res = await submit(clerk, draftId, {});
+    expect({ status: res.status, code: res.code }, describeResponse(res)).toEqual({ status: 409, code: 'DRAFT_CHANGED' });
+    expect(await count('SELECT count(*) FROM "CaseFile"')).toBe(before);
+  });
+
+  it('keeps the depositor the payment receipt names once the fee is paid (L4)', async () => {
+    const clerk = await as('clerk');
+    const draftId = await paperDraft(null, 'السيد صاد');
+    const { intentId } = await openPayment(clerk, draftId);
+    expect((await settle(clerk, intentId, 'SUCCEEDED')).status).toBe(200);
+    const changed = await updateDraft(clerk, draftId, { paperDepositor: { name: 'السيد قاف' } });
+    expect({ status: changed.status, code: changed.code }).toEqual({ status: 409, code: 'DEPOSITOR_LOCKED' });
+    expect((await updateDraft(clerk, draftId, { paperDepositor: { name: 'السيد صاد' } })).status).toBe(200);
+  });
+
+  it('keeps «السجل التجاري» only for the company the register names, with the register’s locality (L2)', async () => {
+    const lawyer = await as('lawyer');
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    const officeOf = async (key: string) =>
+      (await one<{ office: { source: string; locality?: string } }>(`SELECT p->'registeredOffice' AS office FROM "FilingDraft", jsonb_array_elements(card->'parties') p WHERE id = $1 AND p->>'key' = $2`, [draftId, key])).office;
+    // The register's address with a typed locality: the locality is the register's.
+    const typed = { ...MODEL_CASE, parties: MODEL_CASE.parties.map((p) => (p.key === 'baa' && p.registeredOffice ? { ...p, registeredOffice: { ...p.registeredOffice, locality: 'rabat' } } : p)) };
+    expect((await updateDraft(lawyer, draftId, { card: typed })).status).toBe(200);
+    expect(await officeOf('baa')).toMatchObject({ source: 'COMMERCIAL_REGISTER', locality: 'casablanca' });
+    // Another company with that company's number and address: declared.
+    const borrowed = { ...MODEL_CASE, parties: MODEL_CASE.parties.map((p) => (p.key === 'baa' ? { ...p, name: 'شركة أخرى للتجارة' } : p)) };
+    expect((await updateDraft(lawyer, draftId, { card: borrowed })).status).toBe(200);
+    expect((await officeOf('baa')).source).toBe('DECLARED');
   });
 });

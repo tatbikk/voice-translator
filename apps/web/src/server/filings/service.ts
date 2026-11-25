@@ -67,7 +67,9 @@ export async function createDraft(subject: UserSubject, channel: 'ELECTRONIC' | 
   const id = randomUUID();
   const created = await eventTransaction(async (tx) => {
     // An account holds a bounded number of open drafts (review P2-S-07); the event log's lock serializes the count.
-    const open = await tx.filingDraft.count({ where: { ownerUserId: subject.userId, status: 'DRAFT' } });
+    // A draft left untouched for the window no longer counts: an abandoned draft never locks the account out (fix review M3).
+    const since = new Date(clock.now().getTime() - SECURITY_POLICY.filing.openDraftWindowMs);
+    const open = await tx.filingDraft.count({ where: { ownerUserId: subject.userId, status: 'DRAFT', updatedAt: { gte: since } } });
     if (open >= SECURITY_POLICY.filing.maxOpenDrafts) return false;
     await tx.filingDraft.create({ data: { id, ...newDraftData(subject, channel) } });
     await appendEvent(tx, { action: 'filing.draft.created', details: { draftId: id, channel }, actor });
@@ -114,13 +116,16 @@ function cardFieldErrors(error: z.ZodError): Record<string, string> {
 }
 
 const ADDRESS_FIELDS = ['domicile', 'residence', 'registeredOffice', 'branch'] as const;
+/** A locality code of the districts table, as the card's schema accepts it. */
+const LOCALITY_CODE = /^[a-z][a-z0-9-]{1,40}$/;
 const sameText = (a: string, b: string) => stripInvisible(a).replace(/\s+/g, ' ').trim() === stripInvisible(b).replace(/\s+/g, ' ').trim();
 
 /**
  * The source «السجل التجاري» is the server's to give, never the browser's
  * (review P2-A-08): an address keeps it only when the register answers, for the
- * company's number, that very address as its registered office or its branch.
- * Any other address claimed from the register is kept as declared.
+ * company's number and name, that very address as its registered office or its
+ * branch; the locality is then the register's too (fix review L2). Any other
+ * address claimed from the register is kept as declared.
  */
 async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
   const parties = await Promise.all(
@@ -130,11 +135,18 @@ async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
       const entry =
         party.personKind === 'LEGAL' && party.idNumber ? await commercialRegister().lookup(party.idNumber).catch(() => null) : null;
       const next = { ...party };
+      const sameCompany = entry !== null && sameText(entry.name, party.name);
       for (const field of claimed) {
         const address = party[field];
         if (!address) continue;
         const given = field === 'registeredOffice' ? entry?.registeredOffice : field === 'branch' ? entry?.branch : null;
-        if (!given || !sameText(given, address.value)) next[field] = { ...address, source: 'DECLARED' };
+        if (!sameCompany || !given || !sameText(given, address.value)) next[field] = { ...address, source: 'DECLARED' };
+        else if (field === 'registeredOffice') {
+          // The register's own locality, never one typed beside its address.
+          const { locality: _typed, ...rest } = address;
+          const locality = entry.locality && LOCALITY_CODE.test(entry.locality) ? entry.locality : null;
+          next[field] = { ...rest, ...(locality ? { locality } : {}) };
+        }
       }
       return next;
     }),
@@ -193,6 +205,8 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   }
   if (body.paperDepositor !== undefined) {
     if (draft.channel !== 'PAPER') return invalid('paperDepositor');
+    // The payment receipt names the depositor (art. 628): once paid, he no longer changes (fix review L4).
+    if (locked && canonicalJson(body.paperDepositor ?? null) !== canonicalJson(draft.paperDepositor ?? null)) return refused(draft.id, actor, 409, 'DEPOSITOR_LOCKED');
     data.paperDepositor = body.paperDepositor === null ? { set: null } : asJson(body.paperDepositor);
     changed.push('DEPOSITOR');
   }
@@ -218,8 +232,15 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   // A payment opened on other claims or another court covers nothing: it lapses now,
   // before the page offers to complete it (audit G025).
   const feeInputsChanged = !sameClaims(card, current) || courtId !== draft.courtId;
-  const applied = await eventTransaction(async (tx) => {
+  const applied = await eventTransaction(async (tx): Promise<boolean | 'LOCKED'> => {
     if (!(await lockOpenDraft(tx, draft.id))) return false;
+    // A payment recorded since the draft was read locks its claims, its court and its depositor
+    // too: what this update would change is checked again under the lock (fix review M1).
+    if (!locked && (await tx.paymentIntent.count({ where: { draftId: draft.id, status: 'SUCCEEDED' } })) > 0) {
+      const stored = await tx.filingDraft.findUniqueOrThrow({ where: { id: draft.id }, select: { card: true, courtId: true, paperDepositor: true } });
+      const depositorChanged = body.paperDepositor !== undefined && canonicalJson(body.paperDepositor ?? null) !== canonicalJson(stored.paperDepositor ?? null);
+      if (!sameClaims(card, parseCard(stored.card)) || courtId !== stored.courtId || depositorChanged) return 'LOCKED';
+    }
     await tx.filingDraft.update({ where: { id: draft.id }, data });
     await appendEvent(tx, { action: 'filing.draft.updated', details: { draftId: draft.id, fields: changed.length ? changed.join(':') : 'ATTESTATION' }, actor });
     if (feeInputsChanged) {
@@ -231,6 +252,7 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
     }
     return true;
   });
+  if (applied === 'LOCKED') return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');
   if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
   return done(undefined);
 }

@@ -170,6 +170,21 @@ describe('job queue (review A-11)', () => {
     expect(told).toEqual([false, true]);
   });
 
+  it('a handler that throws at once fails its job like any other, and the worker goes on (fix review L3)', async () => {
+    const id = await insertJob();
+    const h = handlers({
+      'maintenance.cleanup': (() => {
+        throw new Error('thrown before any promise');
+      }) as unknown as JobHandlers['maintenance.cleanup'],
+    });
+    await runDueJobs(h, { timeoutMs: 200 });
+    // The time limit passes with the job already closed: nothing is left to reject unheard.
+    await sleep(300);
+    const job = await jobOf(id);
+    expect({ status: job.status, attempts: job.attempts, lastErrorClass: job.lastErrorClass }).toEqual({ status: 'PENDING', attempts: 1, lastErrorClass: 'Error' });
+    await sql(`UPDATE "Job" SET status = 'DONE' WHERE id = $1`, [id]);
+  });
+
   it('a job recovered and claimed by another worker is not closed by the first one', async () => {
     const id = await insertJob();
     const h = handlers({

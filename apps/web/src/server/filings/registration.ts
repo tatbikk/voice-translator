@@ -146,6 +146,14 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
       const bailiff = await tx.roleAssignment.findFirst({ where: { userId: fresh.designatedBailiffUserId, role: 'BAILIFF', courtId: fresh.courtId, revokedAt: null }, select: { id: true } });
       if (!bailiff) return { ok: false, status: 409, code: 'DRAFT_CHANGED' };
     }
+    // The lawyer the clerk picked is still on the roster: he becomes counsel of the plaintiffs (fix review L1).
+    if (fresh.channel === 'PAPER' && fresh.paperLawyerUserId) {
+      const lawyer = await tx.roleAssignment.findFirst({
+        where: { userId: fresh.paperLawyerUserId, role: 'LAWYER', revokedAt: null, user: { disabledAt: null } },
+        select: { id: true },
+      });
+      if (!lawyer) return { ok: false, status: 409, code: 'DRAFT_CHANGED' };
+    }
     const referrals = referralsFor({ courtSpecialty: court.specialty, caseType, parties: freshCard.parties, rules });
 
     // 5. The register: the next number, the national identifier (decision 53).

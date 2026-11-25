@@ -138,7 +138,8 @@ export function CardStep({ view, t, busy, update }: StepProps) {
                 value={party.side}
                 onChange={(e) => {
                   const side = e.target.value as Party['side'];
-                  setParty(index, side === 'PLAINTIFF' ? { side } : { side, representedByFiler: false });
+                  // What belongs to a plaintiff alone does not follow a party to another side.
+                  setParty(index, side === 'PLAINTIFF' ? { side } : { side, representedByFiler: false, agent: undefined });
                 }}
               >
                 {SIDES.map((s) => (
@@ -149,7 +150,16 @@ export function CardStep({ view, t, busy, update }: StepProps) {
               </select>
             </Field>
             <Field id={`${party.key}-kind`} label={t('filing.card.personKind')}>
-              <select id={`${party.key}-kind`} className={CONTROL} value={party.personKind} onChange={(e) => { setParty(index, { personKind: e.target.value as Party['personKind'] }); }}>
+              <select
+                id={`${party.key}-kind`}
+                className={CONTROL}
+                value={party.personKind}
+                onChange={(e) => {
+                  const personKind = e.target.value as Party['personKind'];
+                  // Capacity is a natural person's: it does not stay hidden on a company (fix review M2).
+                  setParty(index, personKind === 'NATURAL' ? { personKind } : { personKind, capacityStatus: undefined });
+                }}
+              >
                 {PERSON_KINDS.map((k) => (
                   <option key={k} value={k}>
                     {t(`filing.card.personKinds.${k}`)}

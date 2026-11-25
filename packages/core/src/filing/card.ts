@@ -115,6 +115,13 @@ export const FilingCardSchema = z
       if (party.representedByFiler === true && party.side !== 'PLAINTIFF') {
         ctx.addIssue({ code: 'custom', path: ['parties', index, 'representedByFiler'], message: 'the filer acts for a plaintiff only' });
       }
+      // Capacity and absence are a natural person's (art. 18, item 4), and the agent art. 77 names is the plaintiff's.
+      if (party.capacityStatus !== undefined && party.personKind !== 'NATURAL') {
+        ctx.addIssue({ code: 'custom', path: ['parties', index, 'capacityStatus'], message: 'capacity is a natural person’s' });
+      }
+      if (party.agent !== undefined && party.side !== 'PLAINTIFF') {
+        ctx.addIssue({ code: 'custom', path: ['parties', index, 'agent'], message: 'the agent of art. 77 is the plaintiff’s' });
+      }
     }
   });
 
