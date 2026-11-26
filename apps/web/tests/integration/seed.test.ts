@@ -159,6 +159,51 @@ describe('seed (memo row 21)', () => {
     }).toEqual(before);
   }, 300_000);
 
+  // IR-40: the six files of Phase 1 carried a name in "caseType" where the
+  // table holds a code; a database seeded before the fix gets the codes at the
+  // next run of the seed (the release step of the demo), in place, not reset.
+  const caseTypes = () =>
+    sql<{ id: string; kind: string; caseType: string | null; specialty: string }>(
+      `SELECT f.id, f.kind::text AS kind, f."caseType", c.specialty::text AS specialty
+         FROM "CaseFile" f JOIN "Court" c ON c.id = f."courtId" WHERE f."isDemo" ORDER BY f.id`,
+    );
+
+  it('IR-40: every seeded case file carries a code of the case-type table in force, of its court\'s specialty', async () => {
+    const table = await one<{ content: { types: { code: string; specialty: string }[] } }>(
+      `SELECT content FROM "RuleSet" WHERE kind = 'CASE_TYPES' AND "validTo" IS NULL`,
+    );
+    const rows = (await caseTypes()).filter((r) => r.caseType !== null);
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    for (const row of rows) {
+      const type = table.content.types.find((t) => t.code === row.caseType);
+      expect(type, `${row.id}: ${String(row.caseType)}`).toBeDefined();
+      expect(type?.specialty, row.id).toBe(row.specialty);
+    }
+  }, 120_000);
+
+  it('IR-40: a database seeded before the fix gets the codes in place at the next run, one event per file, and only once', async () => {
+    const fixed = await caseTypes();
+    // The names the seed wrote before the fix (apps/web/src/cli/seed-data/cases.ts at 33ad8db).
+    const legacy = (r: { kind: string; caseType: string | null }) =>
+      r.kind === 'APPEAL' ? 'APPEAL_COMMERCIAL' : r.caseType === '8202' ? 'COMMERCIAL_DAMAGES' : 'COMMERCIAL_PAYMENT';
+    const old = fixed.filter((r) => r.caseType !== null);
+    for (const r of old) await sql(`UPDATE "CaseFile" SET "caseType" = $2 WHERE id = $1`, [r.id, legacy(r)]);
+    const before = (await events('demo.case.type.recoded')).length;
+
+    const result = await seed();
+    expect(result.status, result.output.slice(-2000)).toBe(0);
+    expect(await caseTypes(), 'every file has its code back').toEqual(fixed);
+    const recoded = (await events('demo.case.type.recoded')).slice(before);
+    expect(recoded.map((e) => e.details).sort((a, b) => (String(a.caseFileId) < String(b.caseFileId) ? -1 : 1))).toEqual(
+      old.map((r) => ({ caseFileId: r.id, fromType: legacy(r), toType: r.caseType })),
+    );
+
+    const again = await seed();
+    expect(again.status, again.output.slice(-2000)).toBe(0);
+    expect((await events('demo.case.type.recoded')).length, 'nothing left to recode').toBe(before + old.length);
+    expect(await caseTypes()).toEqual(fixed);
+  }, 600_000);
+
   it('row 21: --reset without the name of the database, or with another name, is refused', async () => {
     const before = await users();
     const head = (await events()).at(-1)?.hash;

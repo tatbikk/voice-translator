@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { PUBLIC_ENTITY_KINDS } from '@mahkama/core';
 import { ruleContentSha256, ruleSourceFiles, type RuleKind } from '@/server/rules/store';
 import { RULE_FILE_SCHEMAS, ruleFileProblems, storedVersionChange, type RuleFile } from '@/server/rules/validation';
+import { DEMO_CASE_CONTENT } from '@/cli/seed-data/cases';
 
 const files = ruleSourceFiles();
 const file = (kind: RuleKind) => {
@@ -30,6 +31,17 @@ describe('the rule files of the repository', () => {
 
   it('are all valid, and no two versions of one kind overlap', () => {
     expect(ruleFileProblems(files)).toEqual([]);
+  });
+
+  it('give every demo case file a code of the case-type table in force, of the specialty of its court (IR-40)', () => {
+    const current = files.filter((f) => f.kind === 'CASE_TYPES' && f.validTo === null);
+    expect(current).toHaveLength(1);
+    const types = (current[0]?.content as { types: { code: string; specialty: string }[] }).types;
+    for (const content of DEMO_CASE_CONTENT) {
+      const type = types.find((t) => t.code === content.caseType);
+      expect(type, `demo file ${String(content.number)}: ${content.caseType}`).toBeDefined();
+      expect(type?.specialty, `demo file ${String(content.number)}`).toBe('COMMERCIAL');
+    }
   });
 
   it('declare the horizon of the holiday list in force (review P1-A-08)', () => {
