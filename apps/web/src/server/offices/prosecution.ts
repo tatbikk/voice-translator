@@ -9,8 +9,10 @@ import { emptyPage, PAGE_SIZE, readSegmentedPage, withRows, type Page } from '..
 // «الإحالات» of the public prosecution (study, «واجهة النيابة العامة»: «تعرض
 // لوحة البداية الإحالات التي ترد على النيابة العامة بمجرد تقييد القضية، مرتبة
 // بحسب سببها»): every referral of its court, by ground — the files where it is
-// a principal party (art. 18), which keeps the rights of a party whatever the
-// state of the file, and those communicated to it (art. 20). Each ground shows
+// a principal party (art. 18: «يكون للنيابة العامة في جميع هذه الحالات ما
+// للخصوم من حقوق», in the cases that article lists), and those communicated to
+// it (art. 20). Whether the limit of art. 20 §2 binds a principal party too is
+// open question س45; the list does not answer it. Each ground shows
 // first the referrals in which the core's table still lets it file its written
 // conclusions («إيداع مستنتجات كتابية»: before the debate is closed, art. 20
 // §2), then the others, each part the referral received longest ago first, a
