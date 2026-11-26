@@ -96,6 +96,10 @@ async function main(): Promise<void> {
     await client.query(`REVOKE UPDATE, DELETE, TRUNCATE ON "CaseNote", "CaseReferral", "DocumentParagraph" FROM ${ident}`);
     await client.query(`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "SimulatedRegistryEntry" FROM ${ident}`);
     await client.query(`REVOKE DELETE, TRUNCATE ON "CaseFile", "CaseSequence", "FilingDraft", "FilingDocument" FROM ${ident}`);
+    // An investigation is never deleted: the database marks the latest of a file on insertion and on a
+    // change of its date or file only, so a deletion would leave the file with no marked investigation
+    // (decision 76; review of the IR-11 fix).
+    await client.query(`REVOKE DELETE, TRUNCATE ON "Investigation" FROM ${ident}`);
     await client.query(`REVOKE ALL ON "_prisma_migrations" FROM ${ident}`);
     // Read only: the boot check compares the applied migrations with the code.
     await client.query(`GRANT SELECT ON "_prisma_migrations" TO ${ident}`);
