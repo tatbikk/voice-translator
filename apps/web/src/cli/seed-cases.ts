@@ -19,7 +19,7 @@ import {
 import { clock } from '@/server/clock';
 import { getDb } from '@/server/db';
 import { asJson } from '@/server/json';
-import { appendStandaloneEvent } from '@/server/events/append';
+import { appendEvent, appendStandaloneEvent, eventTransaction } from '@/server/events/append';
 import { storeDocument } from '@/server/documents/service';
 import { DocumentGenerationError, generatePdf, type GenerateInput, type TemplateName } from '@/server/documents/generate';
 import { openSignatureCircle, setSigningSecret, signDocument } from '@/server/signature/service';
@@ -27,7 +27,7 @@ import { paidAmountUncertain } from '@/server/payments/uncertainty';
 import { districtRules, feeSchedule, holidayCalendar, timeLimitRules } from '@/server/rules/store';
 import { lawArticlesText } from '@/i18n/legal-basis';
 import { translator } from '@/i18n/translate';
-import { DEMO_CASE_CONTENT, DEMO_TEXTS, type DemoCaseContent } from './seed-data/cases';
+import { DEMO_CASE_CONTENT, DEMO_TEXTS, LEGACY_DEMO_CASE_TYPES, type DemoCaseContent } from './seed-data/cases';
 import { demoEmail, type DemoCourtKey, type DemoPanelKey } from './seed-data/accounts';
 
 const DAY = 86_400_000;
@@ -226,7 +226,7 @@ async function timeLimit(caseFileId: string, code: string, partyId: string, trig
 
 async function courtFee(caseFileId: string, content: DemoCaseContent, payerPartyId: string, payerUserId: string, at: Date): Promise<string> {
   const schedule = await feeSchedule(at);
-  const filing = content.caseType === 'APPEAL_COMMERCIAL' ? 'APPEAL' : 'APPLICATION';
+  const filing = content.kind === 'APPEAL' ? 'APPEAL' : 'APPLICATION';
   const claims = content.claims
     .filter((c) => c.category === 'PRINCIPAL')
     .map((c) => ({ nature: c.nature, amountCents: c.dirhams === null ? null : c.dirhams * 100 }));
@@ -254,7 +254,7 @@ async function courtFee(caseFileId: string, content: DemoCaseContent, payerParty
 
 async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise<boolean> {
   const db = getDb();
-  const courtKey: DemoCourtKey = content.caseType === 'APPEAL_COMMERCIAL' ? 'appeal' : 'firstInstance';
+  const courtKey: DemoCourtKey = content.kind === 'APPEAL' ? 'appeal' : 'firstInstance';
   const row = await db.caseFile.findFirst({
     where: { courtId: ctx.courtIds[courtKey], number: content.number, isDemo: true },
     include: { court: { select: { name: true, code: true } }, _count: { select: { parties: true } }, nextHearing: { select: { startsAt: true } } },
@@ -345,7 +345,7 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
   // What the first party's counsel deposited, and the court fee.
   const firstCounsel = content.parties[0]?.counsel ?? 'lawyer.plaintiff';
   const firstCounselId = await userId(firstCounsel);
-  const appeal = content.caseType === 'APPEAL_COMMERCIAL';
+  const appeal = content.kind === 'APPEAL';
   const application = await storeDocument({
     caseFileId: file.id,
     bytes: depositedPdf(appeal ? 'appeal' : 'application'),
@@ -608,6 +608,31 @@ function dirhamsText(cents: bigint): string {
   return t('case.amount', { amount: fraction === 0n ? whole : `${whole},${fraction.toString().padStart(2, '0')}` });
 }
 
+/**
+ * Review IR-40: the demo files seeded before the fix carry a name in
+ * "caseType"; each gets the code of the table in place, with its event, and
+ * nothing else of the file changes. Returns how many were recoded.
+ */
+async function recodeLegacyCaseTypes(): Promise<number> {
+  const rows = await getDb().caseFile.findMany({
+    where: { isDemo: true, caseType: { in: Object.keys(LEGACY_DEMO_CASE_TYPES) } },
+    select: { id: true, caseType: true },
+    orderBy: { id: 'asc' },
+  });
+  for (const row of rows) {
+    const fromType = row.caseType ?? '';
+    const toType = LEGACY_DEMO_CASE_TYPES[fromType];
+    if (!toType) continue;
+    await eventTransaction(async (tx) => {
+      const updated = await tx.caseFile.updateMany({ where: { id: row.id, caseType: fromType }, data: { caseType: toType } });
+      if (updated.count === 1) {
+        await appendEvent(tx, { action: 'demo.case.type.recoded', details: { caseFileId: row.id, fromType, toType } });
+      }
+    });
+  }
+  return rows.length;
+}
+
 /** Fills every demo case file not yet filled; returns how many were filled. */
 export async function seedCaseContent(ctx: SeedCaseContext): Promise<number> {
   // The demo signing secret is the demo password (decision recorded in docs/decisions.md).
@@ -616,6 +641,7 @@ export async function seedCaseContent(ctx: SeedCaseContext): Promise<number> {
     const existing = await getDb().signingCredential.findUnique({ where: { userId: id }, select: { id: true } });
     if (!existing) await setSigningSecret(id, ctx.signingSecret);
   }
+  await recodeLegacyCaseTypes();
   let filled = 0;
   for (const content of DEMO_CASE_CONTENT) {
     if (await fillCase(content, ctx)) filled += 1;

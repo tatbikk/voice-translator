@@ -66,7 +66,7 @@ export async function caseScenario(options: { status?: string } = {}): Promise<C
 
   const file = await createCaseFile({ courtId: court.id, status: options.status ?? 'IN_PREPARATION' });
   await sql(
-    `UPDATE "CaseFile" SET kind = 'FIRST_INSTANCE', "caseType" = 'COMMERCIAL_PAYMENT', subject = 'دعوى أداء',
+    `UPDATE "CaseFile" SET kind = 'FIRST_INSTANCE', "caseType" = '8201', subject = 'دعوى أداء',
        "panelId" = $2, "rapporteurUserId" = $3, procedure = 'WRITTEN', "registeredAt" = now() WHERE id = $1`,
     [file.id, panelId, users.rapporteur.id],
   );

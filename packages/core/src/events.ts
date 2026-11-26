@@ -130,6 +130,8 @@ export const EVENT_TYPES = {
   'demo.account.switched': { outcome: 'DONE', details: detailsOf({ fromUserId: id.nullable(), toUserId: id }) },
   'demo.outbox.viewed': { outcome: 'DONE', details: detailsOf({ count }) },
   'demo.data.seeded': { outcome: 'DONE', details: detailsOf({ users: count, caseFiles: count }) },
+  /** review IR-40: a demo file seeded with a name in place of a case-type code gets the code */
+  'demo.case.type.recoded': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromType: code, toType: code }) },
   'demo.data.reset': {
     outcome: 'DONE',
     details: detailsOf({ previousHeadSeq: count.nullable(), previousHeadHash: hash.nullable() }),

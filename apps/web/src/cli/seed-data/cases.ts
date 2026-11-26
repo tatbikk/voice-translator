@@ -31,7 +31,10 @@ export interface DemoClaim {
 
 export interface DemoCaseContent {
   readonly number: number;
-  readonly caseType: 'COMMERCIAL_PAYMENT' | 'COMMERCIAL_DAMAGES' | 'APPEAL_COMMERCIAL';
+  /** first instance, or the appeal of a first-instance judgment */
+  readonly kind: 'FIRST_INSTANCE' | 'APPEAL';
+  /** a code of the case-type table in force (rules/case-types.json), as on the files filed in Phase 2 */
+  readonly caseType: string;
   readonly subject: string;
   readonly rapporteur: string | null;
   readonly panel: 'fiFirst' | 'fiSecond' | 'apFirst';
@@ -53,7 +56,8 @@ const sa = 'شركة مساهمة';
 export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   {
     number: 1201,
-    caseType: 'COMMERCIAL_PAYMENT',
+    kind: 'FIRST_INSTANCE',
+    caseType: '8201',
     subject: 'أداء ثمن مواد بناء',
     rapporteur: null,
     panel: 'fiFirst',
@@ -69,7 +73,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   },
   {
     number: 1188,
-    caseType: 'COMMERCIAL_PAYMENT',
+    kind: 'FIRST_INSTANCE',
+    caseType: '8201',
     subject: 'أداء ثمن بضاعة موزعة',
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
@@ -84,7 +89,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   },
   {
     number: 1150,
-    caseType: 'COMMERCIAL_PAYMENT',
+    kind: 'FIRST_INSTANCE',
+    caseType: '8201',
     subject: 'أداء ثمن أقمشة',
     rapporteur: 'judge.rapporteur',
     panel: 'fiSecond',
@@ -99,7 +105,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   },
   {
     number: 1103,
-    caseType: 'COMMERCIAL_PAYMENT',
+    kind: 'FIRST_INSTANCE',
+    caseType: '8201',
     subject: 'أداء ثمن معدات تبريد',
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
@@ -114,7 +121,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   },
   {
     number: 1067,
-    caseType: 'COMMERCIAL_DAMAGES',
+    kind: 'FIRST_INSTANCE',
+    caseType: '8202',
     subject: 'تعويض عن إخلال بعقد توريد',
     rapporteur: 'judge.rapporteur',
     panel: 'fiSecond',
@@ -136,7 +144,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   },
   {
     number: 980,
-    caseType: 'COMMERCIAL_PAYMENT',
+    kind: 'FIRST_INSTANCE',
+    caseType: '8201',
     subject: 'أداء ثمن أثاث مكتبي',
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
@@ -163,7 +172,9 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
   },
   {
     number: 312,
-    caseType: 'APPEAL_COMMERCIAL',
+    kind: 'APPEAL',
+    // the judgment appealed is a payment under a commercial contract
+    caseType: '8201',
     subject: 'استئناف حكم في أداء ثمن خدمات نقل',
     rapporteur: 'counsellor.rapporteur',
     panel: 'apFirst',
@@ -174,6 +185,17 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     claims: [{ party: 'a', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 150_000 }],
   },
 ];
+
+/**
+ * The names the seed wrote in "caseType" before review IR-40, and the code of
+ * the table each one stands for: a database seeded before then gets the code
+ * in place at the next run of the seed.
+ */
+export const LEGACY_DEMO_CASE_TYPES: Readonly<Record<string, string>> = {
+  COMMERCIAL_PAYMENT: '8201',
+  COMMERCIAL_DAMAGES: '8202',
+  APPEAL_COMMERCIAL: '8201',
+};
 
 /** The demo texts of deposited and generated documents (data, not code). */
 export const DEMO_TEXTS = {
