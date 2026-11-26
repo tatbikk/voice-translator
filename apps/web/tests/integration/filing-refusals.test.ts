@@ -221,7 +221,7 @@ describe('a draft belongs to its author alone (memo row 2)', () => {
     const suppressed = () => count(`SELECT count(*) FROM "RateLimitHit" WHERE key LIKE 'refusal-suppressed|session|%'`);
     const suppressedBefore = await suppressed();
     const { result: answers, events } = await capturingEvents(async () => {
-      const seen: { status: number; code: string | undefined }[] = [];
+      const seen: { status: number; code: string | null }[] = [];
       for (let i = 0; i < budget - used + 3; i += 1) {
         const res = await client.get(`/api/v1/filings/${own}/documents/${randomUUID()}/file`);
         seen.push({ status: res.status, code: res.code });
