@@ -69,6 +69,18 @@ function opaqueCaseFileWrites(file: SourceFile): string[] {
   return out;
 }
 
+/**
+ * The guarded fields a `data` object writes: as a property (`status: next`) or as a
+ * shorthand property (`{ status, facts }`, review of the fix), never a value that
+ * merely bears the name (`{ x: status }`).
+ */
+function guardedFields(data: string): string[] {
+  const found = new Set<string>();
+  for (const m of data.matchAll(/\b(status|facts|registrationStampedAt)\s*:/g)) found.add(m[1]!);
+  for (const m of data.matchAll(/[{,]\s*(status|facts|registrationStampedAt)\s*(?=[,}])/g)) found.add(m[1]!);
+  return [...found];
+}
+
 describe('the declarations of the procedure are applied in one place (independent review IR-10)', () => {
   it('finds the applier and the executors', () => {
     expect(server.map((f) => f.rel)).toContain(APPLIER);
@@ -95,8 +107,7 @@ describe('the declarations of the procedure are applied in one place (independen
     const hits: string[] = [];
     for (const file of server.filter((f) => f.rel !== APPLIER)) {
       for (const write of caseFileWrites(file)) {
-        const field = /\b(status|facts|registrationStampedAt)\s*:/.exec(write.data);
-        if (field) hits.push(`${write.at}: writes ${field[1]!}`);
+        for (const field of guardedFields(write.data)) hits.push(`${write.at}: writes ${field}`);
       }
       hits.push(...findAll(file, 'code', /UPDATE\s+"CaseFile"\s+SET[^`;]*?(?:\bstatus\b|\bfacts\b|"registrationStampedAt")/g));
     }
@@ -122,6 +133,15 @@ describe('the declarations of the procedure are applied in one place (independen
     const sample = { path: 'x', rel: 'server/x.ts', text: '', code: '', bare: 'await tx.caseFile.update({ where: { id }, data: { status: next, x: { y: 1 } } });' } as SourceFile;
     expect(caseFileWrites({ ...sample, text: sample.bare })).toEqual([{ at: 'src/server/x.ts:1', data: '{ status: next, x: { y: 1 } }' }]);
     expect(opaqueCaseFileWrites({ ...sample, text: sample.bare })).toEqual([]);
+  });
+
+  it('detects a guarded field written as a shorthand property, and not a value bearing its name (the detector itself)', () => {
+    const fields = (bare: string) => caseFileWrites({ path: 'x', rel: 'server/x.ts', text: bare, code: bare, bare }).flatMap((w) => guardedFields(w.data));
+    expect(fields('await tx.caseFile.update({ where: { id }, data: { status, facts } });')).toEqual(['status', 'facts']);
+    expect(fields('await tx.caseFile.update({ where: { id }, data: { subject, registrationStampedAt } });')).toEqual(['registrationStampedAt']);
+    expect(fields('await tx.caseFile.update({ where: { id }, data: { status: next } });')).toEqual(['status']);
+    expect(fields('await tx.caseFile.update({ where: { id }, data: { subject: status, note: { facts: 1 } } });')).toEqual(['facts']);
+    expect(fields('await tx.caseFile.update({ where: { id }, data: { subject: status } });')).toEqual([]);
   });
 
   it('detects a write whose fields are built elsewhere (the detector itself)', () => {
