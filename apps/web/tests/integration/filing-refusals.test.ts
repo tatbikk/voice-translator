@@ -177,6 +177,32 @@ describe('a draft belongs to its author alone (memo row 2)', () => {
     await expectRefused(() => clerk.get(`/api/v1/filings/${draftId}/documents/${documentId}/file`), 404, 'NOT_FOUND');
   });
 
+  it('answers 404 for a document of another draft asked through one’s own draft, on reading, editing and removal, and downloads nothing (independent review IR-17)', async () => {
+    const documentState = () =>
+      one<{ title: string | null; removedAt: Date | null }>('SELECT title, "removedAt" FROM "FilingDocument" WHERE id = $1', [documentId]);
+    const before = await documentState();
+    // Another lawyer through his own draft, and the author through another draft of his own.
+    const other = await as('otherLawyer');
+    const lawyer = await as('lawyer');
+    const throughOwn = [
+      { client: other, draft: await createDraft(other) },
+      { client: lawyer, draft: await createDraft(lawyer) },
+    ];
+    for (const { client, draft } of throughOwn) {
+      const read = await expectRefused(() => client.get(`/api/v1/filings/${draft}/documents/${documentId}/file`), 404, 'NOT_FOUND');
+      expect(read.filter((e) => e.action === 'document.downloaded'), 'nothing is downloaded').toEqual([]);
+      for (const body of [{ title: 'عنوان آخر' }, { nature: 'PHOTOCOPY' }, { remove: true }]) {
+        const events = await expectRefused(() => updateDocument(client, draft, documentId, body), 404, 'NOT_FOUND');
+        expect(events.filter((e) => e.action === 'filing.document.updated'), 'nothing is changed').toEqual([]);
+      }
+    }
+    expect(await documentState(), 'the document keeps its title and stays in its draft').toEqual(before);
+    // Through its own draft the same document is served (the positive witness).
+    const own = await capturingEvents(() => lawyer.get(`/api/v1/filings/${draftId}/documents/${documentId}/file`));
+    expect(own.result.status, describeResponse(own.result)).toBe(200);
+    expect(own.events.filter((e) => e.action === 'document.downloaded').map((e) => e.details.documentId)).toEqual([documentId]);
+  });
+
   it('serves the author his own document as an attachment, never as a web page', async () => {
     const res = await (await as('lawyer')).get(`/api/v1/filings/${draftId}/documents/${documentId}/file`);
     expect(res.status).toBe(200);
@@ -701,6 +727,27 @@ describe('the limits of a draft and of an account hold, whatever is removed (rev
     const before = await storedObjects();
     await expectRefused(() => upload(client, draftId, { kind: 'EXHIBIT', name: 'over.pdf', bytes: pdfBytes('over'), nature: 'ORIGINAL' }), 429, 'TOO_MANY_REQUESTS');
     expect(await storedObjects()).toBe(before);
+  });
+
+  it('refuses a commercial-register lookup at the rate step once the session has used its budget, and counts it apart from another session (independent review IR-17, memo row 22)', async () => {
+    const user = await createUser({ roles: ['LAWYER'], label: 'many-lookups' });
+    const client = await login(user);
+    const lookup = (c: Client) => c.get('/api/v1/registers/commercial', { query: { number: 'RC-DEMO-1001' } });
+    const rule = SECURITY_POLICY.registerLookup.perSession;
+    // Every lookup of the budget is answered, the last one included.
+    for (let i = 0; i < rule.max; i += 1) {
+      const res = await lookup(client);
+      expect(res.status, `lookup ${String(i + 1)} of ${String(rule.max)}: ${describeResponse(res)}`).toBe(200);
+    }
+    const { result, events } = await capturingEvents(() => lookup(client));
+    expect({ status: result.status, code: result.code }, describeResponse(result)).toEqual({ status: 429, code: 'TOO_MANY_REQUESTS' });
+    expect(result.error?.retryAfterSeconds).toBe(Math.ceil(rule.windowMs / 1000));
+    const denied = deniedEvents(events);
+    expect(denied.map((e) => ({ step: e.details.step, target: e.details.target }))).toEqual([{ step: 'RATE', target: 'registers.commercial.lookup' }]);
+    expect(events.filter((e) => e.action === 'registers.commercial.looked-up'), 'the register is not asked').toEqual([]);
+    // The budget is the session's: a second session of the same lawyer still looks up.
+    const second = await login(user);
+    expect((await lookup(second)).status).toBe(200);
   });
 
   it('refuses a new draft to an account that already holds the most open drafts it may', async () => {

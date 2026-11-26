@@ -326,6 +326,20 @@ export const SITUATIONS: Readonly<Record<string, CaseSnapshot>> = {
       { code: 'APPEAL', partyId: PARTY_J, endsInDays: 25 },
     ],
   }),
+  // The same file once every appeal limit has run out, nobody having appealed (independent review IR-18).
+  S27: snapshot({
+    status: 'JUDGMENT_ISSUED',
+    facts: ['REPORT_DEPOSITED', 'FEES_PAID', 'JUDGMENT_PRONOUNCED', 'ACCOUNT_SERVICE_ANSWERED'],
+    defenseCounsel: true,
+    a: ['JUDGMENT_SERVED', 'JUDGMENT_CREDITOR'],
+    b: ['JUDGMENT_SERVED'],
+    j: ['JUDGMENT_SERVED'],
+    deadlines: [
+      { code: 'APPEAL', partyId: PARTY_A, endsInDays: -1 },
+      { code: 'APPEAL', partyId: PARTY_B, endsInDays: -1 },
+      { code: 'APPEAL', partyId: PARTY_J, endsInDays: -1 },
+    ],
+  }),
   S26: snapshot({
     status: 'UNDER_APPEAL',
     facts: ['REPORT_DEPOSITED', 'FEES_PAID', 'JUDGMENT_PRONOUNCED', 'ACCOUNT_SERVICE_ANSWERED', 'ENFORCEMENT_SUSPENDED'],
