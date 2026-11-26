@@ -116,6 +116,20 @@ describe('an invalid rule file is refused before loading (review P1-S-10)', () =
     ['a way of applying the fee bands the engine does not know', 'FEES', (c) => ((c.schedule as Record<string, unknown>).method = { value: 'EACH_SLICE_AT_ITS_RATE', uncertain: true, articles: [619] })],
     ['a way of applying the fee bands without its uncertainty', 'FEES', (c) => ((c.schedule as Record<string, unknown>).method = { value: 'BAND_RATE_ON_WHOLE_BASE', articles: [619] })],
     ['a negative fee for an unvalued claim', 'FEES', (c) => ((c.schedule as Record<string, unknown>).unvaluedClaimFee = { value: -1, uncertain: true, articles: [619] })],
+    // The reviewer of the IR-03 / IR-04 fix: the two settings may be absent from the version loaded
+    // before they existed (2026-08-23.1) only; a later version without them would bring back the
+    // rules of the code, unmarked. The first FEES file is that version, without either setting.
+    ['a later version without the way of applying the bands or the fee of an unvalued claim', 'FEES', (c) => Object.assign(c, { version: '2027-01-01.1', validFrom: '2027-01-01', validTo: null })],
+    [
+      'a later version without the way of applying the bands',
+      'FEES',
+      (c) => Object.assign(c, { version: '2027-01-01.1', validFrom: '2027-01-01', validTo: null, schedule: { ...(c.schedule as object), unvaluedClaimFee: { value: 0, uncertain: true, articles: [619] } } }),
+    ],
+    [
+      'a later version without the fee of an unvalued claim',
+      'FEES',
+      (c) => Object.assign(c, { version: '2027-01-01.1', validFrom: '2027-01-01', validTo: null, schedule: { ...(c.schedule as object), method: { value: 'BAND_RATE_ON_WHOLE_BASE', uncertain: true, articles: [619] } } }),
+    ],
     ['an item art. 20 does not have', 'REFERRALS', (c) => ((c.prosecution as { communication: { anyPublicLawPerson?: number } }).communication.anyPublicLawPerson = 6)],
   ];
   for (const [what, kind, change] of cases) {

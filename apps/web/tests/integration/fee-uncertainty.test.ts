@@ -13,6 +13,8 @@
 //     worked out again where the amount is shown.
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { UserSubject } from '@mahkama/core';
+import { caseSnapshot } from '@/server/cases/snapshot';
+import { caseView } from '@/server/cases/view';
 import { documentStore } from '@/server/documents/store';
 import { intentView, receiptView } from '@/server/filings/receipt';
 import { cashierLedger } from '@/server/offices/cashier';
@@ -134,6 +136,9 @@ describe('the fee as the screen «الرسم القضائي» details it', () =>
   for (const [what, claim] of [
     ['a debt whose amount was left empty', UNVALUED_DEBT],
     ['«طلب آخر» without amount', UNVALUED_OTHER],
+    // The reviewer of the IR-03 / IR-04 fix: typing 0 was a way round the line and its mark.
+    ['a debt whose amount was written as zero', { ...UNVALUED_DEBT, amountCents: 0 }],
+    ['«طلب آخر» whose amount was written as zero', { ...UNVALUED_OTHER, amountCents: 0 }],
   ] as const) {
     it(`gives ${what} a line of its own, marked uncertain, and the mark goes with the amount to the payment page`, async () => {
       const lawyer = await as('lawyer');
@@ -229,6 +234,25 @@ describe('the mark goes with the amount wherever it is shown (independent review
     expect(containsRightToLeft(marked, FILING.uncertain), marked.join(' | ')).toBe(true);
     expect(containsRightToLeft(await filingReceiptOf(settled), FILING.uncertain)).toBe(false);
   });
+
+  // The reviewer of the IR-26 fix: the payments table and the treasury entries of the case page showed
+  // 5.570 dirhams without the mark the assessed fee above them carried.
+  it('on the case page, in the table of payments and in the treasury entries of the court fee', async () => {
+    const viewOf = async (file: Filed) => {
+      const snapshot = await caseSnapshot(file.caseFileId, new Date());
+      if (!snapshot) throw new Error('no snapshot');
+      const view = await caseView(file.caseFileId, await subjectOf(cast.lawyer), snapshot);
+      if (!view) throw new Error('no view');
+      return view.payments;
+    };
+    const marked = await viewOf(model);
+    expect(marked.fees.map((f) => [f.totalCents, f.uncertain])).toEqual([[BigInt(MODEL_CASE_FEE_CENTS), true]]);
+    expect(marked.payments.map((p) => [p.purpose, p.amountCents, p.uncertain])).toEqual([['COURT_FEE', BigInt(MODEL_CASE_FEE_CENTS), true]]);
+    expect(marked.treasury.map((e) => [e.purpose, e.amountCents, e.uncertain])).toEqual([['COURT_FEE', BigInt(MODEL_CASE_FEE_CENTS), true]]);
+    const plain = await viewOf(settled);
+    expect(plain.payments.map((p) => [p.amountCents, p.uncertain])).toEqual([[BigInt(PLEADING_FEE_CENTS), false]]);
+    expect(plain.treasury.map((e) => [e.amountCents, e.uncertain])).toEqual([[BigInt(PLEADING_FEE_CENTS), false]]);
+  });
 });
 
 describe('the mark is read from the assessment stored with the payment', () => {
@@ -256,6 +280,15 @@ describe('the mark is read from the assessment stored with the payment', () => {
   it('is shown when the record does not say what the amount rests on', async () => {
     const pleading = await paymentOf(settled);
     expect(await clone(pleading.intentId, '00000000-0000-4000-8000-0000000000c3', `'{}'::jsonb`)).toBe(true);
+  });
+
+  // The reviewer of the IR-26 fix: a payment opened under the first fee table (before 26 November
+  // 2026) kept its marks, under which 5.000,01 dirhams (135 dirhams) carried none, and its file,
+  // registered later, was shown and printed without the mark.
+  it('is shown for a payment opened before the assessment said by which way its bands were applied', async () => {
+    const { intentId } = await paymentOf(model);
+    const before = `jsonb_set(breakdown - 'method', '{lines}', (SELECT jsonb_agg((line - 'claimNature') || '{"uncertain": false}'::jsonb) FROM jsonb_array_elements(breakdown->'lines') AS line))`;
+    expect(await clone(intentId, '00000000-0000-4000-8000-0000000000c4', before)).toBe(true);
   });
 
   it('comes, for a payment recorded without its opening, from the assessment kept on its file', async () => {

@@ -231,6 +231,21 @@ describe('the check before signature: it warns, it does not refuse (study, «م�
     expect(checks.filter((c) => c.level === 'BLOCKING')).toEqual([]);
   });
 
+  // The reviewer of the IR-03 / IR-04 fix: an amount of zero is a claim without a fixed amount, for
+  // the fee (its own marked line) and for this warning alike (decision 68).
+  it('warns that the amount of a debt or of damages is missing when it is written as zero', () => {
+    const amountWarnings = (claims: FilingCard['claims']) =>
+      checksOf({ card: { ...MODEL, claims } }).filter((c) => c.code === 'CLAIM_AMOUNT_MISSING');
+    for (const nature of ['DEBT', 'DAMAGES'] as const) {
+      expect(amountWarnings([{ key: 'c', nature, amountCents: 0 }]), nature).toEqual([
+        expect.objectContaining({ code: 'CLAIM_AMOUNT_MISSING', level: 'WARNING', article: 77, section: 'CLAIMS' }),
+      ]);
+      expect(amountWarnings([{ key: 'c', nature, amountCents: 1 }]), nature).toEqual([]);
+    }
+    // As for an empty amount, only a debt or damages are warned about.
+    expect(amountWarnings([{ key: 'c', nature: 'OTHER', amountCents: 0 }])).toEqual([]);
+  });
+
   it('blocks only on what the filing cannot do without: the application, the nature of each exhibit, the attestation', () => {
     expect(checksOf({ application: { present: false, fixedCopyReady: false } }).map((c) => c.code)).toContain('APPLICATION_MISSING');
     expect(checksOf({ application: { present: true, fixedCopyReady: false } }).map((c) => c.code)).toContain('FIXED_COPY_NOT_READY');
