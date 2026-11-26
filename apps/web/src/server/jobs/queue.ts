@@ -139,8 +139,10 @@ const UNREAD = ['INVALID_PAYLOAD', 'UNKNOWN_JOB_TYPE'];
  * reads. During a deployment the new web may queue a job the old worker still
  * claims: the legal basis added to four job types (decision 74) is refused by the
  * old worker's strict schemas, and the receipt of art. 628 or the fixed copy would
- * never be printed (review of the IR-12 fix). Run once at the start of the worker;
- * a job this worker cannot read either stays dead. Returns how many were put back.
+ * never be printed (review of the IR-12 fix). Run at the start of the worker and
+ * then every minute, because the old worker may run on after the new one started;
+ * this worker never declares dead unread a job it reads, so nothing loops. A job
+ * this worker cannot read either stays dead. Returns how many were put back.
  */
 export async function reviveUnreadJobs(): Promise<number> {
   const db = getDb();

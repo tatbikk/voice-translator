@@ -20,7 +20,8 @@ const MAINTENANCE_EVERY_MS = 10 * 60_000;
 
 async function main(): Promise<void> {
   await enforceBoot('worker');
-  // The jobs an earlier worker declared dead unread, during a deployment (review of the IR-12 fix).
+  // The jobs an earlier worker declared dead unread, during a deployment (review of the IR-12 fix),
+  // before any task; the tick below puts back those it declares while it drains.
   await reviveUnreadJobs();
   const scheduler = createScheduler({
     beforeEach: () => clock.refresh(),
@@ -30,6 +31,9 @@ async function main(): Promise<void> {
   });
   scheduler.every(QUEUE_EVERY_MS, 'jobs', (stopping) => runDueJobs(JOB_HANDLERS, { stopping }));
   scheduler.every(THROTTLE_EVERY_MS, 'throttle-summaries', () => flushThrottleSummaries());
+  // The old worker may run on after this one started (the platform drains it): what it declares
+  // dead unread meanwhile is put back on the next tick, not at the next start.
+  scheduler.every(THROTTLE_EVERY_MS, 'revive-unread-jobs', () => reviveUnreadJobs());
   scheduler.every(MAINTENANCE_EVERY_MS, 'chain-verification', (stopping) => verifyEventChain({ stopping }));
   scheduler.every(MAINTENANCE_EVERY_MS, 'cleanup', () => cleanupExpired());
 
