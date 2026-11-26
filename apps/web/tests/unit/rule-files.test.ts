@@ -52,6 +52,22 @@ describe('the rule files of the repository', () => {
     expect(closed.map((f) => f.validTo)).toEqual([current[0]?.validFrom]);
   });
 
+  it('mark uncertain the districts of the table in force, and name in its source the open question on the real districts (review of IR-08)', () => {
+    const current = files.filter((f) => f.kind === 'DISTRICTS' && f.validTo === null);
+    expect(current).toHaveLength(1);
+    const content = current[0]?.content as { uncertain?: unknown; source: string; localities: string[]; districts: unknown[] };
+    // The districts are assumed for the demo: whether an address lies within one, and the time to
+    // appear computed from it (arts. 88 and 89), carry «قيمة مؤقتة غير مؤكدة» until س42 is answered.
+    expect(content.uncertain).toBe(true);
+    expect(content.source).toContain('س42');
+    // The version loaded before is closed the day its successor takes effect, never rewritten; the
+    // localities and the districts are the same.
+    const closed = files.filter((f) => f.kind === 'DISTRICTS' && f.validTo !== null);
+    expect(closed.map((f) => f.validTo)).toEqual([current[0]?.validFrom]);
+    const before = closed[0]?.content as { localities: string[]; districts: unknown[] };
+    expect([content.localities, content.districts]).toEqual([before.localities, before.districts]);
+  });
+
   it('mark uncertain, in the fee table in force, every band, the way the bands apply and the fee of an unvalued claim (independent review IR-03, IR-04)', () => {
     const current = files.filter((f) => f.kind === 'FEES' && f.validTo === null);
     expect(current).toHaveLength(1);

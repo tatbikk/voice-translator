@@ -77,7 +77,8 @@ async function fileModelCase(page: Page): Promise<string> {
       await expect(kind.getByRole('radio', { name: 'محل الإقامة', exact: true })).not.toBeChecked();
       await block.getByLabel('العنوان', { exact: true }).fill(party.domicile?.value ?? '');
       await block.getByLabel('المدينة', { exact: true }).selectOption(party.domicile?.locality ?? '');
-      await expect(block.getByLabel('البلد', { exact: true })).toHaveCount(0);
+      // «البلد», required once «خارج تراب المملكة» is chosen (review of IR-08), is not asked of an address in the Kingdom.
+      await expect(block.getByLabel(/^البلد/)).toHaveCount(0);
     }
     if (party.quality) await block.getByLabel('صفة الطرف').fill(party.quality);
     if (party.email) await block.getByLabel('البريد الإلكتروني').fill(party.email);

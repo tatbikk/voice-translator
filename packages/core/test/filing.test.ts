@@ -16,6 +16,7 @@ import {
   preSignatureChecks,
   referralsFor,
   ruleInForce,
+  withPersonKind,
   type AuthorizationContext,
   type CaseSnapshot,
   type CaseTypeRuleSet,
@@ -199,14 +200,42 @@ describe('the case card (art. 77)', () => {
     const kept = residence.parties.find((p) => p.key === 'jim')!;
     expect(kept.domicile).toBeUndefined();
     expect(kept.residence).toEqual({ value: 'باريس، شارع المثال، رقم 4', country: 'فرنسا', source: 'DECLARED' });
-    // A country left blank in the form is absent.
-    const blank = FilingCardSchema.parse({ ...MODEL, parties: [...others, { ...guarantor, domicile: { ...guarantor.domicile!, country: ' ' } }] });
-    expect(blank.parties.find((p) => p.key === 'jim')?.domicile).toEqual(guarantor.domicile);
+    // «خارج تراب المملكة» chosen and «البلد» left blank, or holding invisible marks only, is refused on
+    // the country: the address would lie nowhere, and art. 89 asks only that it lie outside the Kingdom
+    // (review of IR-08; the blank country was dropped before, the address then registered as unknown).
+    for (const country of ['', ' ', String.fromCodePoint(0x200f)]) {
+      const blank = FilingCardSchema.safeParse({ ...MODEL, parties: [...others, { ...guarantor, domicile: { value: 'مدريد، شارع المثال، رقم 3', country, source: 'DECLARED' } }] });
+      expect(blank.success, JSON.stringify(country)).toBe(false);
+      if (!blank.success) expect(blank.error.issues.map((i) => i.path.join('.'))).toContain('parties.2.domicile.country');
+    }
     // One address is in one place: a locality of the table, or a country outside the Kingdom.
     const both = FilingCardSchema.safeParse({ ...MODEL, parties: [...others, { ...guarantor, domicile: { ...guarantor.domicile!, country: 'فرنسا' } }] });
     expect(both.success).toBe(false);
     if (!both.success) expect(both.error.issues.map((i) => i.path.join('.'))).toContain('parties.2.domicile.country');
     expect(FilingCardSchema.safeParse({ ...MODEL, parties: [...others, { ...guarantor, residence: { ...abroad, country: 'ب'.repeat(101) } }] }).success).toBe(false);
+  });
+
+  it('keeps with a party whose kind of person changes none of what the card no longer shows for it (review of IR-08)', () => {
+    const domicile = { value: 'الدار البيضاء، حي المثال، رقم 5', locality: 'casablanca', source: 'DECLARED' as const };
+    const office = { value: 'الدار البيضاء، شارع النموذج، رقم 1', locality: 'casablanca', source: 'COMMERCIAL_REGISTER' as const };
+    const natural = { key: 'x', side: 'DEFENDANT' as const, personKind: 'NATURAL' as const, name: 'السيد سين', capacityStatus: 'FULL' as const, domicile, residence: domicile };
+    // A natural person who becomes a company keeps neither his capacity nor his domicile and residence,
+    // which the card no longer shows and which would be registered with their place.
+    const legal = withPersonKind(natural, 'LEGAL');
+    expect(legal).toEqual({ key: 'x', side: 'DEFENDANT', personKind: 'LEGAL', name: 'السيد سين' });
+    // A company that becomes a natural person keeps neither its office nor its branch; one that
+    // becomes a public-law person keeps both, which the card shows for it too.
+    const company = { key: 'y', side: 'DEFENDANT' as const, personKind: 'LEGAL' as const, name: 'شركة باء', registeredOffice: office, branch: office };
+    expect(withPersonKind(company, 'NATURAL')).toEqual({ key: 'y', side: 'DEFENDANT', personKind: 'NATURAL', name: 'شركة باء' });
+    expect(withPersonKind(company, 'PUBLIC')).toEqual({ ...company, personKind: 'PUBLIC' });
+    // The public kind is a public-law person's only.
+    const state = { ...company, personKind: 'PUBLIC' as const, publicEntityKind: 'STATE' as const };
+    expect(withPersonKind(state, 'LEGAL')).toEqual({ ...company, personKind: 'LEGAL' });
+    // The kind unchanged, nothing changes; what it gives is what the schema accepts.
+    expect(withPersonKind(natural, 'NATURAL')).toEqual(natural);
+    for (const kind of ['NATURAL', 'LEGAL', 'PUBLIC'] as const) {
+      for (const party of [natural, company, state]) expect(FilingCardSchema.safeParse({ parties: [withPersonKind(party, kind)], summary: '', claims: [] }).success, kind).toBe(true);
+    }
   });
 
   it('names the four sections the depositor attests «مطابق للمقال»', () => {

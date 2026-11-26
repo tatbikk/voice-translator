@@ -7,8 +7,18 @@
 //     the locality is known, unknown when it is not; an address abroad is not;
 //   - a residence stays a residence (G012), never a domicile;
 //   - a locality the districts table does not know is refused with the card;
-//   - the case page shows the quality with the party, to whoever sees the
-//     party, and the contacts stay as visible as they were.
+//   - the case page shows the quality with the party, under the rules of the
+//     contacts, which stay as visible as they were.
+// The review of that fix, written before its code:
+//   - an office or a branch claimed from the register that does not give it
+//     as it is keeps no place, and whether it lies within the district is
+//     unknown;
+//   - «خارج تراب المملكة» with «البلد» left blank is refused on the country;
+//   - a litigant reads his own quality, not the other parties', as their
+//     identity numbers;
+//   - the database refuses «within» or «outside» the district for an address
+//     with neither locality nor country, and the migration turns into
+//     «unknown» what the seed of Phase 1 assumed.
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
@@ -16,6 +26,7 @@ import { caseView } from '@/server/cases/view';
 import { ruleSourceFiles } from '@/server/rules/store';
 import { MODEL_CASE, withParties, type CardParty } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
+import { migrateDeploy } from '../helpers/cli';
 import { capturingEvents, events, one, sql } from '../helpers/db';
 import { createUser, theCourt, type TestUser } from '../helpers/factories';
 import { createDraft, fileCase, getDraft, giveSigningSecret, updateDraft, type FiledCase } from '../helpers/filings';
@@ -44,6 +55,24 @@ const DOMICILED_ABROAD: CardParty = {
   name: 'السيدة طاء',
   quality: 'كفيلة متضامنة',
   domicile: { value: 'مدريد، شارع المثال، رقم 3', country: 'إسبانيا', source: 'DECLARED' },
+};
+
+/**
+ * A company whose office was fetched from the register, then typed again: the form kept the
+ * register's locality with the office it no longer showed as the register's (review of IR-08). The
+ * form now sends an office typed by hand with no place; the server, for a card that still claims the
+ * register for it, keeps it declared and with no place. And a branch claimed «from the register»
+ * that the register does not give, with a locality typed beside it.
+ */
+const OFFICE_TYPED_AGAIN: CardParty = {
+  key: 'taa-sad',
+  side: 'DEFENDANT',
+  personKind: 'LEGAL',
+  name: 'شركة تاء صاد للنقل',
+  quality: 'مدعى عليها',
+  idNumber: 'RC-DEMO-3003',
+  registeredOffice: { value: 'الرباط، شارع المثال، رقم 9', locality: 'berrechid', source: 'COMMERCIAL_REGISTER' },
+  branch: { value: 'الرباط، حي المثال، رقم 4', locality: 'casablanca', source: 'COMMERCIAL_REGISTER' },
 };
 
 /** A guarantor whose domicile names no locality: whether it lies within the district is unknown. */
@@ -118,7 +147,7 @@ beforeAll(async () => {
   const secret = await giveSigningSecret(lawyerUser.id);
   lawyer = await login(lawyerUser);
   model = await fileCase(lawyer, secret, { exhibits: 1 });
-  mixed = await fileCase(lawyer, secret, { exhibits: 1, card: withParties(MODEL_CASE, [RESIDENT_IN_RABAT, DOMICILED_ABROAD, LOCALITY_UNKNOWN]) });
+  mixed = await fileCase(lawyer, secret, { exhibits: 1, card: withParties(MODEL_CASE, [RESIDENT_IN_RABAT, DOMICILED_ABROAD, LOCALITY_UNKNOWN, OFFICE_TYPED_AGAIN]) });
 }, 180_000);
 
 describe('the parties of the model case, as registered (independent review IR-08)', () => {
@@ -174,6 +203,32 @@ describe('a residence, a locality outside the district, an address abroad, a loc
     expect((await getDraft(lawyer, draftId)).draft.card.parties).toEqual([]);
   });
 
+  it('keeps no place with an office or a branch claimed from the register that does not give them so: whether they lie within the district is unknown (review of IR-08)', async () => {
+    // The card saved: the office typed again, and the branch the register does not give, are declared, with no locality.
+    const draftId = await createDraft(lawyer);
+    const saved = await updateDraft(lawyer, draftId, { card: withParties(MODEL_CASE, [OFFICE_TYPED_AGAIN]) });
+    expect(saved.status, describeResponse(saved)).toBe(200);
+    const party = (await getDraft(lawyer, draftId)).draft.card.parties.find((p) => p.key === OFFICE_TYPED_AGAIN.key);
+    expect(party?.registeredOffice).toEqual({ value: 'الرباط، شارع المثال، رقم 9', source: 'DECLARED' });
+    expect(party?.branch).toEqual({ value: 'الرباط، حي المثال، رقم 4', source: 'DECLARED' });
+    // The file registered: neither lies within the district on the strength of a locality it does not have.
+    const rows = (await addressesOf(mixed.caseFileId)).filter((r) => r.name === OFFICE_TYPED_AGAIN.name);
+    expect(rows).toEqual([
+      { name: 'شركة تاء صاد للنقل', quality: 'مدعى عليها', kind: 'BRANCH', locality: null, country: null, within: null },
+      { name: 'شركة تاء صاد للنقل', quality: 'مدعى عليها', kind: 'REGISTERED_OFFICE', locality: null, country: null, within: null },
+    ]);
+  });
+
+  it('refuses, and records the refusal of, an address outside the Kingdom whose country is left blank (review of IR-08)', async () => {
+    const draftId = await createDraft(lawyer);
+    const blank: CardParty = { ...DOMICILED_ABROAD, domicile: { value: 'مدريد، شارع المثال، رقم 3', country: '', source: 'DECLARED' } };
+    const { result, events: appended } = await capturingEvents(() => updateDraft(lawyer, draftId, { card: withParties(MODEL_CASE, [blank]) }));
+    expect(result.status, describeResponse(result)).toBe(422);
+    expect(result.error?.fields).toEqual({ 'card.parties.3.domicile.country': 'errors.field.invalid' });
+    expect(appended.some((e) => e.action === 'filing.refused')).toBe(true);
+    expect((await getDraft(lawyer, draftId)).draft.card.parties).toEqual([]);
+  });
+
   it('refuses a card whose address names both a locality and a country', async () => {
     const draftId = await createDraft(lawyer);
     const both: CardParty = { ...DOMICILED_ABROAD, domicile: { value: 'مدريد، شارع المثال، رقم 3', locality: 'casablanca', country: 'إسبانيا', source: 'DECLARED' } };
@@ -191,17 +246,64 @@ describe('the quality on the case page', () => {
     }
   });
 
-  it('shows it to a litigant of the file, whose view of the other parties’ contacts is unchanged (review P1-S-14)', async () => {
+  it('shows a litigant of the file his own quality, and the other parties’ under the rules of their contacts (review P1-S-14; review of IR-08)', async () => {
     await sql(`UPDATE "CaseParty" SET "litigantUserId" = $2, "eServiceAcceptedAt" = now(), facts = array_append(facts, 'E_SERVICE_ACCEPTED') WHERE "caseFileId" = $1 AND "displayName" = 'السيد جيم'`, [
       model.caseFileId,
       litigant.id,
     ]);
     const view = await viewAs(litigant, model.caseFileId);
     expect(view).not.toBeNull();
-    expect(view!.parties.map((p) => [p.displayName, p.quality])).toEqual(MODEL_CASE.parties.map((p) => [p.name, p.quality ?? null]));
+    // The item asks for the quality «under the existing visibility rules for contacts»: like the
+    // identity number, a litigant reads his own, not the other parties'.
+    expect(view!.parties.map((p) => [p.displayName, p.quality])).toEqual(MODEL_CASE.parties.map((p) => [p.name, p.name === 'السيد جيم' ? (p.quality ?? null) : null]));
+    expect(view!.parties.find((p) => p.displayName === 'السيد جيم')?.quality).toBe('كفيل متضامن');
     for (const party of view!.parties.filter((p) => p.displayName !== 'السيد جيم')) {
       expect(party.idNumber ?? null).toBeNull();
       expect(party.addresses.filter((a) => a.kind === 'ELECTRONIC' || a.kind === 'PHONE')).toEqual([]);
     }
   });
+});
+
+describe('whether an address lies within the district is known only with its place (review of IR-08)', () => {
+  /** The migration that turns into «unknown» what the seed of Phase 1 assumed, and keeps it so. */
+  const MIGRATION = '20261126140000_party_address_district_needs_place';
+  const CHECK = 'PartyAddress_district_needs_place_check';
+
+  /** The domicile of the guarantor of the model case: in Casablanca, within the district. */
+  async function guarantorDomicile(): Promise<{ id: string; locality: string | null; within: boolean | null }> {
+    return one(
+      `SELECT a.id, a.locality, a."withinCourtDistrict" AS within
+         FROM "PartyAddress" a JOIN "CaseParty" p ON p.id = a."partyId"
+        WHERE p."caseFileId" = $1 AND p."displayName" = 'السيد جيم' AND a.kind = 'DOMICILE'`,
+      [model.caseFileId],
+    );
+  }
+
+  it('refuses an address said within or outside the district without its locality or its country', async () => {
+    const { id } = await guarantorDomicile();
+    await expect(sql(`UPDATE "PartyAddress" SET locality = NULL WHERE id = $1`, [id])).rejects.toMatchObject({ code: '23514', constraint: CHECK });
+    await expect(sql(`UPDATE "PartyAddress" SET locality = NULL, "withinCourtDistrict" = FALSE WHERE id = $1`, [id])).rejects.toMatchObject({ code: '23514', constraint: CHECK });
+    // Without its place, it is unknown.
+    expect(await sql(`UPDATE "PartyAddress" SET locality = NULL, "withinCourtDistrict" = NULL WHERE id = $1 RETURNING id`, [id])).toHaveLength(1);
+    await sql(`UPDATE "PartyAddress" SET locality = 'casablanca', "withinCourtDistrict" = TRUE WHERE id = $1`, [id]);
+  });
+
+  it('makes unknown, on a database seeded before, an address the seed wrote within the district without its locality', async () => {
+    // Back to the state before the migration: the check gone, and the domicile as the seed of Phase 1
+    // wrote every demo address, «within the district», with no locality.
+    await sql(`ALTER TABLE "PartyAddress" DROP CONSTRAINT "${CHECK}"`);
+    await sql(`DELETE FROM "_prisma_migrations" WHERE migration_name = $1`, [MIGRATION]);
+    const { id } = await guarantorDomicile();
+    await sql(`UPDATE "PartyAddress" SET locality = NULL, "withinCourtDistrict" = TRUE WHERE id = $1`, [id]);
+    migrateDeploy();
+    expect(await guarantorDomicile()).toEqual({ id, locality: null, within: null });
+    // An address with its place keeps what the registration read: the offices of the model case.
+    const offices = (await addressesOf(model.caseFileId)).filter((r) => r.kind === 'REGISTERED_OFFICE');
+    expect(offices.map((r) => [r.locality, r.within])).toEqual([
+      ['casablanca', true],
+      ['casablanca', true],
+    ]);
+    const constraints = await sql<{ conname: string }>(`SELECT conname FROM pg_constraint WHERE conrelid = '"PartyAddress"'::regclass AND conname = $1`, [CHECK]);
+    expect(constraints).toHaveLength(1);
+  }, 120_000);
 });
