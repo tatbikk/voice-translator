@@ -3,10 +3,13 @@
 // its attempt counted, or DEAD once the attempts are spent); a running job
 // renews its lease; the stop signal is checked before each job and handed to
 // the job, which then goes back to PENDING without counting the attempt.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { JOB_POLICY, runDueJobs, type JobHandlers } from '@/server/jobs/queue';
+import { JOB_POLICY, reviveUnreadJobs, runDueJobs, type JobHandlers } from '@/server/jobs/queue';
 import { StopRequested } from '@/server/jobs/stop';
 import { one, sql } from '../helpers/db';
+import { SRC_ROOT } from '../helpers/env';
 import { useFreshDatabase } from '../helpers/reset';
 
 type JobRow = { id: string; status: string; attempts: number; lockedAt: Date | null; lockedBy: string | null; lastErrorClass: string | null };
@@ -198,5 +201,48 @@ describe('job queue (review A-11)', () => {
     const job = await jobOf(id);
     expect({ status: job.status, lockedBy: job.lockedBy }).toEqual({ status: 'RUNNING', lockedBy: 'another-worker' });
     await sql(`UPDATE "Job" SET status = 'DONE', "lockedAt" = NULL, "lockedBy" = NULL WHERE id = $1`, [id]);
+  });
+});
+
+// Review of the IR-12 fix: four job types gained a legal basis, and the queue's schemas refuse an
+// unknown key. During a deployment the new web may queue such a job that the old worker still
+// claims: it declares it DEAD, unread (INVALID_PAYLOAD; UNKNOWN_JOB_TYPE for the certificate it does
+// not know), and the receipt of art. 628 would never be printed. The new worker puts back, once at
+// its start, every job declared dead unread that it reads.
+describe('the jobs an earlier worker could not read (review of the IR-12 fix)', () => {
+  const dead = (type: string, payload: unknown, lastErrorClass: string) =>
+    one<{ id: string }>(
+      `INSERT INTO "Job" (id, type, payload, "runAt", status, attempts, "lastErrorClass", "createdAt", "updatedAt")
+       VALUES (gen_random_uuid(), $1, $2::jsonb, now() - interval '1 hour', 'DEAD', 1, $3, now() - interval '1 hour', now() - interval '1 hour') RETURNING id`,
+      [type, JSON.stringify(payload), lastErrorClass],
+    ).then((r) => r.id);
+  const basis = { kind: 'LAW', law: '58.25', articles: [628] };
+
+  it('are put back once at the start of the worker when it reads them, and only those', async () => {
+    const receipt = await dead('payment.receipt', { paymentId: '00000000-0000-4000-8000-000000000001', legalBasis: basis }, 'INVALID_PAYLOAD');
+    const certificate = await dead('filing.signature-certificate', { documentId: '00000000-0000-4000-8000-000000000002', legalBasis: basis }, 'UNKNOWN_JOB_TYPE');
+    const unreadable = await dead('payment.receipt', { paymentId: 'not-a-uuid' }, 'INVALID_PAYLOAD');
+    const unknown = await dead('no.such-job', {}, 'UNKNOWN_JOB_TYPE');
+    const spent = await dead('payment.receipt', { paymentId: '00000000-0000-4000-8000-000000000003' }, 'TIMEOUT');
+
+    expect(await reviveUnreadJobs()).toBe(2);
+    for (const id of [receipt, certificate]) {
+      expect(await jobOf(id)).toMatchObject({ status: 'PENDING', attempts: 0, lastErrorClass: null, lockedAt: null, lockedBy: null });
+    }
+    for (const id of [unreadable, unknown, spent]) expect((await jobOf(id)).status, id).toBe('DEAD');
+    // Once put back, a job is no longer dead: a second start puts back nothing.
+    expect(await reviveUnreadJobs()).toBe(0);
+    // And the worker runs them as any job.
+    const h = handlers();
+    await runDueJobs(h, { limit: 10 });
+    expect(h.calls).toEqual(expect.arrayContaining(['payment.receipt', 'filing.signature-certificate']));
+    await sql(`DELETE FROM "Job" WHERE id = ANY($1::uuid[])`, [[receipt, certificate, unreadable, unknown, spent]]);
+  });
+
+  it('are put back by the worker before it runs its tasks', () => {
+    const main = readFileSync(join(SRC_ROOT, 'worker', 'main.ts'), 'utf8');
+    const revive = main.indexOf('reviveUnreadJobs(');
+    expect(revive).toBeGreaterThan(-1);
+    expect(revive).toBeLessThan(main.indexOf('scheduler.every('));
   });
 });
