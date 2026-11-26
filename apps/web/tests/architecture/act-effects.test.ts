@@ -6,7 +6,10 @@
 //     run only by the applier, which applies the declaration after it;
 //   - nothing else in src/server writes what a declaration declares: the
 //     status of a file, its stored facts, the moment of its stamp, or a time
-//     limit (the demo seeder in src/cli writes the demo history apart).
+//     limit (the demo seeder in src/cli writes the demo history apart);
+//   - review of the fix: nor writes a file with fields built elsewhere, which
+//     the detector could not read (arguments or a data object that is not
+//     written out where it is called, or that spreads such a value).
 import { describe, expect, it } from 'vitest';
 import { findAll, sourceFiles, where, type SourceFile } from '../helpers/source';
 
@@ -36,6 +39,32 @@ function caseFileWrites(file: SourceFile): { at: string; data: string }[] {
     const args = balanced(file.bare, match.index + match[0].length - 1);
     const data = /\bdata\s*:\s*\{/.exec(args);
     if (data) out.push({ at: where(file, match.index), data: balanced(args, data.index + data[0].length - 1) });
+  }
+  return out;
+}
+
+/**
+ * The `caseFile.update(...)` calls whose writes cannot be read from the source
+ * (review of the IR-10 fix): arguments that are not an object literal, a `data`
+ * that is not one (`data`, `data: next`), or a `data` literal that spreads a
+ * value built elsewhere (`...fields`). Only the applier may write so.
+ */
+function opaqueCaseFileWrites(file: SourceFile): string[] {
+  const out: string[] = [];
+  for (const match of file.bare.matchAll(/\bcaseFile\s*\.\s*(?:update|updateMany|upsert)\s*\(/g)) {
+    const at = where(file, match.index);
+    const args = balanced(file.bare, match.index + match[0].length - 1).slice(1, -1).trim();
+    if (!args.startsWith('{')) {
+      out.push(`${at}: arguments built elsewhere`);
+      continue;
+    }
+    const inline = /\bdata\s*:\s*\{/.exec(args);
+    if (!inline) {
+      out.push(`${at}: data built elsewhere`);
+      continue;
+    }
+    const data = balanced(args, inline.index + inline[0].length - 1);
+    if (/\.\.\.\s*[A-Za-z_$][\w$.]*\s*[,}(]/.test(data)) out.push(`${at}: data spreads a value built elsewhere`);
   }
   return out;
 }
@@ -74,6 +103,11 @@ describe('the declarations of the procedure are applied in one place (independen
     expect(hits).toEqual([]);
   });
 
+  it('writes a file only with a data object written out where it is called, outside the applier (review of the fix)', () => {
+    const hits = server.filter((f) => f.rel !== APPLIER).flatMap(opaqueCaseFileWrites);
+    expect(hits).toEqual([]);
+  });
+
   it('leaves to the applier alone the time limits of a file', () => {
     const hits = server
       .filter((f) => f.rel !== APPLIER)
@@ -87,5 +121,18 @@ describe('the declarations of the procedure are applied in one place (independen
   it('detects a write it forbids (the detector itself)', () => {
     const sample = { path: 'x', rel: 'server/x.ts', text: '', code: '', bare: 'await tx.caseFile.update({ where: { id }, data: { status: next, x: { y: 1 } } });' } as SourceFile;
     expect(caseFileWrites({ ...sample, text: sample.bare })).toEqual([{ at: 'src/server/x.ts:1', data: '{ status: next, x: { y: 1 } }' }]);
+    expect(opaqueCaseFileWrites({ ...sample, text: sample.bare })).toEqual([]);
+  });
+
+  it('detects a write whose fields are built elsewhere (the detector itself)', () => {
+    const of = (bare: string) => opaqueCaseFileWrites({ path: 'x', rel: 'server/x.ts', text: bare, code: bare, bare } as SourceFile);
+    expect(of('await tx.caseFile.update({ where: { id }, data });')).toEqual(['src/server/x.ts:1: data built elsewhere']);
+    expect(of('await tx.caseFile.update({ where: { id }, data: next });')).toEqual(['src/server/x.ts:1: data built elsewhere']);
+    expect(of('await tx.caseFile.update(args);')).toEqual(['src/server/x.ts:1: arguments built elsewhere']);
+    expect(of('await tx.caseFile.updateMany({ where: { id }, data: { ...fields, code: 1 } });')).toEqual(['src/server/x.ts:1: data spreads a value built elsewhere']);
+    expect(of('await tx.caseFile.update({ where: { id }, data: { a: 1, ...rest } });')).toEqual(['src/server/x.ts:1: data spreads a value built elsewhere']);
+    expect(of('await tx.caseFile.update({ where: { id }, data: { ...pick(x) } });')).toEqual(['src/server/x.ts:1: data spreads a value built elsewhere']);
+    // A spread of a literal written out where it is called stays readable.
+    expect(of('await tx.caseFile.update({ where: { id }, data: { ...(flag ? { referredToProsecutionAt: now } : {}) } });')).toEqual([]);
   });
 });

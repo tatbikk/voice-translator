@@ -53,14 +53,17 @@ function holders(action: ProcedureAction): string {
 
 /**
  * What the act does besides its next status (independent review IR-10): the facts
- * it establishes, the limits it opens and closes (applied by the applier,
- * decision 73), the document it adds to the file and who it informs.
+ * it establishes and those it ends, the limits it opens, meets and closes (applied
+ * by the applier, decision 73), the document it adds to the file and who it informs.
  */
 function effects(action: ProcedureAction): string {
   const limits = (codes: readonly string[]) => codes.map((c) => label(`case.deadlines.rule.${c}`)).join('، ');
+  const facts = (codes: readonly string[]) => codes.map((f) => `\`${f}\``).join('، ');
   return [
-    action.sets.length ? `يثبت ${action.sets.map((f) => `\`${f}\``).join('، ')}` : '',
+    action.sets.length ? `يثبت ${facts(action.sets)}` : '',
+    action.clears.length ? `ينهي ${facts(action.clears)}` : '',
     action.opens.length ? `يفتح ${limits(action.opens)}` : '',
+    action.meets.length ? `يتم داخل ${limits(action.meets)}` : '',
     action.closes.length ? `يقفل ${limits(action.closes)}` : '',
     action.files ? `يضم ${label(`case.docType.${action.files}`)}` : '',
     action.notifies.length ? `يخبر ${action.notifies.map((n) => NOTIFIED[n] ?? n).join('، ')}` : '',

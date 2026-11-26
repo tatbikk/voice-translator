@@ -5,8 +5,9 @@
 // head of the old chain into the first event of the new one. The seeded data
 // are those of the fixture apps/web/src/cli/seed-data/accounts.ts.
 import { describe, expect, it } from 'vitest';
-import { ROLE_CODES } from '@mahkama/core';
+import { ACTIONS, ROLE_CODES, type CaseFact } from '@mahkama/core';
 import { DEMO_ACCOUNTS } from '@/cli/seed-data/accounts';
+import { DERIVED_CASE_FACTS } from '@/server/cases/snapshot';
 import { runBundled, type ProcessResult } from '../helpers/cli';
 import { count, events, one, sql } from '../helpers/db';
 import { databaseName, requireEnv } from '../helpers/env';
@@ -104,6 +105,26 @@ describe('seed (memo row 21)', () => {
     expect(await count(`SELECT count(*)::text AS n FROM "User" WHERE "passwordHash" NOT LIKE '$argon2id$v=19$m=19456,t=2,p=1$%'`)).toBe(0);
     expect((await events('demo.data.seeded')).length).toBe(1);
   }, 300_000);
+
+  it('seeds the history of the demo files as the core’s table declares each act, and stores no code of a derived fact (review of the IR-10 fix)', async () => {
+    const recorded = (await events('case.transition.recorded')).map((e) => e.details as { action: string; fromStatus: string; toStatus: string });
+    expect(recorded.length).toBeGreaterThan(0);
+    // Station 4 does not declare yet the act that moves a file into preparation (IR-46 to IR-52, phase 3).
+    const awaitingPhase3: ReadonlySet<string> = new Set(['case.envelopes.dispatch']);
+    for (const step of recorded) {
+      const declared = ACTIONS[step.action]?.procedure;
+      expect(declared, step.action).toBeDefined();
+      expect(declared?.statuses, `${step.action} from ${step.fromStatus}`).toContain(step.fromStatus);
+      if (awaitingPhase3.has(step.action)) continue;
+      expect(step.toStatus, step.action).toBe(declared?.nextStatus ?? step.fromStatus);
+    }
+    // «تأشير» moves no file; the confirmation of the rapporteur moves it (art. 628).
+    expect(recorded).toContainEqual({ action: 'case.registration.stamp', fromStatus: 'REGISTERED', toStatus: 'REGISTERED' });
+    expect(recorded).toContainEqual({ action: 'case.rapporteur.confirm', fromStatus: 'REGISTERED', toStatus: 'RAPPORTEUR_ASSIGNED' });
+
+    const stored = await sql<{ facts: string[] }>('SELECT facts FROM "CaseFile"');
+    expect(stored.flatMap((f) => f.facts).filter((f) => DERIVED_CASE_FACTS.has(f as CaseFact))).toEqual([]);
+  });
 
   it('gives every demo party its quality, and every address of a place its locality and whether it lies within the court’s district, read from the districts table (independent review IR-08)', async () => {
     const places = await sql<{ quality: string | null; locality: string | null; within: boolean | null }>(

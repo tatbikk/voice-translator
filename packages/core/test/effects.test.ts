@@ -4,6 +4,8 @@
 // other than the declared one (the same status when none is declared), a
 // declared fact missing, a declared limit not opened or left without a
 // statement, a limit the act closes still open. Written before the code.
+// Review of the fix: a limit the act meets still open, a fact it clears
+// still true.
 import { describe, expect, it } from 'vitest';
 import { ACTIONS, effectViolations, type CaseSnapshot, type ProcedureAction } from '../src/index';
 
@@ -87,5 +89,34 @@ describe('the effects an act declares, checked on the snapshot after it (indepen
       ],
     };
     expect(effectViolations(deposit, before, done, [], NOW)).toEqual([]);
+  });
+
+  // Review of the IR-10 fix: a limit met by the act it awaited is met, not closed, and a
+  // stored fact stops being true only by a declared retraction.
+  it('names a limit the act meets that is still open after it', () => {
+    const deposit: ProcedureAction = { ...declared('case.investigation.deposit'), meets: ['INVESTIGATION_DEPOSIT'] };
+    const before: CaseSnapshot = { ...base, status: 'IN_EXPERTISE' };
+    const open: CaseSnapshot = { ...before, deadlines: [{ code: 'INVESTIGATION_DEPOSIT', partyId: PARTY, endsAt: later, status: 'RUNNING' }] };
+    expect(effectViolations(deposit, before, open, [], NOW)).toEqual([{ kind: 'NOT_CLOSED', code: 'INVESTIGATION_DEPOSIT', partyId: PARTY }]);
+    const met: CaseSnapshot = { ...before, deadlines: [{ code: 'INVESTIGATION_DEPOSIT', partyId: PARTY, endsAt: later, status: 'MET' }] };
+    expect(effectViolations(deposit, before, met, [], NOW)).toEqual([]);
+  });
+
+  it('names a fact the act clears that is still true after it', () => {
+    const report: ProcedureAction = { ...declared('case.expert.deposit-report'), clears: ['INVESTIGATION_ONGOING'] };
+    const before: CaseSnapshot = { ...base, status: 'IN_EXPERTISE', facts: ['INVESTIGATION_ONGOING', 'EXPERT_PARTIES_SUMMONED'] };
+    const kept: CaseSnapshot = { ...before, status: 'IN_PREPARATION' };
+    expect(effectViolations(report, before, kept, [], NOW)).toEqual([{ kind: 'NOT_CLEARED', fact: 'INVESTIGATION_ONGOING' }]);
+    const cleared: CaseSnapshot = { ...before, status: 'IN_PREPARATION', facts: ['EXPERT_PARTIES_SUMMONED'] };
+    expect(effectViolations(report, before, cleared, [], NOW)).toEqual([]);
+  });
+
+  it('declares no act that sets and clears the same fact, or meets and closes the same limit', () => {
+    for (const rule of Object.values(ACTIONS)) {
+      const action = rule.procedure;
+      if (!action) continue;
+      expect(action.sets.filter((f) => action.clears.includes(f)), action.code).toEqual([]);
+      expect(action.meets.filter((c) => action.closes.includes(c)), action.code).toEqual([]);
+    }
   });
 });

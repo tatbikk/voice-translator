@@ -15,6 +15,14 @@
 //       and the refusals: a declared effect that does not hold, a limit opened
 //       without what it runs from, a limit the act does not declare;
 //   (c) is structural (tests/architecture/act-effects.test.ts).
+// The review of the fix added, before its code: the facts of the investigation
+// and of the envelopes read from their rows; a stored fact retracted by a
+// declaration (clears); a limit met by the act it awaited (meets) apart from one
+// closed; a trigger bounded by the file's registration and the act, a judge's day
+// not before the trigger; the calendar of the day of the computation with the
+// time-limit table of the trigger's day. The route's side of a declared effect
+// that does not hold is in tests/integration/act-effects-route.test.ts.
+import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   ACTIONS,
@@ -29,7 +37,7 @@ import {
   type ProcedureAction,
 } from '@mahkama/core';
 import { executableActs } from '@/server/cases/executors';
-import { applyDeclaredEffects, DeclaredEffectError, type LimitStatements } from '@/server/cases/effects';
+import { applyDeclaredEffects, DeclaredEffectError, type LimitStatement, type LimitStatements } from '@/server/cases/effects';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { clock } from '@/server/clock';
 import { eventTransaction, type EventActor } from '@/server/events/append';
@@ -202,18 +210,22 @@ describe('the applier of what an act declares (independent review IR-10, decisio
     expect((await snapshotOf(scenario.caseFileId)).status).toBe('RAPPORTEUR_ASSIGNED');
   });
 
-  it('opens a declared limit with its start, its end and the rule version, computed with the tables in force on the day of its trigger', async () => {
+  it('opens a declared limit with its start, its end and the rule version, computed with the time-limit table of its trigger’s day and the calendar known on the day of the computation', async () => {
     scenario = await caseScenario({ status: 'RAPPORTEUR_ASSIGNED' });
+    // A file registered before the trigger: a trigger is bounded by the file's registration.
+    await sql(`UPDATE "CaseFile" SET "registeredAt" = $2 WHERE id = $1`, [scenario.caseFileId, moroccoInstant('2026-08-25 09:00')]);
     const trigger = moroccoInstant('2026-09-01 10:00');
     const statement = { partyId: scenario.defendantPartyId, trigger, electronic: true, fixedDate: '2026-09-21' };
     const { events } = await capturingEvents(() =>
       apply(scenario.caseFileId, declaration('case.order.cure-defects'), actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR'), { CURE_DEFECTS: [statement] }),
     );
 
-    // What the engine computes with the time-limit table and the calendar in force on 1 September 2026.
+    // What the engine computes with the time-limit table in force on 1 September 2026 and the
+    // calendar of holidays in force when the limit is computed (art. 603: the days the texts in
+    // force declare holidays; the latest calendar corrects an estimated date of the earlier one).
     const rules = await timeLimitRules(trigger);
-    const calendar = await holidayCalendar(trigger);
-    expect(calendar.version, 'the calendar of the trigger’s day, not today’s').toBe('2026-08-23.1');
+    const calendar = await holidayCalendar(clock.now());
+    expect(calendar.version, 'the calendar of the day of the computation, not the trigger’s').not.toBe((await holidayCalendar(trigger)).version);
     const rule = rules.rules.find((r) => r.code === 'CURE_DEFECTS')!;
     const expected = computeTimeLimit({ rule, settings: rules.settings, trigger, electronic: true, calendar, fixedDate: '2026-09-21' });
 
@@ -238,8 +250,8 @@ describe('the applier of what an act declares (independent review IR-10, decisio
     expect(limit.computation).toMatchObject({
       action: 'case.order.cure-defects',
       ruleVersion: rules.version,
-      calendarVersion: '2026-08-23.1',
-      coversUntil: null,
+      calendarVersion: calendar.version,
+      coversUntil: calendar.coversUntil,
       articles: expected.articles,
       uncertainties: expected.uncertainties,
       trigger: trigger.toISOString(),
@@ -258,7 +270,7 @@ describe('the applier of what an act declares (independent review IR-10, decisio
         action: 'case.order.cure-defects',
         ruleCode: 'CURE_DEFECTS',
         ruleVersion: rules.version,
-        calendarVersion: '2026-08-23.1',
+        calendarVersion: calendar.version,
         partyId: scenario.defendantPartyId,
         lastDay: expected.lastDay,
         uncertain: expected.uncertainties.length > 0,
@@ -309,21 +321,156 @@ describe('the applier of what an act declares (independent review IR-10, decisio
     expect(await count(`SELECT count(*) FROM "Event" WHERE "caseFileId" = $1`, [scenario.caseFileId])).toBe(before);
   });
 
-  it('stores a declared fact the snapshot derives from nothing, and the snapshot rebuilt after the act reads it', async () => {
-    // The table declares no fact for the acts of stations 3 and 4 yet: the next phase does. The
-    // summons order is given here the fact of the envelopes it prepares, which nothing derives today.
+  it('refuses a trigger later than the act or earlier than the file’s registration, and a judge’s day before the trigger’s: nothing is written', async () => {
     scenario = await caseScenario({ status: 'RAPPORTEUR_ASSIGNED' });
-    const summons: ProcedureAction = { ...declaration('case.summons.order'), sets: ['ENVELOPES_READY'] };
-    const { events } = await capturingEvents(() => apply(scenario.caseFileId, summons, actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR')));
-    expect(await storedFacts(scenario.caseFileId)).toEqual(['ENVELOPES_READY']);
+    const rapporteur = actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR');
+    const cure = declaration('case.order.cure-defects');
+    const now = clock.now();
+    const before = await count(`SELECT count(*) FROM "Event" WHERE "caseFileId" = $1`, [scenario.caseFileId]);
+    const refused = async (statement: readonly LimitStatement[], reason: RegExp) => {
+      const error = await apply(scenario.caseFileId, cure, rapporteur, { CURE_DEFECTS: statement }).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(DeclaredEffectError);
+      expect((error as DeclaredEffectError).reason).toMatch(reason);
+    };
+    const party = scenario.defendantPartyId;
+    // An event that has not happened yet.
+    await refused([{ partyId: party, trigger: new Date(now.getTime() + 86_400_000), electronic: true, fixedDate: addDays(moroccoDay(now), 20) }], /^TRIGGER_AFTER_ACT:CURE_DEFECTS$/);
+    // An event before the file existed in the register (the file was registered at the scenario's creation).
+    await refused([{ partyId: party, trigger: new Date(now.getTime() - 30 * 86_400_000), electronic: true, fixedDate: addDays(moroccoDay(now), 20) }], /^TRIGGER_BEFORE_FILE:CURE_DEFECTS$/);
+    // A day fixed by the judge before the day the limit runs from.
+    await refused([{ partyId: party, electronic: true, fixedDate: addDays(moroccoDay(now), -1) }], /^FIXED_DATE_BEFORE_TRIGGER:CURE_DEFECTS$/);
+    expect(await count(`SELECT count(*) FROM "TimeLimit" WHERE "caseFileId" = $1`, [scenario.caseFileId])).toBe(0);
+    expect(await count(`SELECT count(*) FROM "Event" WHERE "caseFileId" = $1`, [scenario.caseFileId])).toBe(before);
+  });
+
+  it('stores a declared fact the snapshot derives from nothing, and the snapshot rebuilt after the act reads it', async () => {
+    // The table declares few facts yet: the next phases do. The authorization of the other party to
+    // deposit (art. 119) is given here its fact, which no column records.
+    scenario = await caseScenario({ status: 'IN_EXPERTISE' });
+    const other: ProcedureAction = { ...declaration('case.investigation.authorize-other-party'), sets: ['DEPOSIT_OTHER_AUTHORIZED'] };
+    const { events } = await capturingEvents(() => apply(scenario.caseFileId, other, actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR')));
+    expect(await storedFacts(scenario.caseFileId)).toEqual(['DEPOSIT_OTHER_AUTHORIZED']);
     const after = await snapshotOf(scenario.caseFileId);
-    expect(after.facts).toContain('ENVELOPES_READY');
-    expect(after.status).toBe('IN_NOTIFICATION');
+    expect(after.facts).toContain('DEPOSIT_OTHER_AUTHORIZED');
+    expect(after.status).toBe('IN_EXPERTISE');
     const set = events.find((e) => e.action === 'case.facts.set');
-    expect(set).toMatchObject({ details: { caseFileId: scenario.caseFileId, action: 'case.summons.order', facts: 'ENVELOPES_READY' }, legalBasis: basisOf('case.summons.order') });
+    expect(set).toMatchObject({
+      details: { caseFileId: scenario.caseFileId, action: 'case.investigation.authorize-other-party', facts: 'DEPOSIT_OTHER_AUTHORIZED' },
+      legalBasis: basisOf('case.investigation.authorize-other-party'),
+    });
     // Set once: an act applied again adds nothing twice.
-    await apply(scenario.caseFileId, { ...summons, nextStatus: null }, actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR'));
-    expect(await storedFacts(scenario.caseFileId)).toEqual(['ENVELOPES_READY']);
+    await apply(scenario.caseFileId, other, actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR'));
+    expect(await storedFacts(scenario.caseFileId)).toEqual(['DEPOSIT_OTHER_AUTHORIZED']);
+  });
+
+  it('retracts a stored fact the act declares it clears, and the snapshot rebuilt after the act no longer reads it', async () => {
+    // A stored fact stops being true only by a declared retraction: the investigation ongoing
+    // ends with the expert's report (the next phase declares it), and the file may be declared ready.
+    scenario = await caseScenario({ status: 'IN_EXPERTISE' });
+    await sql(`UPDATE "CaseFile" SET facts = ARRAY['INVESTIGATION_ONGOING', 'DEPOSIT_OTHER_AUTHORIZED'] WHERE id = $1`, [scenario.caseFileId]);
+    const report: ProcedureAction = { ...declaration('case.expert.deposit-report'), clears: ['INVESTIGATION_ONGOING' satisfies CaseFact] };
+    const { events } = await capturingEvents(() => apply(scenario.caseFileId, report, actorOf(scenario.users.expert, 'EXPERT')));
+    expect(await storedFacts(scenario.caseFileId)).toEqual(['DEPOSIT_OTHER_AUTHORIZED']);
+    const after = await snapshotOf(scenario.caseFileId);
+    expect(after.facts).not.toContain('INVESTIGATION_ONGOING');
+    expect(after.status).toBe('IN_PREPARATION');
+    expect(events.find((e) => e.action === 'case.facts.cleared')).toMatchObject({
+      details: { caseFileId: scenario.caseFileId, action: 'case.expert.deposit-report', facts: 'INVESTIGATION_ONGOING' },
+      legalBasis: basisOf('case.expert.deposit-report'),
+    });
+  });
+
+  it('fails the act when a derived fact it declares it clears still holds after it, and passes once the executor changed its data', async () => {
+    scenario = await caseScenario({ status: 'IN_NOTIFICATION' });
+    const envelope = randomUUID();
+    await sql(
+      `INSERT INTO "Envelope" (id, "caseFileId", "partyId", purpose, channel, status, "createdAt") VALUES ($1, $2, $3, 'SUMMONS', 'BAILIFF', 'READY', now())`,
+      [envelope, scenario.caseFileId, scenario.defendantPartyId],
+    );
+    const dispatch: ProcedureAction = { ...declaration('case.envelopes.dispatch'), clears: ['ENVELOPES_READY'] };
+    const clerk = actorOf(scenario.users.registrationClerk, 'CLERK_REGISTRATION');
+    await expect(apply(scenario.caseFileId, dispatch, clerk)).rejects.toBeInstanceOf(DeclaredEffectError);
+    // The envelope dispatched (what the executor of the next phase writes): nothing to retract by hand.
+    await sql(`UPDATE "Envelope" SET status = 'DISPATCHED', "dispatchedAt" = now() WHERE id = $1`, [envelope]);
+    await apply(scenario.caseFileId, dispatch, clerk);
+    expect((await snapshotOf(scenario.caseFileId)).facts).not.toContain('ENVELOPES_READY');
+    expect(await storedFacts(scenario.caseFileId)).toEqual([]);
+  });
+
+  it('reads the facts of the investigation from its latest row and «ENVELOPES_READY» from an envelope ready, never from a stored code', async () => {
+    scenario = await caseScenario({ status: 'IN_EXPERTISE' });
+    const investigationFacts: readonly CaseFact[] = [
+      'DEPOSIT_MADE',
+      'MISSION_ACCEPTED',
+      'MISSION_DECLINED',
+      'EXPERT_PARTIES_SUMMONED',
+      'REPORT_DEPOSITED',
+      'REPORT_RETURNED',
+      'FEES_ORDERED',
+      'FEES_PAID',
+    ];
+    await sql(`UPDATE "CaseFile" SET facts = $2::text[] WHERE id = $1`, [scenario.caseFileId, [...investigationFacts, 'ENVELOPES_READY']]);
+    const facts = async () => (await snapshotOf(scenario.caseFileId)).facts;
+    expect((await facts()).filter((f) => investigationFacts.includes(f) || f === 'ENVELOPES_READY'), 'a stored code of a derived fact is ignored').toEqual([]);
+
+    // An earlier investigation with every column written, and the latest with none: the latest counts.
+    const insert = (createdAt: string) =>
+      sql<{ id: string }>(
+        `INSERT INTO "Investigation" (id, "caseFileId", kind, "expertUserId", "createdAt") VALUES (gen_random_uuid(), $1, 'EXPERTISE', $2, $3::timestamptz) RETURNING id`,
+        [scenario.caseFileId, scenario.users.expert.id, createdAt],
+      ).then((r) => r[0]!.id);
+    const older = await insert('2026-10-01T08:00:00Z');
+    await sql(
+      `UPDATE "Investigation" SET "depositedAt" = now(), "acceptedAt" = now(), "declinedAt" = now(), "partiesSummonedAt" = now(), "reportDepositedAt" = now(),
+         "returnedAt" = now(), "feesOrderedCents" = 100000, "feesPaidAt" = now() WHERE id = $1`,
+      [older],
+    );
+    const latest = await insert('2026-10-15T08:00:00Z');
+    expect((await facts()).filter((f) => investigationFacts.includes(f))).toEqual([]);
+
+    const columns: readonly [string, CaseFact][] = [
+      ['"depositedAt" = now()', 'DEPOSIT_MADE'],
+      ['"acceptedAt" = now()', 'MISSION_ACCEPTED'],
+      ['"declinedAt" = now()', 'MISSION_DECLINED'],
+      ['"partiesSummonedAt" = now()', 'EXPERT_PARTIES_SUMMONED'],
+      ['"reportDepositedAt" = now()', 'REPORT_DEPOSITED'],
+      ['"returnedAt" = now()', 'REPORT_RETURNED'],
+      ['"feesOrderedCents" = 250000', 'FEES_ORDERED'],
+      ['"feesPaidAt" = now()', 'FEES_PAID'],
+    ];
+    for (const [set, fact] of columns) {
+      await sql(`UPDATE "Investigation" SET ${set} WHERE id = $1`, [latest]);
+      expect(await facts(), fact).toContain(fact);
+    }
+
+    // «ENVELOPES_READY»: an envelope of the file still ready to be sent, and no longer once sent.
+    expect(await facts()).not.toContain('ENVELOPES_READY');
+    const envelope = randomUUID();
+    await sql(
+      `INSERT INTO "Envelope" (id, "caseFileId", "partyId", purpose, channel, status, "createdAt") VALUES ($1, $2, $3, 'SUMMONS', 'BAILIFF', 'READY', now())`,
+      [envelope, scenario.caseFileId, scenario.defendantPartyId],
+    );
+    expect(await facts()).toContain('ENVELOPES_READY');
+    await sql(`UPDATE "Envelope" SET status = 'DISPATCHED' WHERE id = $1`, [envelope]);
+    expect(await facts()).not.toContain('ENVELOPES_READY');
+  });
+
+  it('holds a declared fact of the investigation only when the executor wrote its column, and stores nothing', async () => {
+    scenario = await caseScenario({ status: 'IN_EXPERTISE' });
+    const [investigation] = await sql<{ id: string }>(
+      `INSERT INTO "Investigation" (id, "caseFileId", kind, "expertUserId", "depositedAt", "createdAt") VALUES (gen_random_uuid(), $1, 'EXPERTISE', $2, now(), now()) RETURNING id`,
+      [scenario.caseFileId, scenario.users.expert.id],
+    );
+    const accept: ProcedureAction = { ...declaration('case.expert.accept'), sets: ['MISSION_ACCEPTED'] };
+    const expertActor = actorOf(scenario.users.expert, 'EXPERT');
+    await expect(apply(scenario.caseFileId, accept, expertActor)).rejects.toBeInstanceOf(DeclaredEffectError);
+    await sql(`UPDATE "Investigation" SET "acceptedAt" = now() WHERE id = $1`, [investigation!.id]);
+    await apply(scenario.caseFileId, accept, expertActor);
+    expect((await snapshotOf(scenario.caseFileId)).facts).toContain('MISSION_ACCEPTED');
+    expect(await storedFacts(scenario.caseFileId)).toEqual([]);
   });
 
   it('fails the act when a declared fact derived from the file’s data does not hold after it, and stores nothing', async () => {
@@ -337,14 +484,18 @@ describe('the applier of what an act declares (independent review IR-10, decisio
 
   it('reads a derived fact from the file’s data only, never from a stored code', async () => {
     scenario = await caseScenario({ status: 'RAPPORTEUR_ASSIGNED' });
-    await sql(`UPDATE "CaseFile" SET facts = ARRAY['HEARING_SET', 'REGISTRATION_STAMPED', 'ENVELOPES_READY'] WHERE id = $1`, [scenario.caseFileId]);
+    await sql(`UPDATE "CaseFile" SET facts = ARRAY['HEARING_SET', 'REGISTRATION_STAMPED', 'ENVELOPES_READY', 'DEPOSIT_MADE', 'DEPOSIT_OTHER_AUTHORIZED'] WHERE id = $1`, [
+      scenario.caseFileId,
+    ]);
     const facts = (await snapshotOf(scenario.caseFileId)).facts;
-    expect(facts).toContain('ENVELOPES_READY');
+    expect(facts).toContain('DEPOSIT_OTHER_AUTHORIZED');
     expect(facts).not.toContain('HEARING_SET');
     expect(facts).not.toContain('REGISTRATION_STAMPED');
+    expect(facts).not.toContain('ENVELOPES_READY');
+    expect(facts).not.toContain('DEPOSIT_MADE');
   });
 
-  it('closes the declared limits still running, and leaves an elapsed limit elapsed', async () => {
+  it('meets the declared limits still running, apart from those it closes, and leaves an elapsed limit elapsed', async () => {
     scenario = await caseScenario({ status: 'IN_EXPERTISE' });
     const [ruleSet] = await sql<{ id: string }>(`SELECT id FROM "RuleSet" WHERE kind = 'TIME_LIMITS' LIMIT 1`);
     const insert = (code: string, endsIn: string) =>
@@ -356,16 +507,27 @@ describe('the applier of what an act declares (independent review IR-10, decisio
     const running = await insert('INVESTIGATION_DEPOSIT', '5 days');
     const elapsed = await insert('INVESTIGATION_DEPOSIT', '-2 days');
     const other = await insert('EXPERT_CHALLENGE', '5 days');
-    // No act of the table closes a limit yet; the deposit is given here the limit it meets.
-    const deposit: ProcedureAction = { ...declaration('case.investigation.deposit'), closes: ['INVESTIGATION_DEPOSIT'] };
+    // No act of the table meets or closes a limit yet; the deposit is given here the limit it meets
+    // (the act the limit awaited, done within it: «تم الإجراء داخله»).
+    const deposit: ProcedureAction = { ...declaration('case.investigation.deposit'), meets: ['INVESTIGATION_DEPOSIT'] };
     const { events } = await capturingEvents(() => apply(scenario.caseFileId, deposit, actorOf(scenario.users.plaintiffLawyer, 'LAWYER')));
     const status = async (id: string) => one<{ status: string; closedAt: Date | null }>(`SELECT status::text, "closedAt" FROM "TimeLimit" WHERE id = $1`, [id]);
-    expect(await status(running)).toMatchObject({ status: 'CLOSED' });
+    expect(await status(running)).toMatchObject({ status: 'MET' });
     expect((await status(running)).closedAt).not.toBeNull();
     expect(await status(elapsed)).toEqual({ status: 'RUNNING', closedAt: null });
     expect(await status(other)).toEqual({ status: 'RUNNING', closedAt: null });
-    const closed = events.filter((e) => e.action === 'case.time-limit.closed');
-    expect(closed.map((e) => e.details)).toEqual([{ caseFileId: scenario.caseFileId, timeLimitId: running, action: 'case.investigation.deposit', ruleCode: 'INVESTIGATION_DEPOSIT' }]);
-    expect(closed[0]?.legalBasis).toEqual(basisOf('case.investigation.deposit'));
+    const met = events.filter((e) => e.action === 'case.time-limit.met');
+    expect(met.map((e) => e.details)).toEqual([{ caseFileId: scenario.caseFileId, timeLimitId: running, action: 'case.investigation.deposit', ruleCode: 'INVESTIGATION_DEPOSIT' }]);
+    expect(met[0]?.legalBasis).toEqual(basisOf('case.investigation.deposit'));
+    expect(events.filter((e) => e.action === 'case.time-limit.closed')).toEqual([]);
+
+    // A limit an act ends without meeting it is closed: the investigation abandoned ends the challenge.
+    const abandon: ProcedureAction = { ...declaration('case.investigation.abandon'), closes: ['EXPERT_CHALLENGE'] };
+    const ended = await capturingEvents(() => apply(scenario.caseFileId, abandon, actorOf(scenario.users.rapporteur, 'JUDGE_RAPPORTEUR')));
+    expect(await status(other)).toMatchObject({ status: 'CLOSED' });
+    expect(await status(running)).toMatchObject({ status: 'MET' });
+    const closed = ended.events.filter((e) => e.action === 'case.time-limit.closed');
+    expect(closed.map((e) => e.details)).toEqual([{ caseFileId: scenario.caseFileId, timeLimitId: other, action: 'case.investigation.abandon', ruleCode: 'EXPERT_CHALLENGE' }]);
+    expect(closed[0]?.legalBasis).toEqual(basisOf('case.investigation.abandon'));
   });
 });
