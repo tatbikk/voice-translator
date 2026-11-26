@@ -610,27 +610,35 @@ function dirhamsText(cents: bigint): string {
 
 /**
  * Review IR-40: the demo files seeded before the fix carry a name in
- * "caseType"; each gets the code of the table in place, with its event, and
- * nothing else of the file changes. Returns how many were recoded.
+ * "caseType", and the code inside their number is not their type's (1067 was
+ * 1067/8201 for a damages claim, 312 was 312/8228, a code the table does not
+ * hold). Each gets the code of the table as its type and the same code inside
+ * its number, in place, with one event, and nothing else of the file changes:
+ * neither its number, nor its year, nor its national identifier, which never
+ * change (decision 53). Returns how many were recoded.
  */
-async function recodeLegacyCaseTypes(): Promise<number> {
+async function recodeDemoCaseTypes(): Promise<number> {
   const rows = await getDb().caseFile.findMany({
-    where: { isDemo: true, caseType: { in: Object.keys(LEGACY_DEMO_CASE_TYPES) } },
-    select: { id: true, caseType: true },
+    where: { isDemo: true, caseType: { not: null } },
+    select: { id: true, caseType: true, code: true },
     orderBy: { id: 'asc' },
   });
+  let recoded = 0;
   for (const row of rows) {
     const fromType = row.caseType ?? '';
-    const toType = LEGACY_DEMO_CASE_TYPES[fromType];
-    if (!toType) continue;
+    const toType = LEGACY_DEMO_CASE_TYPES[fromType] ?? fromType;
+    if (!/^\d+$/.test(toType)) continue;
+    const toCode = Number(toType);
+    if (toType === fromType && toCode === row.code) continue;
     await eventTransaction(async (tx) => {
-      const updated = await tx.caseFile.updateMany({ where: { id: row.id, caseType: fromType }, data: { caseType: toType } });
+      const updated = await tx.caseFile.updateMany({ where: { id: row.id, caseType: fromType, code: row.code }, data: { caseType: toType, code: toCode } });
       if (updated.count === 1) {
-        await appendEvent(tx, { action: 'demo.case.type.recoded', details: { caseFileId: row.id, fromType, toType } });
+        await appendEvent(tx, { action: 'demo.case.type.recoded', details: { caseFileId: row.id, fromType, toType, fromCode: row.code, toCode } });
+        recoded += 1;
       }
     });
   }
-  return rows.length;
+  return recoded;
 }
 
 /** Fills every demo case file not yet filled; returns how many were filled. */
@@ -641,7 +649,7 @@ export async function seedCaseContent(ctx: SeedCaseContext): Promise<number> {
     const existing = await getDb().signingCredential.findUnique({ where: { userId: id }, select: { id: true } });
     if (!existing) await setSigningSecret(id, ctx.signingSecret);
   }
-  await recodeLegacyCaseTypes();
+  await recodeDemoCaseTypes();
   let filled = 0;
   for (const content of DEMO_CASE_CONTENT) {
     if (await fillCase(content, ctx)) filled += 1;

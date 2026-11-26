@@ -127,14 +127,16 @@ export interface DemoCase {
 }
 
 // Six case files at different stages (the model case itself is not created:
-// Phase 2 files it from the first screen). Case-type code 8201 is a fictitious
-// code for a commercial claim (table of codes: open question).
+// Phase 2 files it from the first screen). The code inside each number is the
+// code of the file's case type in rules/case-types.json (decision 53; review of
+// IR-40): 8201 for a commercial payment, 8202 for the damages claim of 1067, and
+// the appeal 312 the type of its file (decision 81). The codes are assumed (س21).
 export const DEMO_CASES: readonly DemoCase[] = [
   { court: 'firstInstance', number: 1201, code: 8201, year: 2026, status: 'REGISTERED', hearingInDays: null, hearingTime: '09:30', panel: 'fiFirst', room: 'القاعة 2' },
   { court: 'firstInstance', number: 1188, code: 8201, year: 2026, status: 'IN_NOTIFICATION', hearingInDays: 5, hearingTime: '09:30', panel: 'fiFirst', room: 'القاعة 2' },
   { court: 'firstInstance', number: 1150, code: 8201, year: 2026, status: 'IN_PREPARATION', hearingInDays: 5, hearingTime: '10:30', panel: 'fiSecond', room: 'القاعة 3' },
   { court: 'firstInstance', number: 1103, code: 8201, year: 2026, status: 'IN_EXPERTISE', hearingInDays: 19, hearingTime: '09:30', panel: 'fiFirst', room: 'القاعة 2' },
-  { court: 'firstInstance', number: 1067, code: 8201, year: 2026, status: 'IN_DELIBERATION', hearingInDays: 7, hearingTime: '11:00', panel: 'fiSecond', room: 'القاعة 3' },
+  { court: 'firstInstance', number: 1067, code: 8202, year: 2026, status: 'IN_DELIBERATION', hearingInDays: 7, hearingTime: '11:00', panel: 'fiSecond', room: 'القاعة 3' },
   { court: 'firstInstance', number: 980, code: 8201, year: 2026, status: 'JUDGMENT_ISSUED', hearingInDays: null, hearingTime: '09:30', panel: 'fiFirst', room: 'القاعة 2' },
-  { court: 'appeal', number: 312, code: 8228, year: 2026, status: 'IN_PREPARATION', hearingInDays: 12, hearingTime: '10:00', panel: 'apFirst', room: 'القاعة 1' },
+  { court: 'appeal', number: 312, code: 8201, year: 2026, status: 'IN_PREPARATION', hearingInDays: 12, hearingTime: '10:00', panel: 'apFirst', room: 'القاعة 1' },
 ];

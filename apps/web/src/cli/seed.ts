@@ -235,8 +235,10 @@ async function main(): Promise<void> {
   let caseFiles = 0;
   for (const demo of DEMO_CASES) {
     const courtId = courtIds[demo.court];
+    // By the register's number, whatever its code (decision 53): a file seeded before with another code
+    // is the same file, and gets its code in place (seed-cases.ts, recodeDemoCaseTypes).
     const existing = await db.caseFile.findUnique({
-      where: { courtId_number_code_year: { courtId, number: demo.number, code: demo.code, year: demo.year } },
+      where: { courtId_number_year: { courtId, number: demo.number, year: demo.year } },
     });
     if (existing) continue;
     let nextHearingId: string | null = null;

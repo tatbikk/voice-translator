@@ -131,7 +131,8 @@ export const EVENT_TYPES = {
   'demo.outbox.viewed': { outcome: 'DONE', details: detailsOf({ count }) },
   'demo.data.seeded': { outcome: 'DONE', details: detailsOf({ users: count, caseFiles: count }) },
   /** review IR-40: a demo file seeded with a name in place of a case-type code gets the code */
-  'demo.case.type.recoded': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromType: code, toType: code }) },
+  // The code inside the number goes with the type (review of IR-40); events written before carry the type alone.
+  'demo.case.type.recoded': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromType: code, toType: code, fromCode: count.exactOptional(), toCode: count.exactOptional() }) },
   'demo.data.reset': {
     outcome: 'DONE',
     details: detailsOf({ previousHeadSeq: count.nullable(), previousHeadHash: hash.nullable() }),
