@@ -255,5 +255,6 @@
   "fees.basis.proportional": "الرسم النسبي حسب تعريفة الرسوم القضائية",
   "fees.basis.surcharge": "الزيادة الثابتة فيما زاد على عشرين ألف درهم",
   "fees.basis.appealSurcharge": "زيادة رسم الاستئناف",
+  "fees.basis.unvaluedClaim": "رسم الطلب غير المحدد القيمة: {claim}",
   "fees.basis.pleading": "رسم المرافعة"
 }

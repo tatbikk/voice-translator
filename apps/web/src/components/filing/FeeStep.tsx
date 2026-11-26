@@ -9,9 +9,12 @@ import { CONTROL, LabeledInput, type StepProps } from './parts';
 
 // 5. «الرسم القضائي»: computed by the platform from the claims (rule 5 of the
 // prompt), detailed with its basis, marked «قيمة مؤقتة غير مؤكدة» while a
-// rate is an open question, and paid through the gateway. The amount is never
-// sent by the browser. A rate is written with the decimal comma, the dot being the
-// thousands separator of the platform (glossary, rule 7; review P2-L-20).
+// rate, the way the rates apply or the fee of a claim without a fixed amount is
+// an open question, and paid through the gateway. A claim without a fixed
+// amount that the table does not put outside the base has a line of its own.
+// The amount is never sent by the browser. A rate is written with the decimal
+// comma, the dot being the thousands separator of the platform (glossary,
+// rule 7; review P2-L-20).
 
 export function FeeStep({ view, dict, t, busy, update }: StepProps) {
   const [opening, setOpening] = useState(false);
@@ -61,7 +64,7 @@ export function FeeStep({ view, dict, t, busy, update }: StepProps) {
             {fee.lines.map((line, i) => (
               <tr key={`${line.kind}:${String(i)}`} className="border-b border-line">
                 <th scope="row" className="px-2 py-2 text-start font-normal">
-                  {t(line.basis)}
+                  {t(line.basis, line.claimNature ? { claim: t(`case.claims.nature.${line.claimNature}`) } : {})}
                   {line.rateBasisPoints !== null ? ` (${t('filing.fee.rate', { rate: (line.rateBasisPoints / 100).toString().replace('.', ',') })})` : ''}
                   {line.uncertain ? <span className="block text-sm text-elapsed">{t('common.provisionalValue')}</span> : null}
                 </th>

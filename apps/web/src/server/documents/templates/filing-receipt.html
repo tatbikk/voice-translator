@@ -4,6 +4,6 @@
 {{#documents}}<tr><td>{{title}}</td><td>{{nature}}</td><td><bdi>{{hash}}</bdi></td></tr>{{/documents}}
 </table>
 <p>عدد المستندات المرفقة بالمقال: {{exhibitCount}}.</p>
-<p>مرجع عملية الأداء: <bdi>{{paymentRef}}</bdi>، ومبلغ الرسم القضائي المؤدى: {{feeAmount}}.</p>
+<p>مرجع عملية الأداء: <bdi>{{paymentRef}}</bdi>، ومبلغ الرسم القضائي المؤدى: {{feeAmount}}{{#feeProvisional}} <span class="provisional">({{feeProvisional}})</span>{{/feeProvisional}}.</p>
 {{#paper}}<p>رقمنت كتابة الضبط المقال الورقي، وأصله محفوظ بها: {{paperLocation}}.</p>{{/paper}}
 {{#bailiff}}<p>المفوض القضائي المعين من طرف المدعي أو محاميه (المادة 87 من القانون رقم 58.25): {{bailiffName}}.</p>{{/bailiff}}

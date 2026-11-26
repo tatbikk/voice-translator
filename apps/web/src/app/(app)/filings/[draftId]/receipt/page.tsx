@@ -5,6 +5,7 @@ import { dateTime, dirhams } from '@/components/case/format';
 import { CaseNumber } from '@/components/ui/CaseNumber';
 import { Notice } from '@/components/ui/Notice';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ProvisionalMark } from '@/components/ui/ProvisionalMark';
 import { TABLE } from '@/components/ui/table-style';
 import { TableFrame } from '@/components/ui/TableFrame';
 import { draftResource } from '@/server/filings/drafts';
@@ -34,7 +35,8 @@ function natureText(t: Translator, d: ReceiptDocument, paper: boolean): string {
 
 // «وصل الإيداع» (study, «المرحلة الأولى»; art. 628): the number of the file,
 // its national identifier, the date and hour of filing, each document with its
-// declared nature and its fingerprint, and the payment.
+// declared nature and its fingerprint, and the payment, whose amount carries
+// «قيمة مؤقتة غير مؤكدة» while the fee rests on an unsettled rule (prompt, rule 5).
 export default async function ReceiptPage({ params }: { params: Promise<{ draftId: string }> }) {
   const context = await requirePage('filing.receipt', 'filing.draft.read', async () => {
     const { draftId } = await params;
@@ -82,6 +84,7 @@ export default async function ReceiptPage({ params }: { params: Promise<{ draftI
                 <dt className="text-sm text-text-muted">{t('filing.receipt.payment')}</dt>
                 <dd>
                   {dirhams(t, receipt.payment.amountCents)} — <bdi dir="ltr">{receipt.payment.operationRef}</bdi>
+                  {receipt.payment.uncertain ? <ProvisionalMark block text={t('common.provisionalValue')} /> : null}
                 </dd>
               </div>
             ) : null}

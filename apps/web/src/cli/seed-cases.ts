@@ -22,6 +22,7 @@ import { appendStandaloneEvent } from '@/server/events/append';
 import { storeDocument } from '@/server/documents/service';
 import { DocumentGenerationError, generatePdf, type GenerateInput, type TemplateName } from '@/server/documents/generate';
 import { openSignatureCircle, setSigningSecret, signDocument } from '@/server/signature/service';
+import { paidAmountUncertain } from '@/server/payments/uncertainty';
 import { feeSchedule, holidayCalendar, timeLimitRules } from '@/server/rules/store';
 import { lawArticlesText } from '@/i18n/legal-basis';
 import { translator } from '@/i18n/translate';
@@ -366,7 +367,12 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
     depositedByPartyId: first.id,
   });
   const paymentRef = await courtFee(file.id, content, first.id, firstCounselId, registeredAt);
-  const fee = await db.payment.findFirst({ where: { caseFileId: file.id, operationRef: paymentRef }, select: { amountCents: true } });
+  const fee = await db.payment.findFirst({
+    where: { caseFileId: file.id, operationRef: paymentRef },
+    select: { amountCents: true, purpose: true, intent: { select: { breakdown: true } } },
+  });
+  // The mark of the amount is read from the assessment stored on the file, as everywhere it is shown.
+  const assessments = await db.feeAssessment.findMany({ where: { caseFileId: file.id }, select: { totalCents: true, breakdown: true } });
   const counselName = (await db.user.findUnique({ where: { id: firstCounselId }, select: { fullName: true } }))?.fullName ?? '';
   await generated(
     file,
@@ -385,6 +391,7 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
       ],
       paymentRef,
       feeAmount: dirhamsText(fee?.amountCents ?? 0n),
+      feeProvisional: fee && paidAmountUncertain(fee, assessments) ? t('common.provisionalValue') : '',
     },
     [],
     'CASE',

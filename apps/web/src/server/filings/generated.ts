@@ -8,6 +8,7 @@ import { DocumentGenerationError, generatePdf, type GenerateInput, type Template
 import { sha256Hex } from '../documents/service';
 import { documentStore } from '../documents/store';
 import { appendEvent, appendStandaloneEvent, eventTransaction } from '../events/append';
+import { paidAmountUncertain, type PaidAmount, type StoredAssessment } from '../payments/uncertainty';
 import { draftStorageKey, sha256 } from './drafts';
 
 // The documents the worker prints for the filing path (review P1-A-06): the
@@ -23,6 +24,15 @@ export function dirhamsText(cents: bigint | number): string {
   const whole = (value / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   const fraction = value % 100n;
   return t('case.amount', { amount: fraction === 0n ? whole : `${whole},${fraction.toString().padStart(2, '0')}` });
+}
+
+/**
+ * The mark that goes with the amount of a fee in a printed receipt, or nothing: «قيمة مؤقتة غير
+ * مؤكدة» while the amount rests on something the fee table marked uncertain, as the assessment
+ * stored with the payment says (prompt, rule 5; independent review IR-26).
+ */
+export function provisionalMark(payment: PaidAmount, fileAssessments: readonly StoredAssessment[] = []): string {
+  return paidAmountUncertain(payment, fileAssessments) ? t('common.provisionalValue') : '';
 }
 
 /** The digest of the paragraphs a fixed copy is printed from. */
@@ -143,7 +153,21 @@ export async function prepareFixedCopy(draftId: string, textDigest: string, cont
 export async function issuePaymentReceipt(paymentId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
   const payment = await getDb().payment.findUnique({
     where: { id: paymentId },
-    select: { id: true, status: true, amountCents: true, operationRef: true, paidAt: true, method: true, draftId: true, courtId: true, caseFileId: true, payerUserId: true, receiptDocumentId: true },
+    select: {
+      id: true,
+      status: true,
+      purpose: true,
+      amountCents: true,
+      operationRef: true,
+      paidAt: true,
+      method: true,
+      draftId: true,
+      courtId: true,
+      caseFileId: true,
+      payerUserId: true,
+      receiptDocumentId: true,
+      intent: { select: { breakdown: true } },
+    },
   });
   if (!payment || payment.status !== 'SUCCEEDED' || !payment.draftId || payment.receiptDocumentId) return;
   const draftId = payment.draftId;
@@ -174,6 +198,7 @@ export async function issuePaymentReceipt(paymentId: string, context: PrintConte
       depositor,
       payer,
       amount: dirhamsText(payment.amountCents),
+      provisional: provisionalMark(payment),
       operationRef: payment.operationRef,
       method: t(`filing.payment.method.${payment.method ?? 'ONLINE'}`),
       lines: [{ line: t('documents.paymentReceipt.simulated') }],
@@ -254,7 +279,8 @@ export async function issueFilingReceipt(caseFileId: string, context: PrintConte
       court: { select: { name: true } },
       filingDraft: { select: { id: true, ownerUserId: true, paperDepositor: true } },
       documents: { select: { id: true, docType: true, title: true, declaredNature: true, generated: true, sha256: true, paperOriginalLocation: true, depositedAt: true }, orderBy: { depositedAt: 'asc' } },
-      payments: { where: { status: 'SUCCEEDED' }, select: { operationRef: true, amountCents: true } },
+      payments: { where: { status: 'SUCCEEDED' }, select: { operationRef: true, amountCents: true, purpose: true, intent: { select: { breakdown: true } } } },
+      fees: { select: { totalCents: true, breakdown: true } },
     },
   });
   if (!file?.filingDraft) return;
@@ -292,6 +318,7 @@ export async function issueFilingReceipt(caseFileId: string, context: PrintConte
       exhibitCount: filed.filter((d) => d.docType === 'EXHIBIT').length,
       paymentRef: payment?.operationRef ?? '',
       feeAmount: payment ? dirhamsText(payment.amountCents) : '',
+      feeProvisional: payment ? provisionalMark(payment, file.fees) : '',
       paper: file.filingChannel === 'PAPER' && paperLocation ? [{ paperLocation }] : [],
       bailiff: bailiff ? [{ bailiffName: bailiff }] : [],
     },

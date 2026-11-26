@@ -2,6 +2,7 @@ import 'server-only';
 import { authorize, type AuthorizationContext, type UserSubject } from '@mahkama/core';
 import { getDb } from '../db';
 import { parseCard } from '../filings/drafts';
+import { paidAmountUncertain } from '../payments/uncertainty';
 import { feeCalledFor } from './fees';
 
 // «الصندوق» (study, «واجهة كتابة الضبط»): the payments that came in at the
@@ -17,8 +18,12 @@ export interface LedgerPayment {
   readonly operationRef: string;
   readonly purpose: string;
   readonly caseFile: { readonly id: string; readonly number: number; readonly code: number; readonly year: number } | null;
+  /** the amount rests on something the fee table marked uncertain, as the assessment stored with the payment says */
+  readonly uncertain: boolean;
   /** the fee the claims call for, computed again from them on the day of the payment; null when it cannot be */
   readonly assessedCents: bigint | null;
+  /** that computation rests on something the table marks uncertain */
+  readonly assessedUncertain: boolean;
 }
 
 export interface Ledger {
@@ -45,8 +50,17 @@ export async function cashierLedger(subject: UserSubject, context: Authorization
       operationRef: true,
       purpose: true,
       draftId: true,
-      caseFile: { select: { id: true, number: true, code: true, year: true, claims: { where: { category: 'PRINCIPAL' }, select: { nature: true, amountCents: true } } } },
-      intent: { select: { draft: { select: { card: true } } } },
+      caseFile: {
+        select: {
+          id: true,
+          number: true,
+          code: true,
+          year: true,
+          claims: { where: { category: 'PRINCIPAL' }, select: { nature: true, amountCents: true } },
+          fees: { select: { totalCents: true, breakdown: true } },
+        },
+      },
+      intent: { select: { breakdown: true, draft: { select: { card: true } } } },
     },
   });
   // «مطابقتها للطلبات»: the fee the claims call for, from the file's claims once filed, from the draft's before.
@@ -66,7 +80,9 @@ export async function cashierLedger(subject: UserSubject, context: Authorization
     operationRef: r.operationRef,
     purpose: r.purpose,
     caseFile: r.caseFile ? { id: r.caseFile.id, number: r.caseFile.number, code: r.caseFile.code, year: r.caseFile.year } : null,
-    assessedCents: called[index] ?? null,
+    uncertain: paidAmountUncertain(r, r.caseFile?.fees),
+    assessedCents: called[index]?.totalCents ?? null,
+    assessedUncertain: called[index]?.uncertain ?? false,
   });
   const all = rows.map(view);
   return {

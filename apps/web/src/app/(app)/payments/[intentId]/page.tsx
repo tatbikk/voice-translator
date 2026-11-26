@@ -6,6 +6,7 @@ import { dateTime, dirhams } from '@/components/case/format';
 import { GatewayButtons } from '@/components/payment/GatewayButtons';
 import { Notice } from '@/components/ui/Notice';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ProvisionalMark } from '@/components/ui/ProvisionalMark';
 import { clock } from '@/server/clock';
 import { intentResource } from '@/server/payments/service';
 import { intentView } from '@/server/filings/receipt';
@@ -17,7 +18,9 @@ export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 // «أداء (محاكاة)» (prompt, «الأداء»): the page of the simulated gateway, with
-// its three answers; once paid, «وصل الأداء» with the operation reference.
+// its three answers; once paid, «وصل الأداء» with the operation reference. The
+// amount carries «قيمة مؤقتة غير مؤكدة» while the fee it was opened for rests
+// on an unsettled rule (prompt, rule 5; independent review IR-26).
 export default async function PaymentPage({ params }: { params: Promise<{ intentId: string }> }) {
   const context = await requirePage('payment', 'payment.view', async () => {
     const { intentId } = await params;
@@ -37,7 +40,10 @@ export default async function PaymentPage({ params }: { params: Promise<{ intent
       <dl className="card mb-8 grid gap-x-8 gap-y-3 px-5 py-5 sm:grid-cols-2">
         <div>
           <dt className="text-sm text-text-muted">{t('payment.amount')}</dt>
-          <dd className="text-lg font-semibold">{dirhams(t, intent.amountCents)}</dd>
+          <dd className="text-lg font-semibold">
+            {dirhams(t, intent.amountCents)}
+            {intent.amountUncertain ? <ProvisionalMark block text={t('common.provisionalValue')} /> : null}
+          </dd>
         </div>
         <div>
           <dt className="text-sm text-text-muted">{t('payment.method')}</dt>
@@ -73,7 +79,10 @@ export default async function PaymentPage({ params }: { params: Promise<{ intent
             </div>
             <div>
               <dt className="text-sm text-text-muted">{t('payment.amount')}</dt>
-              <dd>{dirhams(t, intent.amountCents)}</dd>
+              <dd>
+                {dirhams(t, intent.amountCents)}
+                {intent.amountUncertain ? <ProvisionalMark block text={t('common.provisionalValue')} /> : null}
+              </dd>
             </div>
           </dl>
           <p className="mt-4 text-sm text-text-muted">{t('payment.treasuryEntry')}</p>

@@ -1,6 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
-import { CaseTypeRuleSetSchema, DistrictRuleSetSchema, JurisdictionRuleSetSchema, ReferralRuleSetSchema, type FeeRuleSet, type InterestRuleSet, type TimeLimitRuleSet } from '@mahkama/core';
+import { CaseTypeRuleSetSchema, DistrictRuleSetSchema, FEE_METHODS, JurisdictionRuleSetSchema, ReferralRuleSetSchema, type FeeRuleSet, type InterestRuleSet, type TimeLimitRuleSet } from '@mahkama/core';
 import { ruleContentSha256, type HolidayRuleSet, type RuleKind } from './store';
 
 // The structure of each rule table of rules/*.json, checked before anything is
@@ -60,12 +60,16 @@ const fees: z.ZodType<FeeRuleSet> = z
   .strictObject({
     ...dated,
     schedule: z.strictObject({
+      /** the way the bands apply to the base; absent from the version loaded before it became a setting (independent review IR-03) */
+      method: setting(z.enum(FEE_METHODS)).exactOptional(),
       bands: z
         .array(z.strictObject({ upToCents: cents.nullable(), rateBasisPoints: z.number().int().min(0), surchargeCents: cents, uncertain: z.boolean() }))
         .min(1),
       minimumBase: setting(cents),
       pleadingFee: setting(cents),
       outsideBase: z.array(z.enum(['DEBT', 'DAMAGES', 'LEGAL_INTEREST', 'PROVISIONAL_ENFORCEMENT', 'COSTS', 'OTHER'])),
+      /** the fee of a claim without a fixed amount that is not outside the base; absent from the same version (independent review IR-04) */
+      unvaluedClaimFee: setting(cents).exactOptional(),
       appealSurcharge: setting(cents),
     }),
   })

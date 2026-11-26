@@ -74,6 +74,28 @@ describe('the rule files of the repository', () => {
     expect(before.method).toBeUndefined();
     expect(before.unvaluedClaimFee).toBeUndefined();
   });
+
+  it('change no amount, in the fee table in force, of the version it replaces: a fee paid under the earlier one is the fee the later one calls for (finding P2-S-04)', () => {
+    interface Schedule {
+      bands: { upToCents: number | null; rateBasisPoints: number; surchargeCents: number }[];
+      minimumBase: { value: number };
+      pleadingFee: { value: number };
+      outsideBase: string[];
+      appealSurcharge: { value: number };
+      unvaluedClaimFee?: { value: number };
+    }
+    const scheduleOf = (open: boolean) => (files.find((f) => f.kind === 'FEES' && (f.validTo === null) === open)?.content as { schedule: Schedule }).schedule;
+    const amounts = (schedule: Schedule) => ({
+      bands: schedule.bands.map((band) => [band.upToCents, band.rateBasisPoints, band.surchargeCents]),
+      minimumBase: schedule.minimumBase.value,
+      pleadingFee: schedule.pleadingFee.value,
+      outsideBase: schedule.outsideBase,
+      appealSurcharge: schedule.appealSurcharge.value,
+    });
+    expect(amounts(scheduleOf(true))).toEqual(amounts(scheduleOf(false)));
+    // The one setting that adds a line adds nothing to the amount.
+    expect(scheduleOf(true).unvaluedClaimFee?.value).toBe(0);
+  });
 });
 
 describe('an invalid rule file is refused before loading (review P1-S-10)', () => {

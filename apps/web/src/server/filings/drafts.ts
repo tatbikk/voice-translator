@@ -7,6 +7,7 @@ import {
   SECURITY_POLICY,
   assessCourtFee,
   canonicalJson,
+  feeAssessmentUncertain,
   feeClaims,
   moroccoDay,
   preSignatureChecks,
@@ -86,7 +87,7 @@ export async function draftFee(card: FilingCard, courtId: string | null, at: Dat
     assessment,
     version: schedule.version,
     validFrom: schedule.validFrom,
-    uncertain: assessment.lines.some((l) => l.uncertain),
+    uncertain: feeAssessmentUncertain(assessment),
     digest: feeDigest(card, courtId, schedule.version),
   };
 }
@@ -300,7 +301,7 @@ export interface DraftView {
     readonly paperOriginalLocation: string | null;
     readonly generated: boolean;
   }[];
-  readonly fee: { readonly totalCents: number; readonly baseCents: number; readonly uncertain: boolean; readonly version: string; readonly validFrom: string; readonly lines: readonly { kind: string; amountCents: number; baseCents: number | null; rateBasisPoints: number | null; basis: string; uncertain: boolean }[]; readonly excluded: readonly string[] } | null;
+  readonly fee: { readonly totalCents: number; readonly baseCents: number; readonly uncertain: boolean; readonly version: string; readonly validFrom: string; readonly lines: readonly { kind: string; amountCents: number; baseCents: number | null; rateBasisPoints: number | null; basis: string; claimNature: string | null; uncertain: boolean }[]; readonly excluded: readonly string[] } | null;
   readonly payment: {
     readonly status: 'NONE' | 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
     readonly intentId: string | null;

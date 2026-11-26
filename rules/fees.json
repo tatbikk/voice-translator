@@ -2,7 +2,7 @@
   {
     "version": "2026-08-23.1",
     "validFrom": "2026-08-23",
-    "validTo": null,
+    "validTo": "2026-11-26",
     "source": "الدراسة، «المرحلة الأولى»: تعريفة الفصل 24 من الملحق المتعلق بالمصاريف القضائية، ورسم المرافعة في الفصل 65؛ و«المرحلة العاشرة» لزيادة رسم الاستئناف. المادة 619 من القانون رقم 58.25 تحيل على القانون المتعلق بالرسوم والمصاريف القضائية",
     "schedule": {
       "bands": [
@@ -13,6 +13,25 @@
       "minimumBase": { "value": 100000, "uncertain": true, "articles": [619] },
       "pleadingFee": { "value": 1000, "uncertain": false, "articles": [619] },
       "outsideBase": ["LEGAL_INTEREST", "PROVISIONAL_ENFORCEMENT", "COSTS"],
+      "appealSurcharge": { "value": 1000, "uncertain": true, "articles": [619] }
+    }
+  },
+  {
+    "version": "2026-11-26.1",
+    "validFrom": "2026-11-26",
+    "validTo": null,
+    "source": "الدراسة، «المرحلة الأولى»: تعريفة الفصل 24 من الملحق المتعلق بالمصاريف القضائية، ورسم المرافعة في الفصل 65؛ و«المرحلة العاشرة» لزيادة رسم الاستئناف. المادة 619 من القانون رقم 58.25 تحيل على القانون المتعلق بالرسوم والمصاريف القضائية، وهو ليس في المستودع. ويختلف هذا الإصدار عن سابقه في ما يوسم غير مؤكد، لا في المبالغ: الشطران الأولان موسومان كالشطر الأخير، لأن الدراسة لم تذكر لهما غير النسبتين وأوصت بالتحقق على النص الرسمي؛ وطريقة الاحتساب (method: تطبق نسبة الشطر الذي يقع فيه الوعاء على الوعاء كله) صارت إعدادا موسوما، وبها ينقص الرسم حين يجاوز الطلب حد الشطر (س40)؛ ورسم الطلب غير المحدد القيمة الذي لا يخرج من الوعاء بحكم التعريفة (unvaluedClaimFee) صار إعدادا موسوما قيمته المؤقتة صفر، أي لا رسم نسبي عنه، ويظهر له سطر في تفصيل الرسم (س41). ولا يوسم رسم المرافعة ولا ما يخرج من الوعاء (outsideBase)، فالدراسة تذكرهما صراحة (docs/decisions.md، القرار 68)",
+    "schedule": {
+      "method": { "value": "BAND_RATE_ON_WHOLE_BASE", "uncertain": true, "articles": [619] },
+      "bands": [
+        { "upToCents": 500000, "rateBasisPoints": 400, "surchargeCents": 0, "uncertain": true },
+        { "upToCents": 2000000, "rateBasisPoints": 250, "surchargeCents": 0, "uncertain": true },
+        { "upToCents": null, "rateBasisPoints": 100, "surchargeCents": 30000, "uncertain": true }
+      ],
+      "minimumBase": { "value": 100000, "uncertain": true, "articles": [619] },
+      "pleadingFee": { "value": 1000, "uncertain": false, "articles": [619] },
+      "outsideBase": ["LEGAL_INTEREST", "PROVISIONAL_ENFORCEMENT", "COSTS"],
+      "unvaluedClaimFee": { "value": 0, "uncertain": true, "articles": [619] },
       "appealSurcharge": { "value": 1000, "uncertain": true, "articles": [619] }
     }
   }

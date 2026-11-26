@@ -10,6 +10,7 @@ import { NewFilingButton } from '@/components/filing/NewFilingButton';
 import { CaseNumber } from '@/components/ui/CaseNumber';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ProvisionalMark } from '@/components/ui/ProvisionalMark';
 import { clock } from '@/server/clock';
 import { caseTypesOfCourt, incomingFiles } from '@/server/offices/registry';
 import { screenMetadata } from '@/server/page-metadata';
@@ -86,7 +87,13 @@ export default async function RegistryPage() {
                   <dt className="text-text-muted">{t('registry.card.fee')}</dt>
                   <dd>
                     {dirhams(t, f.feePaidCents)}
-                    {f.feeAssessedCents !== null && f.feeAssessedCents !== f.feePaidCents ? ` — ${t('registry.card.feeMismatch', { amount: dirhams(t, f.feeAssessedCents) })}` : ''}
+                    {f.feePaidUncertain ? <ProvisionalMark text={t('common.provisionalValue')} /> : null}
+                    {f.feeAssessedCents !== null && f.feeAssessedCents !== f.feePaidCents ? (
+                      <span className="block">
+                        {t('registry.card.feeMismatch', { amount: dirhams(t, f.feeAssessedCents) })}
+                        {f.feeAssessedUncertain ? <ProvisionalMark text={t('common.provisionalValue')} /> : null}
+                      </span>
+                    ) : null}
                   </dd>
                 </div>
               </dl>

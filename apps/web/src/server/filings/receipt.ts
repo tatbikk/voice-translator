@@ -1,5 +1,6 @@
 import 'server-only';
 import { getDb } from '../db';
+import { paidAmountUncertain } from '../payments/uncertainty';
 
 // What «وصل الإيداع» and «أداء (محاكاة)» show (study, «المرحلة الأولى»;
 // prompt, «الأداء»), read for a draft or an intent the page has authorized.
@@ -13,7 +14,8 @@ export interface ReceiptView {
   readonly channel: 'ELECTRONIC' | 'PAPER';
   readonly registeredAt: Date | null;
   readonly documents: readonly { readonly id: string; readonly docType: string; readonly title: string | null; readonly declaredNature: string | null; readonly sha256: string; readonly generated: boolean }[];
-  readonly payment: { readonly operationRef: string; readonly amountCents: bigint; readonly paidAt: Date } | null;
+  /** the fee paid; `uncertain` when it rests on something the fee table marked uncertain (the assessment stored with the payment) */
+  readonly payment: { readonly operationRef: string; readonly amountCents: bigint; readonly paidAt: Date; readonly uncertain: boolean } | null;
   /** the generated receipt, once the worker has printed it */
   readonly receiptDocumentId: string | null;
   readonly bailiffName: string | null;
@@ -41,10 +43,17 @@ export async function receiptView(draftId: string): Promise<ReceiptView | null> 
       designatedBailiffUserId: true,
       court: { select: { name: true } },
       documents: { orderBy: { depositedAt: 'asc' }, select: { id: true, docType: true, title: true, declaredNature: true, sha256: true, generated: true } },
-      payments: { where: { status: 'SUCCEEDED' }, orderBy: { paidAt: 'asc' }, take: 1, select: { operationRef: true, amountCents: true, paidAt: true } },
+      payments: {
+        where: { status: 'SUCCEEDED' },
+        orderBy: { paidAt: 'asc' },
+        take: 1,
+        select: { operationRef: true, amountCents: true, paidAt: true, purpose: true, intent: { select: { breakdown: true } } },
+      },
+      fees: { select: { totalCents: true, breakdown: true } },
     },
   });
   if (!file) return null;
+  const payment = file.payments[0] ?? null;
   const bailiff = file.designatedBailiffUserId ? await db.user.findUnique({ where: { id: file.designatedBailiffUserId }, select: { fullName: true } }) : null;
   return {
     draftId: draft.id,
@@ -55,7 +64,9 @@ export async function receiptView(draftId: string): Promise<ReceiptView | null> 
     channel: draft.channel,
     registeredAt: file.registeredAt,
     documents: file.documents.filter((d) => filed.has(d.id)),
-    payment: file.payments[0] ?? null,
+    payment: payment
+      ? { operationRef: payment.operationRef, amountCents: payment.amountCents, paidAt: payment.paidAt, uncertain: paidAmountUncertain(payment, file.fees) }
+      : null,
     receiptDocumentId: file.documents.find((d) => d.docType === 'FILING_RECEIPT')?.id ?? null,
     bailiffName: bailiff?.fullName ?? null,
   };
@@ -66,6 +77,8 @@ export interface IntentView {
   readonly draftId: string;
   readonly status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
   readonly amountCents: bigint;
+  /** the amount rests on something the fee table marked uncertain, as the assessment stored with the payment says */
+  readonly amountUncertain: boolean;
   readonly method: 'ONLINE' | 'COUNTER';
   readonly expiresAt: Date;
   readonly courtName: string | null;
@@ -82,7 +95,9 @@ export async function intentView(intentId: string, now: Date): Promise<IntentVie
       id: true,
       draftId: true,
       status: true,
+      purpose: true,
       amountCents: true,
+      breakdown: true,
       method: true,
       expiresAt: true,
       payment: { select: { operationRef: true, paidAt: true, status: true } },
@@ -96,6 +111,7 @@ export async function intentView(intentId: string, now: Date): Promise<IntentVie
     draftId: intent.draftId,
     status: intent.status === 'PENDING' && intent.expiresAt.getTime() <= now.getTime() ? 'EXPIRED' : intent.status,
     amountCents: intent.amountCents,
+    amountUncertain: paidAmountUncertain({ purpose: intent.purpose, amountCents: intent.amountCents, intent }),
     method: intent.method,
     expiresAt: intent.expiresAt,
     courtName: intent.draft.court?.name ?? null,

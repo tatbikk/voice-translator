@@ -3,6 +3,7 @@ import { authorize, availableActions, resolveLegalBasis, type AuthorizationConte
 import { getDb } from '../db';
 import { caseTypeRules } from '../rules/store';
 import { caseSnapshot } from '../cases/snapshot';
+import { paidAmountUncertain } from '../payments/uncertainty';
 import { feeCalledFor } from './fees';
 
 // «مكتب التقييد» (study, «واجهة كتابة الضبط»): the files registered at the
@@ -22,7 +23,11 @@ export interface IncomingFile {
   readonly parties: readonly { readonly side: string; readonly name: string }[];
   readonly claims: readonly { readonly nature: string; readonly amountCents: bigint | null }[];
   readonly feePaidCents: bigint;
+  /** a fee paid rests on something the fee table marked uncertain, as the assessment stored with its payment says */
+  readonly feePaidUncertain: boolean;
   readonly feeAssessedCents: bigint | null;
+  /** the fee computed again from the claims rests on something the table marks uncertain */
+  readonly feeAssessedUncertain: boolean;
   readonly actions: readonly { readonly code: string; readonly labelKey: string; readonly effectKey: string; readonly notifiedKey: string; readonly basis: LegalBasis }[];
 }
 
@@ -45,7 +50,8 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
       registeredAt: true,
       parties: { orderBy: { position: 'asc' }, select: { side: true, displayName: true } },
       claims: { orderBy: { filedAt: 'asc' }, select: { nature: true, amountCents: true } },
-      payments: { where: { status: 'SUCCEEDED' }, select: { amountCents: true } },
+      payments: { where: { status: 'SUCCEEDED' }, select: { amountCents: true, purpose: true, intent: { select: { breakdown: true } } } },
+      fees: { select: { totalCents: true, breakdown: true } },
       subject: true,
     },
   });
@@ -54,6 +60,8 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
   for (const f of files) {
     const snapshot = now ? await caseSnapshot(f.id, now) : null;
     if (!snapshot) continue;
+    // What the claims call for, computed again from them on the day of filing (review P2-A-13).
+    const called = f.registeredAt ? await feeCalledFor(f.claims, f.registeredAt) : null;
     const resource = { kind: 'case' as const, snapshot };
     const actions = availableActions(subject, resource, context)
       .filter((rule) => rule.procedure !== undefined)
@@ -69,8 +77,9 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
       parties: f.parties.map((p) => ({ side: p.side, name: p.displayName })),
       claims: f.claims.map((c) => ({ nature: c.nature, amountCents: c.amountCents })),
       feePaidCents: f.payments.reduce((sum, p) => sum + p.amountCents, 0n),
-      // What the claims call for, computed again from them on the day of filing (review P2-A-13).
-      feeAssessedCents: f.registeredAt ? await feeCalledFor(f.claims, f.registeredAt) : null,
+      feePaidUncertain: f.payments.some((p) => paidAmountUncertain(p, f.fees)),
+      feeAssessedCents: called?.totalCents ?? null,
+      feeAssessedUncertain: called?.uncertain ?? false,
       actions,
     });
   }

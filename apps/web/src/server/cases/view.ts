@@ -4,6 +4,7 @@ import {
   holdsRelation,
   readsRegistryNotes,
   seesPartyContacts,
+  storedFeeUncertain,
   type CaseSnapshot,
   type UserSubject,
 } from '@mahkama/core';
@@ -249,9 +250,8 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
         filing: f.filing,
         totalCents: f.totalCents,
         assessedAt: f.assessedAt,
-        uncertain: Array.isArray((f.breakdown as { lines?: unknown[] }).lines)
-          ? ((f.breakdown as { lines: { uncertain?: boolean }[] }).lines).some((l) => l.uncertain === true)
-          : false,
+        // Read from the assessment as it was stored, as everywhere the amount is shown (independent review IR-26).
+        uncertain: storedFeeUncertain(f.breakdown),
       })),
       payments: file.payments.map((p) => ({
         id: p.id,

@@ -1,6 +1,6 @@
 <p>تشهد كتابة الضبط بالمحكمة المذكورة أعلاه بأنها توصلت، بتاريخ {{paidDate}} على الساعة {{paidTime}}، بأداء الرسم القضائي عن {{subject}}{{#counter}}، بصندوق المحكمة{{#depositor}}، من طرف المودع {{depositor}}{{/depositor}}{{/counter}}{{#payer}}، من طرف {{payer}}{{/payer}}، طبقا للمادة 628 من القانون رقم 58.25 المتعلق بالمسطرة المدنية.</p>
 <table>
-<tr><th>مبلغ الأداء</th><td>{{amount}}</td></tr>
+<tr><th>مبلغ الأداء</th><td>{{amount}}{{#provisional}} <span class="provisional">({{provisional}})</span>{{/provisional}}</td></tr>
 <tr><th>مرجع العملية</th><td><bdi>{{operationRef}}</bdi></td></tr>
 <tr><th>وسيلة الأداء</th><td>{{method}}</td></tr>
 </table>

@@ -5,6 +5,7 @@ import { dateTime, dirhams } from '@/components/case/format';
 import { CaseNumber } from '@/components/ui/CaseNumber';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ProvisionalMark } from '@/components/ui/ProvisionalMark';
 import { TABLE } from '@/components/ui/table-style';
 import { TableFrame } from '@/components/ui/TableFrame';
 import { clock } from '@/server/clock';
@@ -15,7 +16,8 @@ import { requirePage } from '@/server/permissions/guard';
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.cashier');
 
 // «الصندوق» (study, «واجهة كتابة الضبط»): «الأداءات الواردة ومطابقتها للطلبات»
-// and «المبالغ المودعة على ذمة إجراءات التحقيق».
+// and «المبالغ المودعة على ذمة إجراءات التحقيق». An amount that rests on an
+// unsettled rule of the fee table carries «قيمة مؤقتة غير مؤكدة» (prompt, rule 5).
 export default async function CashierPage() {
   const context = await requirePage('cashier', 'cashier.ledger.view');
   const t = translator(context.locale);
@@ -40,6 +42,7 @@ export default async function CashierPage() {
 function Ledger({ t, rows, empty, label, match }: { t: Translator; rows: readonly LedgerPayment[]; empty: string; label: string; match: boolean }) {
   if (rows.length === 0) return <EmptyState text={empty} />;
   const numberLabel = t('common.caseNumberLabel');
+  const provisional = t('common.provisionalValue');
   return (
     <TableFrame label={label}>
       <table className={TABLE.table}>
@@ -62,12 +65,16 @@ function Ledger({ t, rows, empty, label, match }: { t: Translator; rows: readonl
                 <span className="block text-sm font-normal text-text-muted">{dateTime(t, r.paidAt)}</span>
               </th>
               <td className={TABLE.td}>{r.caseFile ? <a href={`/cases/${r.caseFile.id}`}><CaseNumber value={r.caseFile} labelTemplate={numberLabel} /></a> : t('cashier.notFiled')}</td>
-              <td className={TABLE.td}>{dirhams(t, r.amountCents)}</td>
+              <td className={TABLE.td}>
+                {dirhams(t, r.amountCents)}
+                {r.uncertain ? <ProvisionalMark block text={provisional} /> : null}
+              </td>
               <td className={TABLE.td}>{t(`filing.payment.method.${r.method ?? 'ONLINE'}`)}</td>
               <td className={TABLE.td}>{t(`cashier.status.${r.status}`)}</td>
               {match ? (
                 <td className={TABLE.td}>
                   {r.status !== 'SUCCEEDED' ? '—' : r.assessedCents === null ? t('cashier.match.unknown') : r.assessedCents === r.amountCents ? t('cashier.match.yes') : t('cashier.match.no', { amount: dirhams(t, r.assessedCents) })}
+                  {r.status === 'SUCCEEDED' && r.assessedCents !== null && r.assessedCents !== r.amountCents && r.assessedUncertain ? <ProvisionalMark block text={provisional} /> : null}
                 </td>
               ) : null}
             </tr>
