@@ -271,7 +271,12 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         await tx.representation.create({ data: { partyId: id, lawyerUserId: filer, startedAt: now } });
       }
     }
-    const plaintiffId = freshCard.parties.filter((p) => p.side === 'PLAINTIFF').map((p) => partyIds.get(p.key))[0] ?? null;
+    // The party who deposits the application and makes the claims. On the electronic channel, the first
+    // plaintiff the filing lawyer acts for: he signs the application as that plaintiff's lawyer (decision 67),
+    // and a plaintiff he unticked has counsel of his own. On paper, the first plaintiff of the card.
+    const plaintiffs = freshCard.parties.filter((p) => p.side === 'PLAINTIFF');
+    const depositing = fresh.channel === 'ELECTRONIC' ? plaintiffs.find((p) => p.representedByFiler === true) : plaintiffs[0];
+    const plaintiffId = (depositing && partyIds.get(depositing.key)) ?? null;
     for (const claim of freshCard.claims) {
       await tx.claim.create({
         data: {
