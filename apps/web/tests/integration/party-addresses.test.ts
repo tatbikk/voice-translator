@@ -20,7 +20,7 @@
 //     with neither locality nor country, and the migration turns into
 //     «unknown» what the seed of Phase 1 assumed.
 import { beforeAll, describe, expect, it } from 'vitest';
-import type { UserSubject } from '@mahkama/core';
+import type { FilingCard, UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { caseView } from '@/server/cases/view';
 import { attestationsFor } from '@/server/filings/drafts';
@@ -376,7 +376,7 @@ describe('what the card no longer shows for the kind of a party (review of IR-08
     const draftId = await prepareDraft(lawyer, { exhibits: 1 });
     // The card as stored before the fix: the parties with what the card no longer shows, attested as they are.
     const card = withParties(MODEL_CASE, OTHER_KIND);
-    await sql(`UPDATE "FilingDraft" SET card = $2::jsonb, attestations = $3::jsonb WHERE id = $1`, [draftId, JSON.stringify(card), JSON.stringify(attestationsFor(card, {}, CARD_SECTIONS))]);
+    await sql(`UPDATE "FilingDraft" SET card = $2::jsonb, attestations = $3::jsonb WHERE id = $1`, [draftId, JSON.stringify(card), JSON.stringify(attestationsFor(card as FilingCard, {}, CARD_SECTIONS))]);
     expect((await getDraft(lawyer, draftId)).draft.card.parties.map((p) => p.key)).toEqual(card.parties.map((p) => p.key));
     await payDraft(lawyer, draftId);
     const filed = await submit(lawyer, draftId, { secret });
