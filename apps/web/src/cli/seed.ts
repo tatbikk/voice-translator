@@ -20,6 +20,7 @@ import { closeDb, getDb } from '@/server/db';
 import { appendStandaloneEvent } from '@/server/events/append';
 import { hashPassword } from '@/server/auth/passwords';
 import { enforceBuild } from '@/server/boot/build-info';
+import { migrationsMayDeploy } from './migration-guard';
 import { seedCaseContent } from './seed-cases';
 import { seedReferredFiling } from './seed-filings';
 import { setSigningSecret } from '@/server/signature/service';
@@ -130,7 +131,9 @@ async function main(): Promise<void> {
     await owner.end();
   }
 
-  // Schema and grants (both idempotent).
+  // Schema and grants (both idempotent). Nothing is migrated when a pending migration is dated
+  // before one already applied (decision 83): the guard has logged which.
+  if (!(await migrationsMayDeploy(env.MIGRATION_DATABASE_URL, join(webRoot, 'prisma', 'migrations'), 'seed'))) fail('MIGRATION_DATED_BEFORE_APPLIED');
   run([prismaCli(), 'migrate', 'deploy']);
   run([join(webRoot, 'dist-server', 'db-roles.mjs')]);
 
