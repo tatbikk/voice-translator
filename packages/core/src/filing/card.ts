@@ -163,26 +163,39 @@ export function filerCounselByDefault(channel: 'ELECTRONIC' | 'PAPER', side: Car
 }
 
 /**
- * The party of the card form whose kind of person changes: what the card no longer shows for the new
- * kind does not stay hidden with it (fix review M2; review of IR-08). Capacity is a natural person's,
- * the public kind a public-law person's; a natural person has a domicile or a residence, a company
- * and a public-law person a registered office and a branch. A hidden address would be registered with
- * its place, and decide the time to appear (arts. 88 and 89).
+ * The party with what the card shows for its kind of person, and nothing else (review of IR-08): a
+ * natural person's identity number, capacity, domicile and residence; a company's register number,
+ * legal form, representative, registered office and branch; a public-law person's category,
+ * representative, registered office and branch. What a kind switch, a form before the fix or another
+ * client left hidden is dropped where the card is saved, checked and registered: a hidden address
+ * would be registered with its place, and decide the time to appear (arts. 88 and 89). The schema does
+ * not refuse it, because a stored card that fails the schema is read as empty.
  */
-export function withPersonKind(party: CardParty, personKind: CardParty['personKind']): CardParty {
-  if (party.personKind === personKind) return party;
-  const { capacityStatus, publicEntityKind, domicile, residence, registeredOffice, branch, ...rest } = party;
-  const natural = personKind === 'NATURAL';
+export function shownForKind(party: CardParty): CardParty {
+  const { idNumber, capacityStatus, publicEntityKind, legalForm, legalRepresentative, domicile, residence, registeredOffice, branch, ...rest } = party;
+  const kind = party.personKind;
+  const natural = kind === 'NATURAL';
   return {
     ...rest,
-    personKind,
+    ...(idNumber !== undefined && kind !== 'PUBLIC' ? { idNumber } : {}),
     ...(natural && capacityStatus ? { capacityStatus } : {}),
-    ...(personKind === 'PUBLIC' && publicEntityKind ? { publicEntityKind } : {}),
+    ...(kind === 'PUBLIC' && publicEntityKind ? { publicEntityKind } : {}),
+    ...(kind === 'LEGAL' && legalForm !== undefined ? { legalForm } : {}),
+    ...(!natural && legalRepresentative !== undefined ? { legalRepresentative } : {}),
     ...(natural && domicile ? { domicile } : {}),
     ...(natural && residence ? { residence } : {}),
     ...(!natural && registeredOffice ? { registeredOffice } : {}),
     ...(!natural && branch ? { branch } : {}),
   };
+}
+
+/**
+ * The party of the card form whose kind of person changes: what the card no longer shows for the new
+ * kind does not stay hidden with it (fix review M2; review of IR-08).
+ */
+export function withPersonKind(party: CardParty, personKind: CardParty['personKind']): CardParty {
+  if (party.personKind === personKind) return party;
+  return shownForKind({ ...party, personKind });
 }
 
 /** The part of the card a section attests: its digest is kept with the attestation. */

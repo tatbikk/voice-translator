@@ -6,6 +6,7 @@ import {
   lawArticles,
   moroccoDay,
   referralsFor,
+  shownForKind,
   type CardAddress,
   type CardParty,
   type LegalBasis,
@@ -239,8 +240,10 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     });
 
     // 6. The parties with their quality, their addresses with their source and place, counsel, the claims.
+    // Each party with what the card shows for its kind of person only: an address, a legal form or a
+    // number a draft kept hidden is not registered (review of IR-08).
     const partyIds = new Map<string, string>();
-    for (const [position, party] of freshCard.parties.entries()) {
+    for (const [position, party] of freshCard.parties.map(shownForKind).entries()) {
       const id = randomUUID();
       partyIds.set(party.key, id);
       await tx.caseParty.create({

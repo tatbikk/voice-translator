@@ -8,6 +8,7 @@ import {
   FilingCardSchema,
   SECURITY_POLICY,
   canonicalJson,
+  shownForKind,
   type CardAddress,
   type CardSection,
   type FilingCard,
@@ -234,9 +235,11 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
     if (!parsed.success) return refused(draft.id, actor, 422, 'INVALID_INPUT', cardFieldErrors(parsed.error));
     const unknown = unknownLocalities(parsed.data, (await districtRules(now)).localities);
     if (Object.keys(unknown).length > 0) return refused(draft.id, actor, 422, 'INVALID_INPUT', unknown);
-    card = await withRegisterSources(parsed.data);
-    // A section the server rewrote (an address no longer «from the register») is not attested in
-    // this request: the depositor attests what he sees, and sees it again first.
+    // What the card shows for each party's kind of person, and nothing hidden with it (review of IR-08).
+    card = await withRegisterSources({ ...parsed.data, parties: parsed.data.parties.map(shownForKind) });
+    // A section the server rewrote (a field the card does not show for the party, an address no
+    // longer «from the register») is not attested in this request: the depositor attests what he
+    // sees, and sees it again first.
     rewritten = sectionsRewritten(parsed.data, card);
     // Once paid, the claims the fee was computed on do not change (decision 57).
     if (locked && !sameClaims(card, current)) return refused(draft.id, actor, 409, 'CLAIMS_LOCKED');

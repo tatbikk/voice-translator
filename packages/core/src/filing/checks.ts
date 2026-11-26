@@ -100,8 +100,8 @@ function partyChecks(party: CardParty): FilingCheck[] {
   const out: FilingCheck[] = [];
   const at = { partyKey: party.key };
   if (blank(party.quality)) out.push(check('PARTY_QUALITY_MISSING', 'WARNING', 77, at));
-  const address =
-    party.personKind === 'NATURAL' ? party.domicile ?? party.residence : party.registeredOffice ?? party.branch ?? party.domicile;
+  // The address the card shows for the kind of person (shownForKind): a company's domicile is not one.
+  const address = party.personKind === 'NATURAL' ? party.domicile ?? party.residence : party.registeredOffice ?? party.branch;
   if (!address) out.push(check('PARTY_ADDRESS_MISSING', 'WARNING', 77, at));
   if (party.side === 'PLAINTIFF' && party.personKind !== 'PUBLIC' && blank(party.idNumber)) out.push(check('PLAINTIFF_ID_MISSING', 'WARNING', 77, at));
   if (party.agent && blank(party.agent.address)) out.push(check('AGENT_ADDRESS_MISSING', 'WARNING', 77, at));
