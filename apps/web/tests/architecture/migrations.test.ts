@@ -61,7 +61,8 @@ describe('the migrations of prisma/migrations (reviews P2-A-12, IR-43)', () => {
   it('are applied, on every path that deploys them, only after the guard has let them through', () => {
     for (const file of ['src/cli/release.ts', 'src/cli/seed.ts']) {
       const source = readFileSync(join(WEB_ROOT, file), 'utf8');
-      const guard = source.indexOf('migrationsMayDeploy(');
+      // The guard's answer is obeyed: a refusal stops the step before it migrates (review of the guard).
+      const guard = source.search(/if \(!\(await migrationsMayDeploy\([^;]*\)\)\) (refuse|fail)\('MIGRATION_DATED_BEFORE_APPLIED'\);/);
       const deploy = source.indexOf("'migrate', 'deploy'");
       expect(deploy, `${file} runs prisma migrate deploy`).toBeGreaterThan(-1);
       expect(guard, `${file} runs the migration guard`).toBeGreaterThan(-1);

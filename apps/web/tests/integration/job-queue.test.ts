@@ -207,8 +207,8 @@ describe('job queue (review A-11)', () => {
 // Review of the IR-12 fix: four job types gained a legal basis, and the queue's schemas refuse an
 // unknown key. During a deployment the new web may queue such a job that the old worker still
 // claims: it declares it DEAD, unread (INVALID_PAYLOAD; UNKNOWN_JOB_TYPE for the certificate it does
-// not know), and the receipt of art. 628 would never be printed. The new worker puts back, once at
-// its start, every job declared dead unread that it reads.
+// not know), and the receipt of art. 628 would never be printed. The new worker puts back, at its start
+// and then on a tick, every job declared dead unread that it reads.
 describe('the jobs an earlier worker could not read (review of the IR-12 fix)', () => {
   const dead = (type: string, payload: unknown, lastErrorClass: string) =>
     one<{ id: string }>(
@@ -218,7 +218,7 @@ describe('the jobs an earlier worker could not read (review of the IR-12 fix)', 
     ).then((r) => r.id);
   const basis = { kind: 'LAW', law: '58.25', articles: [628] };
 
-  it('are put back once at the start of the worker when it reads them, and only those', async () => {
+  it('are put back by a run of the revive when the worker reads them, and only those', async () => {
     const receipt = await dead('payment.receipt', { paymentId: '00000000-0000-4000-8000-000000000001', legalBasis: basis }, 'INVALID_PAYLOAD');
     const certificate = await dead('filing.signature-certificate', { documentId: '00000000-0000-4000-8000-000000000002', legalBasis: basis }, 'UNKNOWN_JOB_TYPE');
     const unreadable = await dead('payment.receipt', { paymentId: 'not-a-uuid' }, 'INVALID_PAYLOAD');
@@ -239,10 +239,13 @@ describe('the jobs an earlier worker could not read (review of the IR-12 fix)', 
     await sql(`DELETE FROM "Job" WHERE id = ANY($1::uuid[])`, [[receipt, certificate, unreadable, unknown, spent]]);
   });
 
-  it('are put back by the worker before it runs its tasks', () => {
+  it('are put back by the worker before it runs its tasks, and again on a tick while it runs', () => {
     const main = readFileSync(join(SRC_ROOT, 'worker', 'main.ts'), 'utf8');
     const revive = main.indexOf('reviveUnreadJobs(');
     expect(revive).toBeGreaterThan(-1);
     expect(revive).toBeLessThan(main.indexOf('scheduler.every('));
+    // The old worker may run on after the new one started (the platform drains it): what it
+    // declares dead unread in that window is put back on the next tick, not at the next start.
+    expect(main).toMatch(/scheduler\.every\(\s*[A-Z_]+,\s*'revive-unread-jobs',\s*\(\)\s*=>\s*reviveUnreadJobs\(\)\s*\)/);
   });
 });
