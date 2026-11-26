@@ -3,8 +3,10 @@
 // files than its page:
 //   - «الملفات الواردة» of the registry office: «مقيد» and not stamped, of its
 //     court, the oldest first, in pages, with the total;
-//   - «الإحالات» of the prosecution: its referrals, while it may still file its
-//     conclusions, the oldest first, in pages, by ground;
+//   - «الإحالات» of the prosecution: every referral of its court, by ground,
+//     those in which it may still file its conclusions first, the oldest
+//     first, in pages (review of the IR-11 fix: the study shows the referrals
+//     received, and art. 18 keeps the rights of a party after the debate);
 //   - «ينتظر إجراء مني»: the files in the state where an act awaits the user,
 //     by his relation and his office, the oldest first, in pages;
 //   - «آجال تقترب»: a running time limit on an old file, behind sixty newer
@@ -247,21 +249,24 @@ describe('«الإحالات» of the prosecution', () => {
   it('shows the referral received longest ago first on each ground, a page at a time, with the total', async () => {
     const subject = await subjectOf(cast.prosecutorA);
     const first = await prosecutionReferrals(subject, context(), { principal: 1, communication: 1 });
-    expect(first?.principalParty.total).toBe(PAGE_SIZE.referrals + 3);
+    // The open referrals, and after them the judged file.
+    const principal = PAGE_SIZE.referrals + 3 + 1;
+    expect(first?.principalParty.total).toBe(principal);
     expect(ids(first?.principalParty.rows ?? [])).toEqual(seeded.principalA.slice(0, PAGE_SIZE.referrals));
-    expect(cutOf(first?.principalParty ?? emptyPage())).toMatchObject({ from: 1, to: PAGE_SIZE.referrals, total: PAGE_SIZE.referrals + 3, next: 2 });
+    expect(cutOf(first?.principalParty ?? emptyPage())).toMatchObject({ from: 1, to: PAGE_SIZE.referrals, total: principal, next: 2 });
     expect(ids(first?.communication.rows ?? [])).toEqual(seeded.communicationA);
     expect(cutOf(first?.communication ?? emptyPage())).toBeNull();
 
     const second = await prosecutionReferrals(subject, context(), { principal: 2, communication: 1 });
-    expect(ids(second?.principalParty.rows ?? [])).toEqual(seeded.principalA.slice(PAGE_SIZE.referrals));
+    expect(ids(second?.principalParty.rows ?? [])).toEqual([...seeded.principalA.slice(PAGE_SIZE.referrals), seeded.judgedReferredA]);
     expect(ids(second?.communication.rows ?? [])).toEqual(seeded.communicationA);
   });
 
-  it('leaves out a file in which its conclusions can no longer be filed, which stays in «لائحة الملفات»', async () => {
+  it('lists a file in which its conclusions can no longer be filed after those in which they can, older though it is, and says so', async () => {
     const subject = await subjectOf(cast.prosecutorA);
     const principal = await allPages(async (page) => (await prosecutionReferrals(subject, context(), { principal: page, communication: 1 }))?.principalParty ?? emptyPage<ReferredFile>());
-    expect(ids(principal)).not.toContain(seeded.judgedReferredA);
+    expect(ids(principal)).toEqual([...seeded.principalA, seeded.judgedReferredA]);
+    expect(principal.map((r) => r.conclusionsOpen)).toEqual([...seeded.principalA.map(() => true), false]);
     const cases = await allPages((page) => casesOf(subject, context(), page));
     expect(cases.map((r) => r.id)).toContain(seeded.judgedReferredA);
   });

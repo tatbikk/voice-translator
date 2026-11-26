@@ -3,7 +3,8 @@
 //      «دعوى جديدة» to «وصل الإيداع», through the simulated payment page;
 //   2. the file is registered, and its timeline records that the referrals
 //      were reviewed and none was due;
-//   3. the registry clerk finds it among «الملفات الواردة» with three buttons
+//   3. the registry clerk finds it among «الملفات الواردة» (by its number, the
+//      list coming the oldest first, a page at a time) with three buttons
 //      and no button to reject the application, stamps it, and files a paper
 //      application; the cashier sees the payment; the prosecution sees its
 //      referrals by ground.
@@ -13,7 +14,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { DEMO_ACCOUNTS, demoEmail } from '../../src/cli/seed-data/accounts';
 import { MODEL_CASE, MODEL_CASE_APPLICATION_TEXT } from '../acceptance/model-case-filing.fixture';
 import { expectAccessible, loginUi, monitor, expectNoViolation, passGateUi, secrets, useOwnAddress } from '../helpers/e2e';
-import { FILING, FORMS, OFFICES, PAGE_TITLES } from '../helpers/labels';
+import { FILING, FORMS, LISTS, OFFICES, PAGE_TITLES } from '../helpers/labels';
 
 const account = (key: string) => {
   const found = DEMO_ACCOUNTS.find((a) => a.email === demoEmail(key));
@@ -22,6 +23,31 @@ const account = (key: string) => {
 };
 
 const PDF = (note: string) => Buffer.from(`%PDF-1.4\n% ${note}\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n`, 'latin1');
+
+/**
+ * The number of the file each project's lawyer filed in the first test, so that
+ * the registry stamps that file and no other (review of the IR-11 fix: the
+ * incoming files come the oldest first, and the first one is a demo file).
+ */
+const filedNumbers = new Map<string, string>();
+
+/** The article of «الملفات الواردة» of the given file, following the pages of the list until it is found. */
+async function incomingArticle(page: Page, caseNumber: string) {
+  const incoming = page.getByRole('region', { name: OFFICES.incoming });
+  // The whole number: «2/8201/2026» is not found in «12/8201/2026».
+  const exactly = new RegExp(`(?<!\\d)${caseNumber.replaceAll('/', '\\/')}(?!\\d)`);
+  for (let turn = 0; turn < 20; turn += 1) {
+    const article = incoming.getByRole('article').filter({ hasText: exactly });
+    if ((await article.count()) > 0) return article.first();
+    const next = page.getByRole('link', { name: LISTS.next }).first();
+    if ((await next.count()) === 0) break;
+    const href = (await next.getAttribute('href')) ?? '';
+    await next.click();
+    await page.waitForURL((url) => `${url.pathname}${url.search}` === href);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.registry);
+  }
+  throw new Error(`the filed case ${caseNumber} is not among «${OFFICES.incoming}»`);
+}
 
 /** The confirmation window of an act (an alert dialog, as in the other specs). */
 const dialogOf = (page: Page) => page.getByRole('alertdialog').or(page.getByRole('dialog')).first();
@@ -160,6 +186,7 @@ test.describe('the filing and the registration (Phase 2)', () => {
     const receipt = await fileModelCase(page);
     const number = /(\d+)\/8201\/(\d{4})/.exec(receipt);
     expect(number).not.toBeNull();
+    filedNumbers.set(info.project.name, number?.[0] ?? '');
     await page.screenshot({ path: info.outputPath('receipt.png'), fullPage: true });
     await expectAccessible(page, 'filing receipt');
     await expectNoViolation(page, mon, 'filing path');
@@ -179,8 +206,10 @@ test.describe('the filing and the registration (Phase 2)', () => {
     await loginUi(page, account('clerk.registration'));
     await page.goto('/registry');
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.registry);
-    const incoming = page.getByRole('region', { name: OFFICES.incoming });
-    const first = incoming.getByRole('article').first();
+    // The file the lawyer filed in the first test, not the first of the list (the oldest, a demo file).
+    const filed = filedNumbers.get('desktop');
+    expect(filed, 'the first test files the model case on the desktop project').toBeTruthy();
+    const first = await incomingArticle(page, filed ?? '');
     await expect(first).toBeVisible();
     await expect(first.getByText(OFFICES.caseCard)).toBeVisible();
     // The fee paid rests on rates not checked on the official text: the card says so (independent review IR-26).
@@ -273,7 +302,8 @@ test.describe('the filing and the registration (Phase 2)', () => {
     await expect(referrals).toBeVisible();
     await expect(referrals.getByRole('heading', { name: OFFICES.communication })).toBeVisible();
     await expect(referrals.getByRole('link', { name: OFFICES.viewCase }).first()).toBeVisible();
-    const link = referrals.getByRole('link').first();
+    // «الاطلاع على الملف» stands on the referrals still open to the conclusions, which come first.
+    const link = referrals.getByRole('link', { name: OFFICES.viewCase }).first();
     await link.click();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.caseFile);
     await expect(page.getByRole('button', { name: OFFICES.conclusions })).toBeVisible();

@@ -97,6 +97,12 @@ export const OFFICES = {
   conclusions: 'إيداع مستنتجات كتابية', // study
 } as const;
 
+/** The pages of a list (independent review IR-11, decision 75). */
+export const LISTS = {
+  next: 'الصفحة الموالية', // proposed
+  previous: 'الصفحة السابقة', // proposed
+} as const;
+
 export const WORDMARK = 'منصة المحكمة الرقمية'; // prompt rule 10, contract §7
 
 /** Dashboard (contract §7, study «العناصر المشتركة», prompt «لغة الواجهة»). */

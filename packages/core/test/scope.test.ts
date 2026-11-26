@@ -8,10 +8,15 @@ import {
   ACTIONS,
   CASE_VIEW_HOLDERS,
   PROCEDURE_ACTIONS,
+  ROLE_CODES,
   actionScope,
   awaitedScope,
+  holdsRelation,
   statusesBetween,
+  subjectMayHold,
   viewScope,
+  type CaseSnapshot,
+  type Relation,
   type RoleCode,
   type UserSubject,
 } from '../src/index';
@@ -98,5 +103,72 @@ describe('the files in which the subject may do one act', () => {
     expect(actionScope(subjectOf('LAWYER'), 'case.prosecution.conclusions')).toEqual([]);
     expect(actionScope(subjectOf('PUBLIC_PROSECUTOR'), 'case.no-such-act')).toEqual([]);
     expect(actionScope(subjectOf('PUBLIC_PROSECUTOR'), 'case.view')).toEqual([]);
+  });
+});
+
+// Review of the IR-11 fix: the query of a list reads, for each relation, what
+// it asks of the subject alone (his role, court, panel, organization) from the
+// core, not from a copy in the server; and the core's single authorization
+// function asks exactly that, whatever the file.
+describe('what a relation asks of the subject alone', () => {
+  const USER = '11111111-1111-4111-8111-111111111111';
+  const PANEL = '55555555-5555-4555-8555-555555555555';
+  const ORG = '66666666-6666-4666-8666-666666666666';
+  // A file that grants every relation on its side to the user.
+  const party = (counsel: boolean) => ({
+    partyId: '77777777-7777-4777-8777-777777777777',
+    side: 'PLAINTIFF' as const,
+    counselUserIds: counsel ? [USER] : [],
+    litigantUserId: USER,
+    organizationId: ORG,
+    facts: ['E_SERVICE_ACCEPTED' as const],
+  });
+  const everything = (counsel: boolean): CaseSnapshot => ({
+    caseFileId: '88888888-8888-4888-8888-888888888888',
+    kind: 'FIRST_INSTANCE',
+    status: 'IN_DELIBERATION',
+    courtId: COURT,
+    panelId: PANEL,
+    administrativeCourt: true,
+    rapporteurUserId: USER,
+    expertUserId: USER,
+    facts: ['REFERRED_TO_PROSECUTION', 'REFERRED_TO_COMMISSIONER'],
+    parties: [party(counsel)],
+    deadlines: [],
+    nextSignerUserIds: [USER],
+    minutesNextSignerUserIds: [USER],
+    garnisheeOrganizationIds: [ORG],
+    summonsCodeHolderUserIds: [USER],
+    cassationAccreditedUserIds: [USER],
+  });
+  const RELATIONS: readonly Relation[] = [
+    'COUNSEL', 'SUMMONS_HOLDER', 'RAPPORTEUR', 'PANEL', 'COURT_STAFF', 'PROSECUTION', 'COMMISSIONER', 'EXPERT', 'LITIGANT',
+    'ADMIN_PARTY', 'GARNISHEE', 'NEXT_SIGNER', 'MINUTES_SIGNER', 'CASSATION_ACCREDITED', 'AGENT',
+  ];
+
+  it('is what the authorization function asks of him on a file that grants everything else, for every role and relation', () => {
+    for (const role of ROLE_CODES) {
+      for (const courtId of [COURT, null]) {
+        for (const panelId of [PANEL, null]) {
+          for (const organizationId of [ORG, null]) {
+            const subject: UserSubject = { ...subjectOf(role), userId: USER, courtId, panelId, organizationId };
+            for (const relation of RELATIONS) {
+              const held = holdsRelation(subject, everything(true), relation) || holdsRelation(subject, everything(false), relation);
+              expect(subjectMayHold(subject, relation), `${role} ${relation} court=${String(courtId)} panel=${String(panelId)} org=${String(organizationId)}`).toBe(held);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('names the role, the court and the panel where the relation needs them', () => {
+    expect(subjectMayHold(subjectOf('LAWYER'), 'RAPPORTEUR')).toBe(false);
+    expect(subjectMayHold(subjectOf('JUDGE_RAPPORTEUR'), 'RAPPORTEUR')).toBe(true);
+    expect(subjectMayHold({ ...subjectOf('JUDGE_RAPPORTEUR'), courtId: null }, 'RAPPORTEUR')).toBe(false);
+    expect(subjectMayHold(subjectOf('PANEL_PRESIDENT'), 'PANEL')).toBe(false);
+    expect(subjectMayHold({ ...subjectOf('PANEL_PRESIDENT'), panelId: PANEL }, 'PANEL')).toBe(true);
+    expect(subjectMayHold(subjectOf('CLERK_HEARING'), 'COUNSEL')).toBe(false);
+    expect(subjectMayHold(subjectOf('BAILIFF'), 'AGENT')).toBe(false);
   });
 });
