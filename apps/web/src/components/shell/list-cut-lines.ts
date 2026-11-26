@@ -22,3 +22,12 @@ export function listCutLines(
     next: cut.next ? { href: options.hrefFor(cut.next), text: t('lists.cut.next') } : null,
   };
 }
+
+/**
+ * The text of a list with no row on the page shown: that nothing awaits only
+ * when the list counted nothing; otherwise that the files counted changed
+ * since (review of the IR-11 fix: never «nothing awaits» under a count).
+ */
+export function emptyKeyOf(page: Page<unknown>, keys: { readonly empty: string; readonly changed: string }): string {
+  return page.total > 0 ? keys.changed : keys.empty;
+}

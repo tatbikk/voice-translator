@@ -1,8 +1,8 @@
 import 'server-only';
-import { authorize, availableActions, awaitedScope, viewScope, type AuthorizationContext, type CaseSnapshot, type UserSubject } from '@mahkama/core';
+import { authorize, availableActions, awaitedScope, type AuthorizationContext, type CaseSnapshot, type UserSubject } from '@mahkama/core';
 import { getDb } from '../db';
 import { caseSnapshot } from '../cases/snapshot';
-import { OLDEST_FIRST, scopeWhere, scopesWhere } from '../cases/scope';
+import { OLDEST_FIRST, scopesWhere } from '../cases/scope';
 import { PAGE_SIZE, readPage, withRows, type Page } from '../lists/paging';
 import { notificationsSince, type NotificationView } from '../notifications/service';
 
@@ -15,11 +15,12 @@ import { notificationsSince, type NotificationView } from '../notifications/serv
 //
 // Neither box takes the newest files and filters them (independent review
 // IR-11, decision 75). The first selects, in its query, the files the user may
-// open that are in a state where an act of his awaits (awaitedScope, from the
-// core's table), the one waiting longest first, a page of files at a time; the
-// second selects the running limits of the files the user may open, the
-// nearest first, a page at a time. Both say how many there are; the core
-// decides each file of the page shown, and no other.
+// open in which an act of his awaits (awaitedScope, from the core's table,
+// every condition of the act read from the file's data: decision 76), the one
+// waiting longest first, a page of files at a time; the second selects the
+// running limits of the files the user may open, the nearest first, a page at
+// a time. Both say how many there are; the core decides each file of the page
+// shown, and no other.
 
 /** How far ahead a time limit counts as approaching. */
 const APPROACHING_MS = 15 * 86_400_000;
@@ -70,7 +71,7 @@ export async function dashboardFor(
   };
   const ref = (f: { id: string; number: number; code: number; year: number }): CaseRef => ({ caseFileId: f.id, number: f.number, code: f.code, year: f.year });
 
-  const awaitingWhere = scopesWhere(subject, viewScope(subject), awaitedScope(subject));
+  const awaitingWhere = scopesWhere(subject, now, awaitedScope(subject));
   const files = await readPage(PAGE_SIZE.awaiting, pages.awaiting, () => db.caseFile.count({ where: awaitingWhere }), (window) =>
     db.caseFile.findMany({ where: awaitingWhere, orderBy: [...OLDEST_FIRST], ...window, select: { id: true, number: true, code: true, year: true } }),
   );
@@ -86,7 +87,7 @@ export async function dashboardFor(
   const limitsWhere = {
     status: 'RUNNING' as const,
     endsAt: { gt: now, lte: new Date(now.getTime() + APPROACHING_MS) },
-    caseFile: scopeWhere(subject, viewScope(subject)),
+    caseFile: scopesWhere(subject, now),
   };
   const limits = await readPage(PAGE_SIZE.deadlines, pages.deadlines, () => db.timeLimit.count({ where: limitsWhere }), (window) =>
     db.timeLimit.findMany({

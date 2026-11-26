@@ -119,7 +119,42 @@ export function clientParties(subject: UserSubject, snapshot: CaseSnapshot): rea
   return snapshot.parties.filter((p) => p.counselUserIds.includes(subject.userId) || p.litigantUserId === subject.userId);
 }
 
+/**
+ * What a relation asks of the subject alone, whatever the file: his role, and
+ * the court, panel or organization his role assignment carries. holdsRelation
+ * asks it first; the query of a list reads it too (independent review IR-11),
+ * so that neither keeps its own copy.
+ */
+export function subjectMayHold(subject: UserSubject, relation: Relation): boolean {
+  switch (relation) {
+    case 'COUNSEL':
+    case 'SUMMONS_HOLDER':
+      return subject.role === 'LAWYER';
+    case 'RAPPORTEUR':
+      return RAPPORTEUR_ROLES.includes(subject.role) && subject.courtId !== null;
+    case 'PANEL':
+      return PANEL_ROLES.includes(subject.role) && subject.panelId !== null && subject.courtId !== null;
+    case 'COURT_STAFF':
+    case 'PROSECUTION':
+      return subject.courtId !== null;
+    case 'COMMISSIONER':
+      return subject.role === 'ROYAL_COMMISSIONER' && subject.courtId !== null;
+    case 'ADMIN_PARTY':
+    case 'GARNISHEE':
+      return subject.organizationId !== null;
+    case 'AGENT':
+      return false;
+    case 'EXPERT':
+    case 'LITIGANT':
+    case 'NEXT_SIGNER':
+    case 'MINUTES_SIGNER':
+    case 'CASSATION_ACCREDITED':
+      return true;
+  }
+}
+
 export function holdsRelation(subject: UserSubject, snapshot: CaseSnapshot, relation: Relation): boolean {
+  if (!subjectMayHold(subject, relation)) return false;
   const user = subject.userId;
   switch (relation) {
     case 'COUNSEL':

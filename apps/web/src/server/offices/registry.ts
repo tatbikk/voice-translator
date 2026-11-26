@@ -4,7 +4,6 @@ import {
   authorize,
   availableActions,
   resolveLegalBasis,
-  viewScope,
   type AuthorizationContext,
   type LegalBasis,
   type UserSubject,
@@ -48,7 +47,7 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
   if (!authorize(subject, 'registry.incoming.list', undefined, context).allowed || !subject.courtId || !context.now) return emptyPage(PAGE_SIZE.incoming);
   const now = context.now;
   const db = getDb();
-  const where = scopesWhere(subject, viewScope(subject), actionScope(subject, 'case.registration.stamp'));
+  const where = scopesWhere(subject, now, actionScope(subject, 'case.registration.stamp'));
   const read = await readPage(PAGE_SIZE.incoming, page, () => db.caseFile.count({ where }), (window) => db.caseFile.findMany({
     where,
     orderBy: [...OLDEST_FIRST],

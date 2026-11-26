@@ -865,6 +865,8 @@ model Decision {
   subjectCode            String
   documentId             String?   @db.Uuid
   signatureCircleId      String?   @db.Uuid
+  /// the judgment's circle, which a list's query follows (decision 76)
+  signatureCircle        SignatureCircle? @relation(fields: [signatureCircleId], references: [id], onDelete: Restrict)
   issuedAt               DateTime  @db.Timestamptz(3)
   pronouncedAt           DateTime? @db.Timestamptz(3)
   provisionalEnforcement Boolean   @default(false)
@@ -893,6 +895,9 @@ model Investigation {
   feesOrderedCents   BigInt?
   feesPaidAt         DateTime? @db.Timestamptz(3)
   createdAt          DateTime  @db.Timestamptz(3)
+  /// the file's investigation created last (decision 76): marked by the database alone, by a trigger, one per file
+  /// (partial unique index Investigation_latest_per_case_key); the application never writes it
+  latest             Boolean   @default(false)
 
   @@index([caseFileId])
   @@index([expertUserId])
@@ -1051,6 +1056,7 @@ model SignatureCircle {
   completedAt    DateTime?    @db.Timestamptz(3)
 
   signatures Signature[]
+  decisions  Decision[]
 
   @@index([documentId])
 }

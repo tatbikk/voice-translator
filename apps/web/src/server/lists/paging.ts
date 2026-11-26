@@ -80,22 +80,52 @@ export function pageHref(path: string, pages: Readonly<Record<string, number>>, 
   return text ? `${path}?${text}` : path;
 }
 
+/** One part of a list: how many entries it has, and how to read some of them, in its own order. */
+export interface ListPart<R> {
+  readonly count: () => Promise<number>;
+  readonly read: (window: { skip: number; take: number }) => Promise<R[]>;
+}
+
 /**
  * Reads one page: the number of entries first, then the page asked for, or the
  * last one if it lies beyond. The reader gets how many to skip and to take.
  */
-export async function readPage<R>(
+export function readPage<R>(
   pageSize: number,
   asked: number,
-  count: () => Promise<number>,
-  read: (window: { skip: number; take: number }) => Promise<R[]>,
+  count: ListPart<R>['count'],
+  read: ListPart<R>['read'],
 ): Promise<Page<R>> {
-  const total = await count();
+  return readSegmentedPage(pageSize, asked, [{ count, read }]);
+}
+
+/**
+ * Reads one page of a list made of parts shown one after the other (the
+ * referrals still open to the conclusions, then the others: review of the
+ * IR-11 fix): the number of each part first, then, from the parts the page
+ * covers, what falls in it. One count and at most one read per part.
+ */
+export async function readSegmentedPage<R>(pageSize: number, asked: number, parts: readonly ListPart<R>[]): Promise<Page<R>> {
+  const counts: number[] = [];
+  for (const part of parts) counts.push(await part.count());
+  const total = counts.reduce((sum, n) => sum + n, 0);
   const last = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(Math.max(1, Math.trunc(asked)), last);
-  const skip = (page - 1) * pageSize;
-  const rows = total === 0 ? [] : await read({ skip, take: pageSize });
-  return { rows, page, pageSize, total, from: rows.length > 0 ? skip + 1 : 0, to: skip + rows.length };
+  const start = (page - 1) * pageSize;
+  const rows: R[] = [];
+  let skip = start;
+  for (const [index, part] of parts.entries()) {
+    const size = counts[index] ?? 0;
+    if (rows.length >= pageSize) break;
+    if (skip >= size) {
+      skip -= size;
+      continue;
+    }
+    const take = Math.min(pageSize - rows.length, size - skip);
+    rows.push(...(await part.read({ skip, take })));
+    skip = 0;
+  }
+  return { rows, page, pageSize, total, from: rows.length > 0 ? start + 1 : 0, to: start + rows.length };
 }
 
 /** The page of a list the subject may not see, or that selects nothing. */

@@ -1,8 +1,8 @@
 import 'server-only';
-import { authorize, viewScope, type AuthorizationContext, type UserSubject } from '@mahkama/core';
+import { authorize, type AuthorizationContext, type UserSubject } from '@mahkama/core';
 import { getDb } from '../db';
 import { caseSnapshot } from '../cases/snapshot';
-import { scopeWhere } from '../cases/scope';
+import { scopesWhere } from '../cases/scope';
 import { emptyPage, PAGE_SIZE, readPage, withRows, type Page } from '../lists/paging';
 
 // «مشاريع الإيداع» (the lawyer's own drafts) and «لائحة الملفات» (the files the
@@ -65,7 +65,7 @@ export async function casesOf(subject: UserSubject, context: AuthorizationContex
   if (!authorize(subject, 'cases.list', undefined, context).allowed || !context.now) return emptyPage(PAGE_SIZE.cases);
   const now = context.now;
   const db = getDb();
-  const where = scopeWhere(subject, viewScope(subject));
+  const where = scopesWhere(subject, now);
   const read = await readPage(PAGE_SIZE.cases, page, () => db.caseFile.count({ where }), (window) => db.caseFile.findMany({
     where,
     orderBy: [{ year: 'desc' }, { number: 'desc' }, { id: 'asc' }],

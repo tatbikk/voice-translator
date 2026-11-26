@@ -9,9 +9,10 @@
 // A scope is a list of branches, a file being in the scope when it is in one
 // of them. A branch states the relations the subject must hold with the file,
 // the statuses and kinds of file (null: any), and the conditions of the act.
-// The server translates into its query what it can read from the file's
-// columns, and leaves out the rest, so that the query selects at least every
-// file the core would grant; the core still decides each row shown.
+// The server translates every part of it into its query, from the data the
+// file's snapshot reads it from, so that the query selects the files the core
+// grants and no other, always within those the subject may open (decision 76);
+// the core still decides each row shown.
 import { ACTIONS, isActionCode } from './actions';
 import type { Condition, Holder, Relation } from './procedure/conditions';
 import type { CaseKind, CaseStatus } from './procedure/states';

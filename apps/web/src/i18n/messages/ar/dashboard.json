@@ -35,5 +35,6 @@
   "dashboard.deadline.lastDay": "آخر يوم: {day}",
   "dashboard.box.headingLabel": "{title}، العدد: {count}",
   "dashboard.awaiting.cutSummary": "يعرض ما ينتظر منكم في الملفات من {from} إلى {to}، من أصل {total}، وهو عدد الملفات التي بلغت مرحلة تنتظر فيها المسطرة إجراء منكم، الأقدم أولا.",
+  "dashboard.awaiting.changedOnPage": "لم يعد في ملفات هذه الصفحة إجراء ينتظركم، وقد تكون حالتها تغيرت منذ عدها. يرجى إعادة تحميل الصفحة.",
   "dashboard.deadlines.cutSummary": "يعرض من {from} إلى {to}، من أصل {total} من الآجال التي تقترب، أقربها انتهاء أولا."
 }

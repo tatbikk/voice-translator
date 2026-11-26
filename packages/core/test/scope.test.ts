@@ -93,7 +93,7 @@ describe('the files in which an act awaits the subject («ينتظر إجراء 
 });
 
 describe('the files in which the subject may do one act', () => {
-  it('for the prosecution: its referral, while it may still file its conclusions (art. 21)', () => {
+  it('for the prosecution: its referral, while it may still file its conclusions (art. 20, second paragraph)', () => {
     expect(actionScope(subjectOf('PUBLIC_PROSECUTOR'), 'case.prosecution.conclusions')).toEqual([
       { relations: ['PROSECUTION'], statuses: statusesBetween('REGISTERED', 'READY'), kinds: ['FIRST_INSTANCE', 'APPEAL'], when: [] },
     ]);

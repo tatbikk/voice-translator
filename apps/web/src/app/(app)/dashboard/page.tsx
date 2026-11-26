@@ -18,7 +18,7 @@ import { longDay } from '@/components/case/format';
 import type { Metadata } from 'next';
 import { buttonClass } from '@/components/ui/Button';
 import { ListCut, type ListCutLines } from '@/components/ui/ListCut';
-import { listCutLines } from '@/components/shell/list-cut-lines';
+import { emptyKeyOf, listCutLines } from '@/components/shell/list-cut-lines';
 import { screenMetadata } from '@/server/page-metadata';
 import { pageHref, pagesFrom, type Page } from '@/server/lists/paging';
 
@@ -82,7 +82,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           title={t('dashboard.boxes.awaitingAction')}
           count={data.waiting.rows.length}
           headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.awaitingAction'), count: data.waiting.rows.length })}
-          emptyText={t('dashboard.empty.awaitingAction')}
+          emptyText={t(emptyKeyOf(data.waiting, { empty: 'dashboard.empty.awaitingAction', changed: 'dashboard.awaiting.changedOnPage' }))}
           footer={<ListCut lines={cutOfList('awaiting', data.waiting, t('dashboard.boxes.awaitingAction'), 'dashboard.awaiting.cutSummary')} />}
         >
           <ul className="space-y-3">
@@ -103,7 +103,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           title={t('dashboard.boxes.approachingDeadlines')}
           count={data.deadlines.rows.length}
           headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.approachingDeadlines'), count: data.deadlines.rows.length })}
-          emptyText={t('dashboard.empty.approachingDeadlines')}
+          emptyText={t(emptyKeyOf(data.deadlines, { empty: 'dashboard.empty.approachingDeadlines', changed: 'lists.changedOnPage' }))}
           footer={<ListCut lines={cutOfList('deadlines', data.deadlines, t('dashboard.boxes.approachingDeadlines'), 'dashboard.deadlines.cutSummary')} />}
         >
           <ul className="space-y-3">
@@ -152,18 +152,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <h2 id="referrals-title" className="mb-4 text-2xl">
             {t('prosecution.referrals')}
           </h2>
+          <p className="mb-4 max-w-3xl text-sm text-text-muted">{t('prosecution.order')}</p>
           <div className="grid gap-6 lg:grid-cols-2">
             <ReferralList
               t={t}
               title={t('prosecution.principalParty')}
-              rows={referrals.principalParty.rows}
-              cut={cutOfList('principal', referrals.principalParty, t('prosecution.principalParty'), 'lists.cut.summaryOldestFirst')}
+              page={referrals.principalParty}
+              cut={cutOfList('principal', referrals.principalParty, t('prosecution.principalParty'), 'prosecution.cutSummary')}
             />
             <ReferralList
               t={t}
               title={t('prosecution.communication')}
-              rows={referrals.communication.rows}
-              cut={cutOfList('communication', referrals.communication, t('prosecution.communication'), 'lists.cut.summaryOldestFirst')}
+              page={referrals.communication}
+              cut={cutOfList('communication', referrals.communication, t('prosecution.communication'), 'prosecution.cutSummary')}
             />
           </div>
         </section>
@@ -172,13 +173,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   );
 }
 
-function ReferralList({ t, title, rows, cut }: { t: Translator; title: string; rows: readonly ReferredFile[]; cut: ListCutLines | null }) {
+function ReferralList({ t, title, page, cut }: { t: Translator; title: string; page: Page<ReferredFile>; cut: ListCutLines | null }) {
   const numberLabel = t('common.caseNumberLabel');
+  const rows = page.rows;
   return (
     <div className="card px-5 py-5">
       <h3 className="text-lg font-semibold">{title}</h3>
       {rows.length === 0 ? (
-        <p className="mt-3 text-text-muted">{t('prosecution.none')}</p>
+        <p className="mt-3 text-text-muted">{t(emptyKeyOf(page, { empty: 'prosecution.none', changed: 'lists.changedOnPage' }))}</p>
       ) : (
         <ul className="mt-3 space-y-3">
           {rows.map((r) => (
@@ -189,10 +191,14 @@ function ReferralList({ t, title, rows, cut }: { t: Translator; title: string; r
               <span className="block text-text-muted">
                 {t(`prosecution.reason.${r.reasonCode}`)} — {t(r.item ? 'prosecution.basisItem' : 'prosecution.basis', { article: r.article, item: r.item ?? '' })}
               </span>
-              {/* The study's button: «الاطلاع على الملف» (audit G083). */}
-              <a href={`/cases/${r.caseFileId}`} className={buttonClass('secondary', 'mt-2')}>
-                {t('actions.case.prosecution.view.label')}
-              </a>
+              {/* The study's button: «الاطلاع على الملف» (audit G083), where the table offers it, as the conclusions. */}
+              {r.conclusionsOpen ? (
+                <a href={`/cases/${r.caseFileId}`} className={buttonClass('secondary', 'mt-2')}>
+                  {t('actions.case.prosecution.view.label')}
+                </a>
+              ) : (
+                <span className="block text-text-muted">{t('prosecution.conclusionsNotOpen')}</span>
+              )}
             </li>
           ))}
         </ul>

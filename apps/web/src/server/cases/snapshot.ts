@@ -53,6 +53,24 @@ export const DERIVED_CASE_FACTS: ReadonlySet<CaseFact> = new Set<CaseFact>([
   'SIGNATURE_CIRCLE_OPEN',
 ]);
 
+/**
+ * The facts of the file's latest investigation, each from its column (decision
+ * 73). The list's query reads the same columns (cases/scope.ts, decision 76).
+ */
+export const INVESTIGATION_FACT_COLUMNS = {
+  DEPOSIT_MADE: 'depositedAt',
+  MISSION_ACCEPTED: 'acceptedAt',
+  MISSION_DECLINED: 'declinedAt',
+  EXPERT_PARTIES_SUMMONED: 'partiesSummonedAt',
+  REPORT_DEPOSITED: 'reportDepositedAt',
+  REPORT_RETURNED: 'returnedAt',
+  FEES_ORDERED: 'feesOrderedCents',
+  FEES_PAID: 'feesPaidAt',
+} as const satisfies Partial<Record<CaseFact, keyof Prisma.InvestigationWhereInput>>;
+
+/** The decisions whose fields and signature circle make the judgment's facts. */
+export const JUDGMENT_DECISION_KINDS: readonly string[] = ['JUDGMENT', 'APPELLATE_DECISION'];
+
 const CASE_FACT_SET: ReadonlySet<string> = new Set(CASE_FACTS.filter((f) => !DERIVED_CASE_FACTS.has(f)));
 const PARTY_FACT_SET: ReadonlySet<string> = new Set(PARTY_FACTS);
 const DEADLINE_SET: ReadonlySet<string> = new Set(DEADLINE_CODES);
@@ -80,9 +98,10 @@ export async function caseSnapshot(
       },
       // Every limit with its stored status: one recorded ELAPSED must not read as absent (review P1-S-02).
       timeLimits: { select: { ruleCode: true, partyId: true, endsAt: true, status: true } },
-      // The latest investigation: its expert, and the facts its columns record (review of the IR-10 fix).
+      // The latest investigation, as the database marks it (decision 76): its expert, and the facts
+      // its columns record (review of the IR-10 fix).
       investigations: {
-        orderBy: { createdAt: 'desc' },
+        where: { latest: true },
         take: 1,
         select: {
           expertUserId: true,
@@ -112,14 +131,9 @@ export async function caseSnapshot(
   if (file.envelopes.length > 0) facts.add('ENVELOPES_READY');
   const investigation = file.investigations[0];
   if (investigation) {
-    if (investigation.depositedAt) facts.add('DEPOSIT_MADE');
-    if (investigation.acceptedAt) facts.add('MISSION_ACCEPTED');
-    if (investigation.declinedAt) facts.add('MISSION_DECLINED');
-    if (investigation.partiesSummonedAt) facts.add('EXPERT_PARTIES_SUMMONED');
-    if (investigation.reportDepositedAt) facts.add('REPORT_DEPOSITED');
-    if (investigation.returnedAt) facts.add('REPORT_RETURNED');
-    if (investigation.feesOrderedCents !== null) facts.add('FEES_ORDERED');
-    if (investigation.feesPaidAt) facts.add('FEES_PAID');
+    for (const [fact, column] of Object.entries(INVESTIGATION_FACT_COLUMNS) as [CaseFact, keyof typeof investigation][]) {
+      if (investigation[column] !== null) facts.add(fact);
+    }
   }
   const hearing = file.nextHearing;
   if (hearing) {
@@ -131,7 +145,7 @@ export async function caseSnapshot(
   if (file.pronouncementDate && file.pronouncementDate === moroccoDay(now)) facts.add('PRONOUNCEMENT_DAY');
 
   // The judgment and its signature circle.
-  const judgment = file.decisions.find((d) => d.kind === 'JUDGMENT' || d.kind === 'APPELLATE_DECISION');
+  const judgment = file.decisions.find((d) => JUDGMENT_DECISION_KINDS.includes(d.kind));
   let nextSignerUserIds: string[] = [];
   let nextSignerDocumentIds: string[] = [];
   if (judgment) {

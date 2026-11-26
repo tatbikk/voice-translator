@@ -1,19 +1,22 @@
 import 'server-only';
-import { actionScope, authorize, viewScope, type AuthorizationContext, type CaseSnapshot, type UserSubject } from '@mahkama/core';
+import { actionScope, authorize, type AuthorizationContext, type CaseSnapshot, type UserSubject } from '@mahkama/core';
+import type { Prisma } from '@/generated/prisma/client';
 import { getDb } from '../db';
 import { caseSnapshot } from '../cases/snapshot';
-import { scopesWhere } from '../cases/scope';
-import { emptyPage, PAGE_SIZE, readPage, withRows, type Page } from '../lists/paging';
+import { outsideScopeWhere, scopesWhere } from '../cases/scope';
+import { emptyPage, PAGE_SIZE, readSegmentedPage, withRows, type Page } from '../lists/paging';
 
-// «الإحالات» of the public prosecution (study, «واجهة النيابة العامة»): the
-// files of its court referred to it on registration, by ground — those where it
-// is a principal party (art. 18) and those communicated to it (art. 20). The
-// query selects them by the referral, and by the states in which the core's
-// table lets the prosecution file its conclusions (art. 21: until the debate is
-// closed); each ground the referral received longest ago first, a page at a
-// time with its total (independent review IR-11, decision 75). A referred file
-// that left those states stays in «لائحة الملفات». Each row is the core's to
-// show (case.view).
+// «الإحالات» of the public prosecution (study, «واجهة النيابة العامة»: «تعرض
+// لوحة البداية الإحالات التي ترد على النيابة العامة بمجرد تقييد القضية، مرتبة
+// بحسب سببها»): every referral of its court, by ground — the files where it is
+// a principal party (art. 18), which keeps the rights of a party whatever the
+// state of the file, and those communicated to it (art. 20). Each ground shows
+// first the referrals in which the core's table still lets it file its written
+// conclusions («إيداع مستنتجات كتابية»: before the debate is closed, art. 20
+// §2), then the others, each part the referral received longest ago first, a
+// page at a time with its total (independent review IR-11, decisions 75 and
+// 76). Each row is the core's to show (case.view), and says whether the
+// conclusions are still open.
 
 export interface ReferredFile {
   readonly caseFileId: string;
@@ -22,6 +25,8 @@ export interface ReferredFile {
   readonly item: number | null;
   readonly reasonCode: string;
   readonly referredAt: Date;
+  /** the file is in a state where the table offers «إيداع مستنتجات كتابية» */
+  readonly conclusionsOpen: boolean;
 }
 
 export interface Referrals {
@@ -29,8 +34,8 @@ export interface Referrals {
   readonly communication: Page<ReferredFile>;
 }
 
-/** The act a referral awaits. */
-const AWAITED = 'case.prosecution.conclusions';
+/** The act the open referrals come first for. */
+const CONCLUSIONS = 'case.prosecution.conclusions';
 
 export async function prosecutionReferrals(
   subject: UserSubject,
@@ -41,7 +46,9 @@ export async function prosecutionReferrals(
   const now = context.now;
   if (!now) return { principalParty: emptyPage(PAGE_SIZE.referrals), communication: emptyPage(PAGE_SIZE.referrals) };
   const db = getDb();
-  const files = scopesWhere(subject, viewScope(subject), actionScope(subject, AWAITED));
+  const conclusions = actionScope(subject, CONCLUSIONS);
+  const open = scopesWhere(subject, now, conclusions);
+  const others = outsideScopeWhere(subject, now, conclusions);
   const snapshots = new Map<string, CaseSnapshot | null>();
   const shown = async (caseFileId: string) => {
     if (!snapshots.has(caseFileId)) snapshots.set(caseFileId, await caseSnapshot(caseFileId, now));
@@ -50,15 +57,22 @@ export async function prosecutionReferrals(
   };
 
   const ground = async (name: 'PRINCIPAL_PARTY' | 'COMMUNICATION', page: number): Promise<Page<ReferredFile>> => {
-    const where = { target: 'PROSECUTION' as const, ground: name, caseFile: files };
-    const read = await readPage(PAGE_SIZE.referrals, page, () => db.caseReferral.count({ where }), (window) =>
-      db.caseReferral.findMany({
-        where,
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        ...window,
-        select: { article: true, item: true, reasonCode: true, createdAt: true, caseFile: { select: { id: true, number: true, code: true, year: true } } },
-      }),
-    );
+    const part = (files: Prisma.CaseFileWhereInput, conclusionsOpen: boolean) => {
+      const where: Prisma.CaseReferralWhereInput = { target: 'PROSECUTION', ground: name, caseFile: files };
+      return {
+        count: () => db.caseReferral.count({ where }),
+        read: async (window: { skip: number; take: number }) =>
+          (
+            await db.caseReferral.findMany({
+              where,
+              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+              ...window,
+              select: { article: true, item: true, reasonCode: true, createdAt: true, caseFile: { select: { id: true, number: true, code: true, year: true } } },
+            })
+          ).map((r) => ({ ...r, conclusionsOpen })),
+      };
+    };
+    const read = await readSegmentedPage(PAGE_SIZE.referrals, page, [part(open, true), part(others, false)]);
     const rows: ReferredFile[] = [];
     for (const r of read.rows) {
       if (!(await shown(r.caseFile.id))) continue;
@@ -69,6 +83,7 @@ export async function prosecutionReferrals(
         item: r.item,
         reasonCode: r.reasonCode,
         referredAt: r.createdAt,
+        conclusionsOpen: r.conclusionsOpen,
       });
     }
     return withRows(read, rows);
