@@ -217,6 +217,8 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         },
       });
       // Counsel of the filing is a plaintiff's only (review P2-S-02; the card's schema refuses it on another side).
+      // On the electronic channel the filing lawyer acts for the plaintiffs the card marks: one at least,
+      // which the check before signature, read again under the lock above, holds (decision 67).
       // On paper, the lawyer the clerk picked from the roster acts for the plaintiffs the card marks,
       // or for every plaintiff when it marks none (decision 59).
       if (filer && party.side === 'PLAINTIFF' && (party.representedByFiler === true || (paperLawyer !== null && !marksCounsel))) {

@@ -10,7 +10,10 @@
 // is checked by the authorization itself (decision 55; prompt: «لا يتم الإيداع
 // بلا أداء»). And the category of a public-law person (decision 66): the
 // warning of art. 605 and the ground of the communication of art. 20 are read
-// from it, and the parties of a registered file are not amended.
+// from it, and the parties of a registered file are not amended. And, on the
+// electronic channel, the filing lawyer as counsel of one plaintiff at least
+// (decision 67): he signs their application (art. 76), and the register holds
+// the parties' lawyers.
 import { CARD_SECTIONS, type CardParty, type CardSection, type FilingCard } from './card';
 import { principalValueCents, type CaseTypeRule, type JurisdictionRuleSet, type ReferralRuleSet, type Specialty } from './rules';
 
@@ -25,6 +28,7 @@ export const CHECK_CODES = [
   'CASE_TYPE_MISSING',
   'COURT_MISSING',
   'NO_PLAINTIFF',
+  'FILER_REPRESENTS_NO_PLAINTIFF',
   'PUBLIC_ENTITY_KIND_MISSING',
   // warnings (art. 77)
   'NO_DEFENDANT',
@@ -148,7 +152,16 @@ export function preSignatureChecks(input: CheckInput): FilingCheck[] {
     }
   }
   if (channel === 'PAPER' && blank(input.paperDepositor?.name)) out.push(check('PAPER_DEPOSITOR_MISSING', 'BLOCKING', 76));
-  if (!card.parties.some((p) => p.side === 'PLAINTIFF')) out.push(check('NO_PLAINTIFF', 'BLOCKING', 77));
+  // A plaintiff; and, on the electronic channel, the filing lawyer as counsel of one plaintiff at
+  // least (art. 76; decision 67): he files and signs their application, and without it the file
+  // would be registered without the plaintiffs' lawyer and closed to the very lawyer who filed it.
+  // Asked once, of the section. On paper the lawyer the clerk picks acts for the plaintiffs,
+  // marked or not (decision 59): nothing is asked of the card.
+  const plaintiffs = card.parties.filter((p) => p.side === 'PLAINTIFF');
+  if (plaintiffs.length === 0) out.push(check('NO_PLAINTIFF', 'BLOCKING', 77));
+  else if (channel === 'ELECTRONIC' && !plaintiffs.some((p) => p.representedByFiler === true)) {
+    out.push(check('FILER_REPRESENTS_NO_PLAINTIFF', 'BLOCKING', 76, { section: 'PLAINTIFFS' }));
+  }
   // The one statement of a party that blocks (decision 66): which public-law person it is. Art. 20
   // communicates the case whatever the answer; the warning of art. 605 below cannot be given without it.
   for (const party of card.parties) {

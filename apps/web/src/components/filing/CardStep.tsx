@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { CardSection, FilingCard } from '@mahkama/core';
+import { filerCounselByDefault, type CardSection, type FilingCard } from '@mahkama/core';
 import { apiGet } from '@/components/client/api';
 import { Button } from '@/components/ui/Button';
 import { CONTROL, Check, Field, type StepProps } from './parts';
@@ -9,7 +9,10 @@ import { CONTROL, Check, Field, type StepProps } from './parts';
 // 3. «بطاقة الدعوى» (art. 77): the parties, the summary and the claims, typed by
 // hand (decision 54); a company's data may be fetched from the commercial
 // register by its full number. Each section is attested «مطابق للمقال»; the
-// attestation holds as long as the section is unchanged.
+// attestation holds as long as the section is unchanged. On the electronic
+// channel a party that becomes a plaintiff starts with «ينوب المحامي المودع عن
+// هذا الطرف» ticked (decision 67): the lawyer unticks the plaintiff, among
+// several, who keeps another counsel.
 
 type Party = FilingCard['parties'][number];
 type Claim = FilingCard['claims'][number];
@@ -53,7 +56,8 @@ function centsOf(text: string): number | null {
 const dirhamsOf = (cents: number | null) => (cents === null ? '' : String(cents / 100));
 
 export function CardStep({ view, t, busy, update }: StepProps) {
-  const [parties, setParties] = useState<Party[]>(view.draft.card.parties.length > 0 ? [...view.draft.card.parties] : [blankParty([])]);
+  const channel = view.draft.channel;
+  const [parties, setParties] = useState<Party[]>(view.draft.card.parties.length > 0 ? [...view.draft.card.parties] : [blankParty([], channel)]);
   const [summary, setSummary] = useState(view.draft.card.summary);
   const [claims, setClaims] = useState<Claim[]>(view.draft.card.claims.length > 0 ? [...view.draft.card.claims] : [blankClaim([])]);
   const [amounts, setAmounts] = useState<string[]>(claims.map((c) => dirhamsOf(c.amountCents)));
@@ -61,7 +65,7 @@ export function CardStep({ view, t, busy, update }: StepProps) {
   const [sources, setSources] = useState<Record<string, string>>({});
   const [lookupError, setLookupError] = useState<Record<string, string>>({});
   const locked = view.claimsLocked;
-  const paper = view.draft.channel === 'PAPER';
+  const paper = channel === 'PAPER';
 
   // A section changed is no longer attested: its box is ticked again after checking it
   // against the application (decision 54, audit G018).
@@ -138,8 +142,9 @@ export function CardStep({ view, t, busy, update }: StepProps) {
                 value={party.side}
                 onChange={(e) => {
                   const side = e.target.value as Party['side'];
-                  // What belongs to a plaintiff alone does not follow a party to another side.
-                  setParty(index, side === 'PLAINTIFF' ? { side } : { side, representedByFiler: false, agent: undefined });
+                  // What belongs to a plaintiff alone does not follow a party to another side; and a party
+                  // that becomes a plaintiff takes the default of a new plaintiff (decision 67).
+                  setParty(index, side === 'PLAINTIFF' ? { side, ...counselDefault(channel, side) } : { side, representedByFiler: false, agent: undefined });
                 }}
               >
                 {SIDES.map((s) => (
@@ -324,7 +329,7 @@ export function CardStep({ view, t, busy, update }: StepProps) {
           </div>
         </fieldset>
       ))}
-      <Button variant="secondary" onClick={() => { unattest('DEFENDANTS'); setParties((list) => [...list, blankParty(list.map((p) => p.key))]); }}>
+      <Button variant="secondary" onClick={() => { unattest('DEFENDANTS'); setParties((list) => [...list, blankParty(list.map((p) => p.key), channel)]); }}>
         {t('filing.card.addParty')}
       </Button>
 
@@ -425,8 +430,14 @@ export function CardStep({ view, t, busy, update }: StepProps) {
   );
 }
 
-function blankParty(keys: readonly string[]): Party {
-  return { key: nextKey('p', keys), side: keys.length === 0 ? 'PLAINTIFF' : 'DEFENDANT', personKind: 'LEGAL', name: '' };
+/** The box «ينوب المحامي المودع عن هذا الطرف» of a party new to its side: ticked where the core says so, absent otherwise. */
+function counselDefault(channel: 'ELECTRONIC' | 'PAPER', side: Party['side']): Pick<Party, 'representedByFiler'> {
+  return filerCounselByDefault(channel, side) ? { representedByFiler: true } : {};
+}
+
+function blankParty(keys: readonly string[], channel: 'ELECTRONIC' | 'PAPER'): Party {
+  const side = keys.length === 0 ? 'PLAINTIFF' : 'DEFENDANT';
+  return { key: nextKey('p', keys), side, personKind: 'LEGAL', name: '', ...counselDefault(channel, side) };
 }
 
 function blankClaim(keys: readonly string[]): Claim {

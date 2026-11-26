@@ -135,6 +135,17 @@ export type CardAddress = z.infer<typeof AddressSchema>;
 
 export const EMPTY_CARD: FilingCard = { parties: [], summary: '', claims: [] };
 
+/**
+ * Whether a party that becomes a plaintiff in the card form starts with the filing lawyer as its
+ * counsel (decision 67). On the electronic channel it does: the lawyer who signs the application
+ * of the plaintiffs is their lawyer (art. 76), and he unticks the plaintiff, among several, who
+ * keeps another counsel. On paper the clerk ticks nothing: the lawyer he picks from the roster
+ * acts for the plaintiffs the card marks, or for all of them (decision 59). Never another side.
+ */
+export function filerCounselByDefault(channel: 'ELECTRONIC' | 'PAPER', side: CardParty['side']): boolean {
+  return channel === 'ELECTRONIC' && side === 'PLAINTIFF';
+}
+
 /** The part of the card a section attests: its digest is kept with the attestation. */
 export function sectionContent(card: FilingCard, section: CardSection): unknown {
   switch (section) {
