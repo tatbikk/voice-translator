@@ -2,9 +2,12 @@
 // covered by the refusal matrix): the page's default export is called as the
 // server calls it, with the cookies of a test browser (tests/helpers/page-request.ts).
 //   - «دعوى جديدة», «وصل الإيداع» and «أداء (محاكاة)» of a lawyer's draft are
-//     found by their author alone: another lawyer, the assistant of the same
-//     office and a registry clerk meet the 404 of a page that does not exist,
-//     and the refusal is logged under the page's id (Phase 2 memo, row 2);
+//     found by their author alone: another lawyer, an assistant of a law firm
+//     and a registry clerk meet the 404 of a page that does not exist, and the
+//     refusal is logged under the page's id (Phase 2 memo, row 2). No link
+//     between a lawyer and a law firm is modelled (decision 56: the delegation
+//     of the firm's assistants comes with the firm's account), so the assistant
+//     is of a firm, not of the author's office;
 //   - the registry's note to the judge, written through the case's action
 //     route, leaves no «case.note.added» entry on the timeline the case page
 //     gives counsel, and one on the timeline it gives the court president;
@@ -62,8 +65,8 @@ beforeAll(async () => {
   cast = {
     lawyer: await createUser({ roles: ['LAWYER'], label: 'plaintiff-lawyer' }),
     otherLawyer: await createUser({ roles: ['LAWYER'], label: 'other-lawyer' }),
-    // The assistant of the office of the draft's author (the same organization).
-    assistant: await createUser({ roles: ['LAWYER_ASSISTANT'], label: 'office-assistant' }),
+    // An assistant of a law firm: the platform models no link between the author and a firm (decision 56).
+    assistant: await createUser({ roles: ['LAWYER_ASSISTANT'], label: 'firm-assistant' }),
     registry: await createUser({ roles: ['CLERK_REGISTRATION'], label: 'registry' }),
     president: await createUser({ roles: ['COURT_PRESIDENT'], label: 'president' }),
     rapporteur: await createUser({ roles: ['JUDGE_RAPPORTEUR'], label: 'rapporteur' }),

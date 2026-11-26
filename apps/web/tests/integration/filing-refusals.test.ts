@@ -6,6 +6,7 @@
 // and the other rows of the memo that concern the draft: filing twice (6),
 // the signing secret (19, 20), the bailiff (21), the paper filing (24), a
 // filed draft (26). Every refusal must leave a record in the event log.
+import { randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { SECURITY_POLICY } from '@mahkama/core';
 import {
@@ -202,6 +203,37 @@ describe('a draft belongs to its author alone (memo row 2)', () => {
     expect(own.result.status, describeResponse(own.result)).toBe(200);
     expect(own.events.filter((e) => e.action === 'document.downloaded').map((e) => e.details.documentId)).toEqual([documentId]);
   });
+
+  it('records the document asked for with the refusal, and holds such requests to the session’s refusal budget: past it 429 and nothing more recorded (review of the fix of IR-17)', async () => {
+    const user = await createUser({ roles: ['LAWYER'], label: 'probing-lawyer' });
+    const client = await login(user);
+    const own = await createDraft(client);
+    const refusalsOf = (events: readonly EventRow[]) => events.filter((e) => e.action === 'filing.refused').map((e) => e.details);
+    // The document of another draft through one's own: the record names the draft and the document asked for.
+    const read = await expectRefused(() => client.get(`/api/v1/filings/${own}/documents/${documentId}/file`), 404, 'NOT_FOUND');
+    expect(refusalsOf(read)).toEqual([{ draftId: own, documentId, reason: 'NOT_FOUND' }]);
+    const edit = await expectRefused(() => updateDocument(client, own, documentId, { title: 'عنوان آخر' }), 404, 'NOT_FOUND');
+    expect(refusalsOf(edit)).toEqual([{ draftId: own, documentId, reason: 'NOT_FOUND' }]);
+    // Guessed identifiers one after the other, on the download route, which has no rate limit of its own:
+    // each refusal is recorded within the session's budget (decision 3), the rest answered 429 and counted.
+    const budget = SECURITY_POLICY.refusals.authenticatedPerSession.max;
+    const used = 2;
+    const suppressed = () => count(`SELECT count(*) FROM "RateLimitHit" WHERE key LIKE 'refusal-suppressed|session|%'`);
+    const suppressedBefore = await suppressed();
+    const { result: answers, events } = await capturingEvents(async () => {
+      const seen: { status: number; code: string | undefined }[] = [];
+      for (let i = 0; i < budget - used + 3; i += 1) {
+        const res = await client.get(`/api/v1/filings/${own}/documents/${randomUUID()}/file`);
+        seen.push({ status: res.status, code: res.code });
+      }
+      return seen;
+    });
+    expect(answers.slice(0, budget - used).every((a) => a.status === 404 && a.code === 'NOT_FOUND'), 'answered 404 within the budget').toBe(true);
+    expect(answers.slice(budget - used), 'answered 429 past it').toEqual(Array.from({ length: 3 }, () => ({ status: 429, code: 'TOO_MANY_REQUESTS' })));
+    expect(refusalsOf(events), 'one record per refusal within the budget, and none past it').toHaveLength(budget - used);
+    expect(events.filter((e) => e.action === 'document.downloaded'), 'nothing is downloaded').toEqual([]);
+    expect(await suppressed(), 'the refusals past the budget are counted for the summary').toBe(suppressedBefore + 3);
+  }, 120_000);
 
   it('serves the author his own document as an attachment, never as a web page', async () => {
     const res = await (await as('lawyer')).get(`/api/v1/filings/${draftId}/documents/${documentId}/file`);

@@ -4,23 +4,26 @@
 // number, a summary and the pasted application), a commercial-register lookup,
 // an upload, the payment, the signature and filing, the registry's note to the
 // judge and the prosecution's conclusions run at debug level under the log
-// capture, with every one of those values registered for tracking. None of
-// them reaches the event log nor the technical log; no API answer carries a
-// secret, a password, a code or a token.
+// capture, with every one of those values registered for tracking. So does the
+// paper channel (review of the fix of IR-17): the depositor's name, identity
+// number and quality typed in by the registry, its scans, and the payment at the
+// counter whose receipt names the depositor. None of them reaches the event log
+// nor the technical log; no API answer carries a secret, a password, a code or a
+// token.
 import { randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { login } from '../helpers/auth';
 import { sql } from '../helpers/db';
 import { overrideEnv } from '../helpers/env';
 import { createUser, theCourt, type TestUser } from '../helpers/factories';
-import { fileCase, giveSigningSecret, runJobs, upload, type FiledCase } from '../helpers/filings';
+import { createPaperDraft, fileCase, giveSigningSecret, openPayment, runJobs, settle, submit, updateDraft, upload, type FiledCase } from '../helpers/filings';
 import { describeResponse, recordedResponses } from '../helpers/http';
 import { capturedLogs } from '../helpers/log-capture';
 import { useFreshDatabase } from '../helpers/reset';
 import { loadRuleTables, makeModelCourt } from '../helpers/rules';
 import { pdfBytes } from '../helpers/samples';
 import { findLeaks, trackSensitive, type SensitiveKind } from '../helpers/sensitive';
-import type { Card } from '../acceptance/model-case-filing.fixture';
+import { CARD_SECTIONS, COMMERCIAL_PAYMENT, type Card } from '../acceptance/model-case-filing.fixture';
 
 useFreshDatabase();
 
@@ -63,6 +66,15 @@ const LOOKED_UP = tracked('reference', `RC-INCONNU-${tag}`);
 const NOTE_TEXT = tracked('name', `ملاحظة خاصة ${tag}: يبدو الرسم المؤدى ناقصا بالنظر إلى طلبات ${PERSONAL.guarantor}.`);
 const CONCLUSIONS_TITLE = tracked('name', `مستنتجات النيابة العامة في دعوى ${PERSONAL.plaintiff}`);
 const CONCLUSIONS_CONTENT = tracked('name', `مضمون-مستنتجات-${tag}`);
+// The paper channel: what the registry types in of the person who brings the application, and its scans.
+const DEPOSITOR = {
+  name: tracked('name', `السيد فاء المودع ${tag}`),
+  idNumber: tracked('reference', `DK${digits}${tag.slice(2, 4).toUpperCase()}`),
+  quality: tracked('name', `كاتب مكتب الأستاذ صاد ${tag}`),
+};
+const SCAN_CONTENT = tracked('name', `مضمون-المقال-الورقي-${tag}`);
+const SCAN_EXHIBIT_TITLE = tracked('name', `وكالة ${DEPOSITOR.name}`);
+const SCAN_EXHIBIT_CONTENT = tracked('name', `مضمون-الوكالة-${tag}`);
 
 const CARD: Card = {
   parties: [
@@ -111,6 +123,8 @@ const CARD: Card = {
 };
 
 let filed: FiledCase & { draftId: string };
+let paperDraftId: string;
+let paperCaseFileId: string;
 
 async function runPhaseTwoFlows(): Promise<void> {
   const court = await theCourt();
@@ -152,6 +166,39 @@ async function runPhaseTwoFlows(): Promise<void> {
   // The file as counsel reads it.
   const read = await client.get(`/api/v1/cases/${filed.caseFileId}/available-actions`);
   expect(read.status, describeResponse(read)).toBe(200);
+
+  // The paper channel at the registry: the card, the depositor, the scans, the payment at the counter and the filing.
+  const desk = await login(registry);
+  paperDraftId = await createPaperDraft(desk);
+  const paperCard: Card = { ...CARD, parties: CARD.parties.map((p) => ({ ...p, representedByFiler: false })) };
+  const saved = await updateDraft(desk, paperDraftId, {
+    caseType: COMMERCIAL_PAYMENT,
+    card: paperCard,
+    paperDepositor: { name: DEPOSITOR.name, idNumber: DEPOSITOR.idNumber, quality: DEPOSITOR.quality },
+    attest: [...CARD_SECTIONS],
+  });
+  expect(saved.status, describeResponse(saved)).toBe(200);
+  const scan = await upload(desk, paperDraftId, { kind: 'APPLICATION', name: 'scan.pdf', bytes: pdfBytes(SCAN_CONTENT), pages: 2, location: 'خزانة التقييد، الرف 4' });
+  expect(scan.status, describeResponse(scan)).toBe(200);
+  const scannedExhibit = await upload(desk, paperDraftId, {
+    kind: 'EXHIBIT',
+    name: `${SCAN_EXHIBIT_TITLE}.pdf`,
+    title: SCAN_EXHIBIT_TITLE,
+    bytes: pdfBytes(SCAN_EXHIBIT_CONTENT),
+    nature: 'PHOTOCOPY',
+    pages: 1,
+    location: 'خزانة التقييد، الرف 4',
+  });
+  expect(scannedExhibit.status, describeResponse(scannedExhibit)).toBe(200);
+  const { intentId } = await openPayment(desk, paperDraftId);
+  const paid = await settle(desk, intentId, 'SUCCEEDED');
+  expect(paid.status, describeResponse(paid)).toBe(200);
+  // The receipt of the counter payment, which names the depositor, printed by the worker.
+  await runJobs();
+  const paperFiled = await submit(desk, paperDraftId, {});
+  expect(paperFiled.status, describeResponse(paperFiled)).toBe(200);
+  paperCaseFileId = paperFiled.data!.caseFileId;
+  await runJobs();
 }
 
 describe('secrets and personal data in the flows of Phase 2 (memo rows 16 and 17; Phase 2 memo row 25; IR-17)', () => {
@@ -183,6 +230,15 @@ describe('secrets and personal data in the flows of Phase 2 (memo rows 16 and 17
     }
     const stored = await sql<{ docType: string }>(`SELECT "docType" FROM "Document" WHERE "caseFileId" = $1`, [filed.caseFileId]);
     expect(stored.map((d) => d.docType)).toContain('PROSECUTION_CONCLUSIONS');
+    // The paper filing, paid at the counter, with its receipt printed.
+    const paper = await sql<{ filingChannel: string }>(`SELECT "filingChannel"::text AS "filingChannel" FROM "CaseFile" WHERE id = $1`, [paperCaseFileId]);
+    expect(paper.map((f) => f.filingChannel)).toEqual(['PAPER']);
+    const counter = await sql<{ method: string }>(`SELECT p.method::text AS method FROM "Payment" p JOIN "PaymentIntent" i ON i.id = p."intentId" WHERE i."draftId" = $1`, [paperDraftId]);
+    expect(counter.map((p) => p.method)).toEqual(['COUNTER']);
+    const receipts = await sql<{ kind: string }>(`SELECT kind::text AS kind FROM "FilingDocument" WHERE "draftId" = $1 AND generated`, [paperDraftId]);
+    expect(receipts.map((d) => d.kind)).toContain('PAYMENT_RECEIPT');
+    const depositor = await sql<{ paperDepositor: unknown }>(`SELECT "paperDepositor" FROM "FilingDraft" WHERE id = $1`, [paperDraftId]);
+    expect(findLeaks(JSON.stringify(depositor)), 'the depositor is kept with the draft').toHaveLength(3);
     // The values are where they belong: in the file, not in the log.
     const parties = await sql<{ displayName: string; idNumber: string | null }>(`SELECT "displayName", "idNumber" FROM "CaseParty" WHERE "caseFileId" = $1 ORDER BY position`, [filed.caseFileId]);
     expect(parties.map((p) => p.displayName)).toEqual([PERSONAL.plaintiff, PERSONAL.defendant, PERSONAL.guarantor]);

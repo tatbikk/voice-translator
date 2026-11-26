@@ -1,7 +1,8 @@
 // Memo row 12 of Phase 0, extended to every state-changing route (Phase 1 and
 // Phase 2 memo row 18; independent review IR-17). The routes are taken from the
-// endpoint registry: every non-GET endpoint that is not public must have a
-// probe here, so that a route added later is in this test or fails it. Each
+// endpoint registry: every non-GET endpoint that is not public, and every GET it
+// marks as having effects (the commercial-register lookup, decision 80), must
+// have a probe here, so that a route added later is in this test or fails it. Each
 // probe is the request a legitimate browser of the right role would send, on
 // a session of its own (a pending one where the route needs it). Sent without
 // a CSRF token, and with a wrong one, the request is refused at the CSRF step
@@ -31,7 +32,7 @@ import {
 useFreshDatabase();
 
 const ENDPOINTS: readonly EndpointEntry[] = await loadEndpoints();
-const STATE_CHANGING = ENDPOINTS.filter((e) => e.method !== 'GET' && e.access.kind !== 'public');
+const STATE_CHANGING = ENDPOINTS.filter((e) => (e.method !== 'GET' || e.sideEffects === true) && e.access.kind !== 'public');
 
 // ---------------------------------------------------------------------------
 // What "nothing changed" means: every table but the event log (checked record
@@ -227,6 +228,11 @@ const PROBES: Readonly<Record<string, Probe>> = {
     const { intentId } = await openPayment(c, draftId);
     return { witness: 'changes', send: (o) => c.post(`/api/v1/payments/${intentId}/outcome`, { outcome: 'SUCCEEDED' }, o) };
   },
+  // A GET with effects (decision 80): it asks the register and spends the session's budget, in the lawyer's name.
+  'registers.commercial.lookup': async () => {
+    const c = await lawyerSession();
+    return { witness: 'passes', send: (o) => c.get('/api/v1/registers/commercial', { ...o, query: { number: 'RC-DEMO-1001' } }) };
+  },
   'filings.submit': async () => {
     const { client: c, secret } = await filingLawyer();
     const draftId = await prepareDraft(c, { exhibits: 1 });
@@ -249,7 +255,7 @@ beforeAll(async () => {
 }, 120_000);
 
 describe('cross-site request forgery on every state-changing route (memo row 12; Phase 2 memo row 18; IR-17)', () => {
-  it('has a probe for every non-GET endpoint of the registry that is not public, and for nothing else', () => {
+  it('has a probe for every non-GET endpoint of the registry that is not public and every GET with effects, and for nothing else', () => {
     expect(Object.keys(PROBES).sort()).toEqual(STATE_CHANGING.map((e) => e.id).sort());
     // The routes the Phases 1 and 2 memos name are among them.
     for (const id of [
@@ -264,15 +270,41 @@ describe('cross-site request forgery on every state-changing route (memo row 12;
       'filings.payment.open',
       'filings.submit',
       'payments.outcome',
+      'registers.commercial.lookup',
     ]) {
       expect(STATE_CHANGING.map((e) => e.id), id).toContain(id);
     }
   });
 
-  it('leaves out only reads: the register lookup and the downloads are GET requests, which change no state of the file', () => {
-    for (const id of ['registers.commercial.lookup', 'filings.documents.file', 'cases.document.file']) {
-      expect(ENDPOINTS.find((e) => e.id === id)?.method, id).toBe('GET');
+  it('leaves out only plain reads: a download is a GET whose one effect is the record of the download itself (decision 80)', () => {
+    for (const id of ['filings.documents.file', 'cases.document.file']) {
+      const endpoint = ENDPOINTS.find((e) => e.id === id);
+      expect(endpoint?.method, id).toBe('GET');
+      expect(endpoint?.sideEffects, id).toBeUndefined();
     }
+    // The lookup asks the register and spends a budget: a GET with effects, probed above.
+    expect(ENDPOINTS.find((e) => e.id === 'registers.commercial.lookup')).toMatchObject({ method: 'GET', sideEffects: true });
+  });
+
+  it('refuses the register lookup sent by a cross-site navigation: the register is not asked and the session’s budget is not spent (review of the fix of IR-17, decision 80)', async () => {
+    const c = await lawyerSession();
+    const lookups = () => sql<{ n: string }>(`SELECT count(*)::text AS n FROM "RateLimitHit" WHERE key LIKE 'register:session:%'`).then((r) => Number(r[0]?.n ?? 0));
+    const before = await lookups();
+    // A top-level navigation from another site: no token, Sec-Fetch-Site cross-site, the cookies sent (SameSite=Lax).
+    const forged = await capturingEvents(() =>
+      c.get('/api/v1/registers/commercial', { query: { number: 'RC-DEMO-1001' }, csrf: 'none', headers: { 'Sec-Fetch-Site': 'cross-site' } }),
+    );
+    expect({ status: forged.result.status, code: forged.result.code }, describeResponse(forged.result)).toEqual({ status: 403, code: 'CSRF_REJECTED' });
+    expect(forged.events.map((e) => ({ action: e.action, step: e.details.step }))).toEqual([{ action: 'access.denied', step: 'CSRF' }]);
+    // Even with the token, a request another site sends is refused.
+    const crossSite = await c.get('/api/v1/registers/commercial', { query: { number: 'RC-DEMO-1001' }, headers: { 'Sec-Fetch-Site': 'cross-site' } });
+    expect(crossSite.code, describeResponse(crossSite)).toBe('CSRF_REJECTED');
+    expect(await lookups(), 'no lookup of the budget is spent').toBe(before);
+    // The page's own request (same origin, with its token, and no Origin header as a browser sends a GET) is answered.
+    const own = await capturingEvents(() => c.get('/api/v1/registers/commercial', { query: { number: 'RC-DEMO-1001' } }));
+    expect(own.result.status, describeResponse(own.result)).toBe(200);
+    expect(own.events.map((e) => e.action)).toEqual(['registers.commercial.looked-up']);
+    expect(await lookups()).toBe(before + 1);
   });
 
   for (const endpoint of STATE_CHANGING) {

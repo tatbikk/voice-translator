@@ -15,6 +15,7 @@ import {
   type TimeLimitResult,
   type TimeLimitRule,
   type TimeLimitRuleSet,
+  type TimeLimitStep,
   type TimeLimitUncertainty,
 } from '../../src/index';
 import { readRules, rows, tablesOf, yes } from './md-tables';
@@ -43,18 +44,58 @@ function articlesOf(cell: string): number[] {
   return parts.map(Number);
 }
 
+/** Art. 602, second paragraph: a last day that is a holiday extends to the first working day. */
+const HOLIDAY_EXTENSION_ARTICLE = 602;
+
+/** What happened in the computation of a case, which alone may add articles to those of its rules. */
+interface Computed {
+  /** the act was done electronically, or an outage was declared (art. 602, third paragraph, and 639) */
+  readonly electronic: boolean;
+  readonly steps: readonly TimeLimitStep[];
+}
+
 /**
- * The «السند» of a case against the table (independent review IR-19): every
- * article of the rules applied is cited, and nothing but those articles and
- * the articles of the table's counting settings (602, 603, 639).
+ * The «السند» of a case against the table (independent review IR-19, and the
+ * review of its fix): every article of the rules applied is cited, and nothing
+ * else but what the computation used: art. 602 and the holidays' article (603)
+ * when the last day was carried past a holiday, and the electronic counting's
+ * articles (602, 639) for an act done electronically.
  */
-function expectBasis(cell: string | undefined, set: TimeLimitRuleSet, applied: readonly TimeLimitRule[]): void {
+function expectBasis(cell: string | undefined, set: TimeLimitRuleSet, applied: readonly TimeLimitRule[], computed: Computed): void {
   const cited = articlesOf(cell ?? '');
   for (const rule of applied) {
     for (const article of rule.articles) expect(cited, `«${cell ?? ''}» cites art. ${String(article)} of ${rule.code}`).toContain(article);
   }
-  const allowed = new Set([...applied.flatMap((r) => r.articles), ...set.settings.electronicCounting.articles, ...set.settings.weekendIsHoliday.articles]);
-  expect(cited.filter((a) => !allowed.has(a)), `«${cell ?? ''}» cites only articles of ${applied.map((r) => r.code).join(', ')} or of the counting`).toEqual([]);
+  const extended = computed.steps.some((s) => s.kind === 'HOLIDAY_EXTENSION');
+  const allowed = new Set([
+    ...applied.flatMap((r) => r.articles),
+    ...(extended ? [HOLIDAY_EXTENSION_ARTICLE, ...set.settings.weekendIsHoliday.articles] : []),
+    ...(computed.electronic ? set.settings.electronicCounting.articles : []),
+  ]);
+  expect(
+    cited.filter((a) => !allowed.has(a)),
+    `«${cell ?? ''}» cites only articles of ${applied.map((r) => r.code).join(', ')}${extended ? ', of the holiday extension' : ''}${computed.electronic ? ', of the electronic counting' : ''}`,
+  ).toEqual([]);
+}
+
+// Review P1-A-08 and P1-A-09: what the result relied on that is not settled.
+const REASONS: Readonly<Record<string, TimeLimitUncertainty['kind'] | null>> = {
+  'لا شيء': null,
+  'السبت والأحد': 'WEEKEND',
+  'عطلة تقديرية': 'ESTIMATED_HOLIDAY',
+  'احتساب الأجل الإلكتروني': 'ELECTRONIC_COUNTING',
+  'تجاوز أفق قائمة العطل': 'BEYOND_CALENDAR',
+  'قاعدة غير مؤكدة': 'RULE',
+};
+
+/** The «قيمة مؤقتة غير مؤكدة» and «ما بني عليه» cells of a case against the result. */
+function expectUncertainty(result: TimeLimitResult, flagged: string | undefined, reasons: string): void {
+  expect(result.uncertainties.length > 0, `flagged «${flagged ?? ''}»`).toBe(yes(flagged));
+  const kinds = reasons.split('، ').map((r) => {
+    if (!(r in REASONS)) throw new Error(`unknown reason «${r}»`);
+    return REASONS[r];
+  });
+  expect(result.uncertainties.map((u) => u.kind).sort()).toEqual(kinds.filter((k) => k !== null).sort());
 }
 
 /**
@@ -89,11 +130,11 @@ describe('time limits in plain language', () => {
       });
       expect(result.lastDay).toBe(expected);
       expectEndOfLastDay(result, code);
-      expectBasis(basis, found.set, [found.rule]);
+      expectBasis(basis, found.set, [found.rule], { electronic: yes(electronic), steps: result.steps });
     });
   }
 
-  for (const [caseText, code = '', at = '', electronic, expected, endsAt = '', basis] of rows(FILE, 'حدود الأجل')) {
+  for (const [caseText, code = '', at = '', electronic, expected, endsAt = '', flagged, reasons = '', basis] of rows(FILE, 'حدود الأجل')) {
     it(caseText ?? '', () => {
       const trigger = moroccoInstant(at);
       // A case a few minutes after midnight in Morocco is still the day before in UTC: the case tests that.
@@ -105,7 +146,9 @@ describe('time limits in plain language', () => {
       expect(result.lastDay).toBe(expected);
       expect(result.endsAt.toISOString()).toBe(moroccoInstant(endsAt).toISOString());
       expectEndOfLastDay(result, code);
-      expectBasis(basis, found.set, [found.rule]);
+      // An electronic act relies on the counting still open (س1), a day past the list's horizon on that horizon.
+      expectUncertainty(result, flagged, reasons);
+      expectBasis(basis, found.set, [found.rule], { electronic: yes(electronic), steps: result.steps });
     });
   }
 
@@ -124,7 +167,7 @@ describe('time limits in plain language', () => {
       });
       expect(result.lastDay).toBe(expected);
       expectEndOfLastDay(result, code);
-      expectBasis(basis, found.set, [found.rule]);
+      expectBasis(basis, found.set, [found.rule], { electronic: false, steps: result.steps });
     });
   }
 
@@ -140,30 +183,7 @@ describe('time limits in plain language', () => {
         calendar,
       });
       expect(result.endsAt.getTime()).toBe(moroccoInstant(expected ?? '').getTime());
-      expectBasis(basis, found.set, [found.rule]);
-    });
-  }
-
-  for (const [caseText, refusal = '', deemed = '', code = '', expected, basis] of rows(FILE, 'رفض التسلم')) {
-    it(caseText ?? '', () => {
-      const deemedRule = ruleAt('DEEMED_SERVICE_AFTER_REFUSAL', refusal);
-      if (!deemedRule) throw new Error('no rule in force');
-      const servedAt = deemedServiceDate(moroccoInstant(`${refusal} 10:00`), deemedRule.rule);
-      expect(servedAt.day).toBe(deemed);
-      // Served from the first instant of the tenth day, in Morocco.
-      expect(servedAt.at.toISOString()).toBe(moroccoInstant(`${deemed} 00:00`).toISOString());
-      const found = ruleAt(code, servedAt.day);
-      if (!found) throw new Error('no rule in force');
-      const result = computeTimeLimit({
-        rule: found.rule,
-        settings: found.set.settings,
-        trigger: servedAt.at,
-        electronic: false,
-        calendar,
-      });
-      expect(result.lastDay).toBe(expected);
-      expectEndOfLastDay(result, code);
-      expectBasis(basis, found.set, [deemedRule.rule, found.rule]);
+      expectBasis(basis, found.set, [found.rule], { electronic: false, steps: result.steps });
     });
   }
 
@@ -181,7 +201,7 @@ describe('time limits in plain language', () => {
       });
       expect(result.lastDay).toBe(expected);
       expectEndOfLastDay(result, code);
-      expectBasis(basis, found.set, [found.rule]);
+      expectBasis(basis, found.set, [found.rule], { electronic: true, steps: result.steps });
     });
   }
 
@@ -191,19 +211,10 @@ describe('time limits in plain language', () => {
       const found = ruleAt(code, served);
       if (!found) throw new Error('no rule in force');
       expect(appearanceDelayRespected(served, hearing, found.rule)).toBe(yes(respected));
-      expectBasis(basis, found.set, [found.rule]);
+      expectBasis(basis, found.set, [found.rule], { electronic: false, steps: [] });
     });
   }
 
-  // Review P1-A-08 and P1-A-09: what the result relied on that is not settled.
-  const REASONS: Readonly<Record<string, TimeLimitUncertainty['kind'] | null>> = {
-    'لا شيء': null,
-    'السبت والأحد': 'WEEKEND',
-    'عطلة تقديرية': 'ESTIMATED_HOLIDAY',
-    'احتساب الأجل الإلكتروني': 'ELECTRONIC_COUNTING',
-    'تجاوز أفق قائمة العطل': 'BEYOND_CALENDAR',
-    'قاعدة غير مؤكدة': 'RULE',
-  };
   const uncertainCalendar: HolidayCalendar = {
     dates: rows(FILE, 'العطل في حالات القيم المؤقتة').map(([date]) => date ?? ''),
     uncertainDates: rows(FILE, 'العطل في حالات القيم المؤقتة')
@@ -225,15 +236,50 @@ describe('time limits in plain language', () => {
       });
       expect(result.lastDay).toBe(expected);
       expectEndOfLastDay(result, code);
-      expectBasis(basis, found.set, [found.rule]);
-      expect(result.uncertainties.length > 0).toBe(yes(flagged));
-      const kinds = reasons.split('، ').map((r) => {
-        if (!(r in REASONS)) throw new Error(`unknown reason «${r}»`);
-        return REASONS[r];
-      });
-      expect(result.uncertainties.map((u) => u.kind).sort()).toEqual(kinds.filter((k) => k !== null).sort());
+      expectBasis(basis, found.set, [found.rule], { electronic: yes(electronic), steps: result.steps });
+      expectUncertainty(result, flagged, reasons);
     });
   }
+
+  // The tenth day after a refusal (art. 85): whether art. 602 extends it is open (س46), so the
+  // deemed service and every limit it opens carry the mark, with what the limit itself relied on.
+  for (const [caseText, refusal = '', deemed = '', code = '', expected, flagged, reasons = '', basis] of rows(FILE, 'رفض التسلم في حالات القيم المؤقتة')) {
+    it(caseText ?? '', () => {
+      const deemedRule = ruleAt('DEEMED_SERVICE_AFTER_REFUSAL', refusal);
+      if (!deemedRule) throw new Error('no rule in force');
+      const servedAt = deemedServiceDate(moroccoInstant(`${refusal} 10:00`), deemedRule.rule);
+      expect(servedAt.day).toBe(deemed);
+      // Served from the first instant of the tenth day, in Morocco.
+      expect(servedAt.at.toISOString()).toBe(moroccoInstant(`${deemed} 00:00`).toISOString());
+      expect(servedAt.uncertainties, 'the deemed service carries the mark of its rule').toEqual([{ kind: 'RULE' }]);
+      const found = ruleAt(code, servedAt.day);
+      if (!found) throw new Error('no rule in force');
+      const result = computeTimeLimit({
+        rule: found.rule,
+        settings: found.set.settings,
+        trigger: servedAt.at,
+        startUncertainties: servedAt.uncertainties,
+        electronic: false,
+        calendar,
+      });
+      expect(result.lastDay).toBe(expected);
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [deemedRule.rule, found.rule], { electronic: false, steps: result.steps });
+      expectUncertainty(result, flagged, reasons);
+    });
+  }
+
+  it('marks a deemed service only as its rule is marked, and a limit with what its start relied on', () => {
+    const deemedRule = ruleAt('DEEMED_SERVICE_AFTER_REFUSAL', '2027-03-01');
+    const appeal = ruleAt('APPEAL', '2027-03-11');
+    if (!deemedRule || !appeal) throw new Error('no rule in force');
+    const refusedAt = moroccoInstant('2027-03-01 10:00');
+    expect(deemedServiceDate(refusedAt, { ...deemedRule.rule, uncertain: false }).uncertainties).toEqual([]);
+    const served = deemedServiceDate(refusedAt, deemedRule.rule);
+    const input = { rule: appeal.rule, settings: appeal.set.settings, trigger: served.at, electronic: false, calendar };
+    expect(computeTimeLimit(input).uncertainties.map((u) => u.kind)).toEqual(['WEEKEND']);
+    expect(computeTimeLimit({ ...input, startUncertainties: served.uncertainties }).uncertainties.map((u) => u.kind).sort()).toEqual(['RULE', 'WEEKEND']);
+  });
 
   it('marks every computation that looked past an undeclared horizon, and none within a declared one', () => {
     const found = ruleAt('FEE_OBJECTION', '2027-03-15');
@@ -264,7 +310,7 @@ describe('time limits in plain language', () => {
   it('gives every rule of the table in force at least one case in plain language (review P1-A-17)', () => {
     const covered = new Set<string>();
     for (const table of tablesOf(FILE).values()) for (const cells of table) for (const cell of cells) covered.add(cell);
-    const refusal = rows(FILE, 'رفض التسلم');
+    const refusal = rows(FILE, 'رفض التسلم في حالات القيم المؤقتة');
     if (refusal.length > 0) covered.add('DEEMED_SERVICE_AFTER_REFUSAL');
     const places: Readonly<Record<string, string>> = { 'داخل الدائرة': 'APPEARANCE_IN_DISTRICT', 'خارج الدائرة': 'APPEARANCE_IN_KINGDOM', 'خارج المملكة': 'APPEARANCE_ABROAD' };
     for (const [, , , place = ''] of rows(FILE, 'أجل الحضور')) if (places[place]) covered.add(places[place]);
@@ -279,6 +325,26 @@ describe('time limits in plain language', () => {
       for (const rule of set.rules) expect(rule.articles.length, rule.code).toBeGreaterThan(0);
       expect(set.settings.electronicCounting.uncertain).toBe(true);
       expect(set.settings.weekendIsHoliday.uncertain).toBe(true);
+    }
+  });
+
+  // The review of the fix of IR-19: a rule counted in whole days without art. 602 among its
+  // articles passed, because 602 was allowed in every case whatever the rule.
+  const inForce = sets.filter((s) => s.validTo === null);
+
+  it('cites art. 602 for every limit of the table in force counted in whole days from an event (art. 602, first paragraph)', () => {
+    expect(inForce).toHaveLength(1);
+    for (const set of inForce) {
+      const missing = set.rules.filter((r) => r.counting === 'FULL' && r.fixedByJudge !== true && !r.articles.includes(602)).map((r) => r.code);
+      expect(missing, `rules of ${set.version} counted in whole days without art. 602`).toEqual([]);
+    }
+  });
+
+  it('marks uncertain, in the table in force, the tenth day after a refusal: whether art. 602 extends it is open (س46)', () => {
+    for (const set of inForce) {
+      const rule = set.rules.find((r) => r.code === 'DEEMED_SERVICE_AFTER_REFUSAL');
+      expect(rule).toMatchObject({ amount: 10, unit: 'DAYS', counting: 'CALENDAR', articles: [85], uncertain: true });
+      expect(set.source).toContain('س46');
     }
   });
 });

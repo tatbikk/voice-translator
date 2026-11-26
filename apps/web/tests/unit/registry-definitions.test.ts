@@ -1,7 +1,7 @@
 // Review A-17: the endpoint registry restated by hand the access of every
 // route, and nothing compared it with the definitions. Every route module named
 // by the registry is loaded here, and its handlers' own definition (id, method,
-// path, access) must equal the registry entry exactly.
+// path, access, and whether a GET has effects) must equal the registry entry exactly.
 import { describe, expect, it } from 'vitest';
 import { ENDPOINTS } from '@/server/http/registry';
 import type { EndpointHandler } from '@/server/http/endpoint';
@@ -26,6 +26,8 @@ describe('the endpoint registry matches the endpoint definitions', () => {
           ? { kind: access.kind, states: access.states, ...(access.orAction ? { action: access.orAction } : {}) }
           : access;
       expect(entry.access).toEqual(expected);
+      // A GET with effects passes the CSRF step (decision 80): the registry says so, as the definition does.
+      expect(handler.endpointSideEffects, `${entry.id}: a GET with effects`).toBe(entry.sideEffects === true);
     });
   }
 });

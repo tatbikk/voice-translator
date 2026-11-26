@@ -60,6 +60,8 @@ export interface EndpointEntry {
   readonly access: { readonly kind: string; readonly action?: string; readonly states?: readonly string[] };
   readonly module: string;
   readonly demoBuildOnly?: boolean;
+  /** a GET with effects, which passes the CSRF step like a state-changing request (decision 80) */
+  readonly sideEffects?: boolean;
 }
 
 export async function loadEndpoints(): Promise<readonly EndpointEntry[]> {
@@ -245,7 +247,7 @@ export interface RequestOptions {
   readonly headers?: Readonly<Record<string, string | null>>;
   /** 'auto' (default) fetches a token when needed; 'none' sends none; a string is sent as is */
   readonly csrf?: 'auto' | 'none' | (string & {});
-  /** Origin of a non-GET request; default the APP_URL origin; null omits it */
+  /** Origin of a non-GET request; default the APP_URL origin (none for a GET); null omits it */
   readonly origin?: string | null;
   /** X-Real-IP for this request only; null omits it */
   readonly ip?: string | null;
@@ -329,8 +331,10 @@ export class Client {
     const headers = new Headers();
     const realIp = options.ip === undefined ? this.ip : options.ip;
     if (realIp !== null) headers.set('X-Real-IP', realIp);
-    if (method !== 'GET') {
-      const origin = options.origin === undefined ? appOrigin() : options.origin;
+    // A state-changing request, or a GET with effects that the page sends with its token (decision 80).
+    // As a browser does, a same-origin GET carries Sec-Fetch-Site and no Origin header.
+    if (method !== 'GET' || route.endpoint.sideEffects === true) {
+      const origin = options.origin === undefined ? (method === 'GET' ? null : appOrigin()) : options.origin;
       if (origin !== null) headers.set('Origin', origin);
       headers.set('Sec-Fetch-Site', 'same-origin');
       const csrf = options.csrf ?? 'auto';

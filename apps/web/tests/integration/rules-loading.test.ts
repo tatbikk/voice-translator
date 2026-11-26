@@ -102,7 +102,7 @@ describe('a version loaded open-ended is closed when its successor comes (review
    * The release on a database that holds the first version of a table as it was loaded,
    * open-ended and without its successor: the version is closed, the successor loaded, both recorded.
    */
-  async function upgrade(kind: 'HOLIDAYS' | 'REFERRALS' | 'FEES'): Promise<{ closed: (typeof files)[number]; successor: (typeof files)[number] }> {
+  async function upgrade(kind: 'HOLIDAYS' | 'REFERRALS' | 'FEES' | 'TIME_LIMITS'): Promise<{ closed: (typeof files)[number]; successor: (typeof files)[number] }> {
     const closed = files.find((f) => f.kind === kind && f.validTo !== null);
     const successor = files.find((f) => f.kind === kind && f.validTo === null);
     if (!closed || !successor) throw new Error(`the ${kind} table holds a closed version and its successor`);
@@ -171,6 +171,17 @@ describe('a version loaded open-ended is closed when its successor comes (review
     expect(schedule(successor).method).toMatchObject({ value: 'BAND_RATE_ON_WHOLE_BASE', uncertain: true });
     expect(schedule(successor).unvaluedClaimFee).toMatchObject({ value: 0, uncertain: true });
   }, 120_000);
+
+  it('upgrades the time-limit table loaded by Phase 1: closes it, loads the version that marks the deemed service after a refusal uncertain and cites art. 602 for every limit counted in whole days, records both (review of the fix of IR-19, IR-54)', async () => {
+    const { closed, successor } = await upgrade('TIME_LIMITS');
+    type Rule = { code: string; articles: number[]; uncertain?: boolean };
+    const rule = (table: { content: unknown }, code: string) => (table.content as { rules: Rule[] }).rules.find((r) => r.code === code);
+    // The version loaded by Phase 1 is kept as it was applied; its successor carries the mark and the article.
+    expect(rule(closed, 'DEEMED_SERVICE_AFTER_REFUSAL')?.uncertain).toBeUndefined();
+    expect(rule(successor, 'DEEMED_SERVICE_AFTER_REFUSAL')?.uncertain).toBe(true);
+    expect(rule(closed, 'EXPERT_SUMMONS_NOTICE')?.articles).toEqual([127]);
+    expect(rule(successor, 'EXPERT_SUMMONS_NOTICE')?.articles).toEqual([127, 602]);
+  }, 120_000);
 });
 
 describe('the constraints of "RuleSet" (review P1-A-18)', () => {
@@ -225,7 +236,8 @@ describe('the constraints of "RuleSet" (review P1-A-18)', () => {
   });
 
   it('refuses two versions of one kind in force on the same day, by insertion or by update', async () => {
-    const [table] = files;
+    // The open-ended version of the first kind: an earlier, closed version may precede it.
+    const table = files.find((f) => f.kind === files[0]?.kind && f.validTo === null);
     if (!table) throw new Error('no rule table');
     const later = '2031-01-01';
     expect(await outcome(insert(table.kind, 'overlapping', later, null))).toBe('23P01');

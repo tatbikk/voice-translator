@@ -91,6 +91,44 @@ describe('the rule files of the repository', () => {
     expect(before.unvaluedClaimFee).toBeUndefined();
   });
 
+  it('mark uncertain, in the time-limit table in force, the deemed service after a refusal, and cite art. 602 for every limit counted in whole days (review of the fix of IR-19, IR-54)', () => {
+    interface Rule {
+      code: string;
+      amount: number;
+      unit: string;
+      counting: string;
+      startsFrom: string;
+      effectOnExpiry: string;
+      fixedByJudge?: boolean;
+      articles: number[];
+      uncertain?: boolean;
+    }
+    const current = files.filter((f) => f.kind === 'TIME_LIMITS' && f.validTo === null);
+    expect(current).toHaveLength(1);
+    const content = current[0]?.content as { source: string; settings: unknown; rules: Rule[] };
+    const rule = (code: string) => content.rules.find((r) => r.code === code);
+    // Whether the ten days of art. 85 are a limit that art. 602 extends is open (س46): the
+    // engine's reading (the tenth day, never extended) stays, marked.
+    expect(rule('DEEMED_SERVICE_AFTER_REFUSAL')).toMatchObject({ amount: 10, unit: 'DAYS', counting: 'CALENDAR', articles: [85], uncertain: true });
+    expect(content.source).toContain('س46');
+    // Art. 602 makes «جميع الآجال المنصوص عليها في هذا القانون كاملة»: the five days before the expertise (art. 127)
+    // and the time to appear (art. 88 and 89) are counted so, and cite it.
+    expect(rule('EXPERT_SUMMONS_NOTICE')?.articles).toEqual([127, 602]);
+    expect(rule('APPEARANCE_IN_DISTRICT')?.articles).toEqual([88, 602]);
+    expect(rule('APPEARANCE_IN_KINGDOM')?.articles).toEqual([88, 602]);
+    expect(rule('APPEARANCE_ABROAD')?.articles).toEqual([89, 602]);
+    // The version loaded before is closed the day its successor takes effect, never rewritten;
+    // nothing but these marks and articles changes: the same settings, rules, amounts and countings.
+    const closed = files.filter((f) => f.kind === 'TIME_LIMITS' && f.validTo !== null);
+    expect(closed.map((f) => f.validTo)).toEqual([current[0]?.validFrom]);
+    const before = closed[0]?.content as { settings: unknown; rules: Rule[] };
+    expect(content.settings).toEqual(before.settings);
+    const bare = (rules: Rule[]) => rules.map(({ articles: _articles, uncertain: _uncertain, ...rest }) => rest);
+    expect(bare(content.rules)).toEqual(bare(before.rules));
+    const changed = content.rules.filter((r, i) => JSON.stringify(r) !== JSON.stringify(before.rules[i])).map((r) => r.code);
+    expect(changed.sort()).toEqual(['APPEARANCE_ABROAD', 'APPEARANCE_IN_DISTRICT', 'APPEARANCE_IN_KINGDOM', 'DEEMED_SERVICE_AFTER_REFUSAL', 'EXPERT_SUMMONS_NOTICE']);
+  });
+
   it('change no amount, in the fee table in force, of the version it replaces: a fee paid under the earlier one is the fee the later one calls for (finding P2-S-04)', () => {
     interface Schedule {
       bands: { upToCents: number | null; rateBasisPoints: number; surchargeCents: number }[];
