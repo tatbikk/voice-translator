@@ -6,10 +6,12 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIONS,
   CARD_SECTIONS,
+  CARD_SIDES,
   FilingCardSchema,
   PUBLIC_ENTITY_KINDS,
   authorize,
   availableActions,
+  filerCounselByDefault,
   filingReady,
   preSignatureChecks,
   referralsFor,
@@ -277,6 +279,65 @@ describe('the check before signature: it warns, it does not refuse (study, «م�
     );
     // It is asked of a public-law person only.
     expect(codes(checksOf())).not.toContain('PUBLIC_ENTITY_KIND_MISSING');
+  });
+
+  // Independent review IR-02 (decision 67): on the electronic channel the lawyer who files and signs
+  // the application is counsel of the plaintiffs (art. 76: signed by the plaintiff, his agent or his
+  // lawyer; the register holds the parties' lawyers). A card on which he acted for no plaintiff
+  // registered a file he could not open: it now blocks the payment and the filing. The card is still saved.
+  it('blocks the electronic filing while the filing lawyer acts for no plaintiff, once, on the plaintiffs’ section', () => {
+    const plaintiff = MODEL.parties.find((p) => p.side === 'PLAINTIFF')!;
+    const others = MODEL.parties.filter((p) => p.side !== 'PLAINTIFF');
+    const second: FilingCard['parties'][number] = {
+      key: 'dal',
+      side: 'PLAINTIFF',
+      personKind: 'NATURAL',
+      name: 'السيد دال',
+      quality: 'مدع',
+      idNumber: 'DEMO-CIN-0009',
+      domicile: { value: 'الدار البيضاء، حي المثال، رقم 9', locality: 'casablanca', source: 'DECLARED' },
+    };
+    const withPlaintiffs = (...plaintiffs: FilingCard['parties']): FilingCard => ({ ...MODEL, parties: [...plaintiffs, ...others] });
+    const blocking = (checks: ReturnType<typeof checksOf>) => checks.filter((c) => c.level === 'BLOCKING');
+    const asked: unknown = expect.objectContaining({ code: 'FILER_REPRESENTS_NO_PLAINTIFF', level: 'BLOCKING', article: 76, section: 'PLAINTIFFS', partyKey: null, uncertain: false });
+
+    // The box never ticked, or unticked: the card is a card all the same, and one check blocks.
+    for (const representedByFiler of [undefined, false]) {
+      const card = withPlaintiffs({ ...plaintiff, representedByFiler });
+      expect(FilingCardSchema.safeParse(card).success, 'the card is saved without counsel').toBe(true);
+      const checks = checksOf({ card });
+      expect(blocking(checks), String(representedByFiler)).toEqual([asked]);
+      expect(filingReady(checks)).toBe(false);
+    }
+    // Several plaintiffs and counsel of none: asked once, of the section, not of each plaintiff.
+    expect(blocking(checksOf({ card: withPlaintiffs({ ...plaintiff, representedByFiler: false }, second) }))).toEqual([asked]);
+
+    // He may leave one plaintiff among several to another counsel: acting for one is enough.
+    expect(blocking(checksOf({ card: withPlaintiffs(plaintiff, second) }))).toEqual([]);
+    expect(blocking(checksOf({ card: withPlaintiffs({ ...plaintiff, representedByFiler: false }, { ...second, representedByFiler: true }) }))).toEqual([]);
+    expect(blocking(checksOf())).toEqual([]);
+
+    // A card without any plaintiff lacks the plaintiff, not his counsel.
+    expect(blocking(checksOf({ card: { ...MODEL, parties: others }, attested: [...CARD_SECTIONS] })).map((c): string => c.code)).toEqual(['NO_PLAINTIFF']);
+  });
+
+  it('asks nothing of the kind of the paper filing: the lawyer the clerk picks acts for the plaintiffs (decision 59)', () => {
+    const unmarked: FilingCard = { ...MODEL, parties: MODEL.parties.map((p) => ({ ...p, representedByFiler: false })) };
+    const onPaper = checksOf({ channel: 'PAPER', filer: null, documents: [], paperDepositor: { name: 'السيد عين' }, card: unmarked });
+    expect(onPaper.filter((c) => c.level === 'BLOCKING')).toEqual([]);
+    expect(onPaper.map((c): string => c.code)).not.toContain('FILER_REPRESENTS_NO_PLAINTIFF');
+  });
+
+  it('starts a new plaintiff of the electronic card with the filing lawyer as counsel, and no other party (decision 67)', () => {
+    expect(filerCounselByDefault('ELECTRONIC', 'PLAINTIFF')).toBe(true);
+    for (const side of ['DEFENDANT', 'GUARANTOR'] as const) expect(filerCounselByDefault('ELECTRONIC', side), side).toBe(false);
+    // On paper the clerk ticks nothing by default (decision 59).
+    for (const side of CARD_SIDES) expect(filerCounselByDefault('PAPER', side), side).toBe(false);
+    // What the default gives is what the schema accepts: counsel of a plaintiff only.
+    for (const side of CARD_SIDES) {
+      const party = { key: 'x', side, personKind: 'NATURAL' as const, name: 'السيد سين', representedByFiler: filerCounselByDefault('ELECTRONIC', side) };
+      expect(FilingCardSchema.safeParse({ parties: [party], summary: '', claims: [] }).success, side).toBe(true);
+    }
   });
 
   it('asks the paper filing for the page count and the place of every paper original', () => {

@@ -16,6 +16,7 @@ import {
   PUBLIC_DEFENDANT_CASE,
   PUBLIC_ESTABLISHMENT,
   PUBLIC_PERSON_WITHOUT_KIND,
+  withCounselBox,
   withParties,
 } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
@@ -580,6 +581,54 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     expect(filed.status, describeResponse(filed)).toBe(200);
     expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1 AND target = 'PROSECUTION' AND article = 20 AND item = 1`, [filed.data!.caseFileId])).toBe(1);
     expect(await count('SELECT count(*) FROM "CaseReferral"')).toBe(before.referrals + 1);
+  });
+
+  it('refuses to pay or to file an electronic draft whose lawyer acts for no plaintiff, lists the check that blocks, and files once he acts for one (independent review IR-02)', async () => {
+    const lawyer = await as('lawyer');
+    // The box «ينوب المحامي المودع عن هذا الطرف» never sent, and the box unticked.
+    const neverTicked = withCounselBox(MODEL_CASE, () => undefined);
+    const unticked = withCounselBox(MODEL_CASE, () => false);
+    const refusalOf = (events: readonly EventRow[], draftId: string) =>
+      events.filter((e) => e.action === 'filing.refused' && e.details.draftId === draftId).map((e) => e.details.reason);
+    const counselOf = (userId: string) => count(`SELECT count(*) FROM "Representation" WHERE "lawyerUserId" = $1`, [userId]);
+    const blocks = [expect.objectContaining({ code: 'FILER_REPRESENTS_NO_PLAINTIFF', level: 'BLOCKING', article: 76, section: 'PLAINTIFFS', partyKey: null })];
+
+    // The card is saved and attested as it is; what it lacks is listed among what blocks the filing.
+    const unpaid = await prepareDraft(lawyer, { card: neverTicked, exhibits: 1 });
+    const view = await getDraft(lawyer, unpaid);
+    expect(view.draft.card.parties.map((p) => p.representedByFiler)).toEqual([undefined, undefined, undefined]);
+    expect(view.draft.attestations).toContain('PLAINTIFFS');
+    expect(view.checks.filter((c) => c.level === 'BLOCKING')).toEqual(blocks);
+    // The fee is not paid for it.
+    const payment = await expectRefused(() => lawyer.post(`/api/v1/filings/${unpaid}/payment`, {}), 409, 'DRAFT_INCOMPLETE');
+    expect(refusalOf(payment, unpaid)).toEqual(['DRAFT_INCOMPLETE']);
+    expect(await count(`SELECT count(*) FROM "PaymentIntent" WHERE "draftId" = $1`, [unpaid])).toBe(0);
+
+    // Nor is it filed: a draft paid by the plaintiff's counsel, who then unticks the box.
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    await payDraft(lawyer, draftId);
+    const removed = await updateDraft(lawyer, draftId, { card: unticked, attest: [...CARD_SECTIONS] });
+    expect(removed.status, describeResponse(removed)).toBe(200);
+    expect(removed.data!.payment.status, 'the fee paid still covers the claims').toBe('SUCCEEDED');
+    expect(removed.data!.checks.filter((c) => c.level === 'BLOCKING')).toEqual(blocks);
+    const before = { files: await caseFiles(), counsel: await counselOf(cast.lawyer.id) };
+    const filing = await expectRefused(() => submit(lawyer, draftId, { secret }), 409, 'DRAFT_INCOMPLETE');
+    expect(refusalOf(filing, draftId)).toEqual(['DRAFT_INCOMPLETE']);
+    expect(await caseFiles(), 'no file is registered without counsel of the plaintiff').toBe(before.files);
+    expect(await counselOf(cast.lawyer.id)).toBe(before.counsel);
+    expect((await getDraft(lawyer, draftId)).draft.status).toBe('DRAFT');
+
+    // The box ticked, the same draft is filed, and he is counsel of the plaintiff in the file.
+    const restored = await updateDraft(lawyer, draftId, { card: MODEL_CASE, attest: [...CARD_SECTIONS] });
+    expect(restored.status, describeResponse(restored)).toBe(200);
+    expect(restored.data!.checks.filter((c) => c.level === 'BLOCKING')).toEqual([]);
+    const filed = await submit(lawyer, draftId, { secret });
+    expect(filed.status, describeResponse(filed)).toBe(200);
+    const counsel = await sql<{ side: string }>(
+      `SELECT p.side::text AS side FROM "Representation" r JOIN "CaseParty" p ON p.id = r."partyId" WHERE p."caseFileId" = $1 AND r."lawyerUserId" = $2`,
+      [filed.data!.caseFileId, cast.lawyer.id],
+    );
+    expect(counsel.map((c) => c.side)).toEqual(['PLAINTIFF']);
   });
 
   it('warns without refusing about the missing e-mail of the defendant company (art. 77)', async () => {

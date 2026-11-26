@@ -184,6 +184,37 @@ export const STATE_JUDICIAL_AGENT: CardParty = {
   email: 'contentieux@agent-demo.example',
 };
 
+/**
+ * A second plaintiff who keeps counsel of his own: the filing lawyer unticks «ينوب المحامي المودع
+ * عن هذا الطرف» under him and remains counsel of the first plaintiff (decision 67; independent
+ * review IR-02). Fictitious name, number and address.
+ */
+export const SECOND_PLAINTIFF: CardParty = {
+  key: 'dal',
+  side: 'PLAINTIFF',
+  personKind: 'NATURAL',
+  name: 'السيد دال',
+  quality: 'مدع',
+  idNumber: 'DEMO-CIN-0009',
+  domicile: { value: 'الدار البيضاء، حي المثال، رقم 9', locality: 'casablanca', source: 'DECLARED' },
+  representedByFiler: false,
+};
+
+/**
+ * The same card with the box «ينوب المحامي المودع عن هذا الطرف» as `box` gives it for each party;
+ * undefined leaves the field out, as a client that never sends it.
+ */
+export function withCounselBox(card: Card, box: (party: CardParty) => boolean | undefined): Card {
+  return {
+    ...card,
+    parties: card.parties.map((party) => {
+      const { representedByFiler: _previous, ...rest } = party;
+      const value = box(party);
+      return value === undefined ? rest : { ...rest, representedByFiler: value };
+    }),
+  };
+}
+
 export function withParties(card: Card, extra: readonly CardParty[]): Card {
   return { ...card, parties: [...card.parties, ...extra] };
 }

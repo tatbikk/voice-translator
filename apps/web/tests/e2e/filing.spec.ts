@@ -74,7 +74,11 @@ async function fileModelCase(page: Page): Promise<string> {
     }
     if (party.quality) await block.getByLabel('صفة الطرف').fill(party.quality);
     if (party.email) await block.getByLabel('البريد الإلكتروني').fill(party.email);
-    if (party.representedByFiler) await block.getByLabel('ينوب المحامي المودع عن هذا الطرف').check();
+    // A new plaintiff of an electronic filing starts with the filing lawyer as its counsel (decision 67):
+    // the box is found ticked, nothing is clicked; no other side is offered it.
+    const counsel = block.getByLabel('ينوب المحامي المودع عن هذا الطرف');
+    if (party.side === 'PLAINTIFF') await expect(counsel).toBeChecked({ checked: party.representedByFiler === true });
+    else await expect(counsel).toHaveCount(0);
   }
   await page.getByLabel('موجز الموضوع والوقائع والأسباب').fill(MODEL_CASE.summary);
   for (const [index, claim] of MODEL_CASE.claims.entries()) {

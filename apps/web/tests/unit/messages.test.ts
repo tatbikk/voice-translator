@@ -87,6 +87,14 @@ describe('message files', () => {
     expect(ar['filing.card.requiredField']).toContain('{label}');
     expect(ar['filing.card.publicEntityKindHint']).toBeTruthy();
   });
+
+  it('words the check that blocks an electronic filing whose lawyer acts for no plaintiff, by the name of the box to tick (independent review IR-02)', () => {
+    expect(CHECK_CODES.map(String)).toContain('FILER_REPRESENTS_NO_PLAINTIFF');
+    const text = ar['filing.check.FILER_REPRESENTS_NO_PLAINTIFF'];
+    expect(text).toBeTruthy();
+    // The lawyer reads, in the check, the label of the box he finds on the card.
+    expect(text).toContain(`«${ar['filing.card.representedByFiler'] ?? ''}»`);
+  });
 });
 
 describe('glossary', () => {

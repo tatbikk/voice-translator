@@ -10,9 +10,10 @@
 //   - numbers are sequential under concurrency and cannot be changed;
 //   - the registry's note to the judge is never shown to a lawyer.
 import { beforeAll, describe, expect, it } from 'vitest';
-import { SECURITY_POLICY, type UserSubject } from '@mahkama/core';
+import { SECURITY_POLICY, filerCounselByDefault, type UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { caseView } from '@/server/cases/view';
+import { casesOf } from '@/server/filings/lists';
 import { ruleSourceFiles } from '@/server/rules/store';
 import {
   COMMERCIAL_PAYMENT,
@@ -20,7 +21,9 @@ import {
   MODEL_CASE_FEE_CENTS,
   PUBLIC_DEFENDANT_CASE,
   PUBLIC_ESTABLISHMENT,
+  SECOND_PLAINTIFF,
   STATE_JUDICIAL_AGENT,
+  withCounselBox,
   withParties,
 } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
@@ -234,6 +237,68 @@ describe('the model case, filed from the first screen to the receipt', () => {
     expect(notes.map((n) => n.templateKey)).toContain('notifications.case.registered');
     const prosecutor = await as('prosecutor');
     await expectDenied(() => prosecutor.get(`/api/v1/cases/${model.caseFileId}/available-actions`), 404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('the lawyer who files electronically is counsel of the plaintiffs (independent review IR-02, decision 67)', () => {
+  const counselOf = (caseFileId: string) =>
+    sql<{ displayName: string; side: string; lawyerUserId: string }>(
+      `SELECT p."displayName", p.side::text AS side, r."lawyerUserId" FROM "Representation" r JOIN "CaseParty" p ON p.id = r."partyId"
+        WHERE p."caseFileId" = $1 AND r."endedAt" IS NULL ORDER BY p.position`,
+      [caseFileId],
+    );
+  const listed = async (user: TestUser) => (await casesOf(await subjectOf(user), { mode: 'demo', demoToolsEnabled: false, now: new Date() })).map((row) => row.id);
+
+  it('registers him as counsel of the plaintiff by the default of the card, shows him the file in his space, and serves him the application he signed', async () => {
+    // The card as the form opens it: the box «ينوب المحامي المودع عن هذا الطرف» of each party at the default of its side.
+    const card = withCounselBox(MODEL_CASE, (party) => (filerCounselByDefault('ELECTRONIC', party.side) ? true : undefined));
+    expect(card.parties.map((p) => [p.side, p.representedByFiler])).toEqual([
+      ['PLAINTIFF', true],
+      ['DEFENDANT', undefined],
+      ['GUARANTOR', undefined],
+    ]);
+    const lawyer = await as('lawyer');
+    const filed = await fileCase(lawyer, secret, { card, exhibits: 1 });
+    expect(await counselOf(filed.caseFileId)).toEqual([{ displayName: 'شركة ألف للتوريدات', side: 'PLAINTIFF', lawyerUserId: cast.lawyer.id }]);
+
+    // The file appears in his space (study, «المرحلة الثانية»), and he opens it.
+    const opened = await lawyer.get(`/api/v1/cases/${filed.caseFileId}/available-actions`);
+    expect(opened.status, describeResponse(opened)).toBe(200);
+    expect(await viewAs(cast.lawyer, filed.caseFileId)).not.toBeNull();
+    expect(await listed(cast.lawyer)).toContain(filed.caseFileId);
+
+    // He downloads the application: the very document his signature is on.
+    const application = await one<{ id: string; sha256: string; byteSize: number }>(
+      `SELECT id, sha256, "byteSize" FROM "Document" WHERE "caseFileId" = $1 AND "docType" = 'APPLICATION'`,
+      [filed.caseFileId],
+    );
+    const signature = await one<{ signerUserId: string; documentSha256: string }>(
+      `SELECT s."signerUserId", s."documentSha256" FROM "Signature" s JOIN "SignatureCircle" c ON c.id = s."circleId" WHERE c."documentId" = $1`,
+      [application.id],
+    );
+    expect(signature).toEqual({ signerUserId: cast.lawyer.id, documentSha256: application.sha256 });
+    const { result: download, events: appended } = await capturingEvents(() => lawyer.get(`/api/v1/cases/${filed.caseFileId}/documents/${application.id}/file`));
+    expect(download.status, describeResponse(download)).toBe(200);
+    expect(download.headers.get('content-type')).toBe('application/pdf');
+    expect(Number(download.headers.get('content-length'))).toBe(application.byteSize);
+    expect(appended.filter((e) => e.action === 'document.downloaded').map((e) => e.details.documentId)).toEqual([application.id]);
+
+    // A lawyer who acts for no one in the file still knows nothing of it.
+    await expectDenied(async () => (await as('otherLawyer')).get(`/api/v1/cases/${filed.caseFileId}/available-actions`), 404);
+    expect(await listed(cast.otherLawyer)).not.toContain(filed.caseFileId);
+  });
+
+  it('leaves to his own counsel the plaintiff the filing lawyer unticked among several, and still opens the file to the filing lawyer', async () => {
+    const lawyer = await as('lawyer');
+    const filed = await fileCase(lawyer, secret, { card: withParties(MODEL_CASE, [SECOND_PLAINTIFF]), exhibits: 1 });
+    const plaintiffs = await sql<{ displayName: string }>(`SELECT "displayName" FROM "CaseParty" WHERE "caseFileId" = $1 AND side = 'PLAINTIFF' ORDER BY position`, [filed.caseFileId]);
+    expect(plaintiffs.map((p) => p.displayName)).toEqual(['شركة ألف للتوريدات', SECOND_PLAINTIFF.name]);
+    // Counsel of the plaintiff whose box stayed ticked, and of that one only.
+    expect(await counselOf(filed.caseFileId)).toEqual([{ displayName: 'شركة ألف للتوريدات', side: 'PLAINTIFF', lawyerUserId: cast.lawyer.id }]);
+    const opened = await lawyer.get(`/api/v1/cases/${filed.caseFileId}/available-actions`);
+    expect(opened.status, describeResponse(opened)).toBe(200);
   });
 });
 
