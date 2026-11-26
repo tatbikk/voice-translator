@@ -179,7 +179,8 @@ export function preSignatureChecks(input: CheckInput): FilingCheck[] {
   if (blank(card.summary)) out.push(check('SUMMARY_MISSING', 'WARNING', 77, { section: 'SUMMARY' }));
   if (card.claims.length === 0) out.push(check('NO_CLAIM', 'WARNING', 77, { section: 'CLAIMS' }));
   for (const claim of card.claims) {
-    if ((claim.nature === 'DEBT' || claim.nature === 'DAMAGES') && claim.amountCents === null) {
+    // An amount of zero is no amount, here as in the fee (decision 68).
+    if ((claim.nature === 'DEBT' || claim.nature === 'DAMAGES') && (claim.amountCents === null || claim.amountCents === 0)) {
       out.push(check('CLAIM_AMOUNT_MISSING', 'WARNING', 77, { section: 'CLAIMS' }));
     }
   }

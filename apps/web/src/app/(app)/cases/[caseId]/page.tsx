@@ -5,6 +5,7 @@ import { CaseNumber } from '@/components/ui/CaseNumber';
 import { DeadlineCounter, type DeadlineState } from '@/components/ui/DeadlineCounter';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { ProvisionalMark } from '@/components/ui/ProvisionalMark';
 import { TABLE } from '@/components/ui/table-style';
 import { TableFrame } from '@/components/ui/TableFrame';
 import { Tabs, type TabItem } from '@/components/ui/Tabs';
@@ -489,7 +490,10 @@ function Payments({ t, view }: { t: Translator; view: CaseView }) {
                 {payments.map((p) => (
                   <tr key={p.id} className={TABLE.row}>
                     <th scope="row" className={TABLE.rowHeader}>{t(`case.payments.purpose.${p.purpose}`)}</th>
-                    <td className={TABLE.td}>{dirhams(t, p.amountCents)}</td>
+                    <td className={TABLE.td}>
+                      {dirhams(t, p.amountCents)}
+                      {p.uncertain ? <ProvisionalMark text={t('common.provisionalValue')} /> : null}
+                    </td>
                     <td className={TABLE.td}>{t(`case.payments.status.${p.status}`)}</td>
                     <td className={TABLE.td}>
                       <bdi dir="ltr">{p.operationRef}</bdi>
@@ -510,7 +514,8 @@ function Payments({ t, view }: { t: Translator; view: CaseView }) {
           <ul className="space-y-1">
             {treasury.map((e) => (
               <li key={e.id}>
-                {t(`case.payments.direction.${e.direction}`)} — {t(`case.payments.purpose.${e.purpose}`)}: <strong>{dirhams(t, e.amountCents)}</strong> — {dateTime(t, e.at)}
+                {t(`case.payments.direction.${e.direction}`)} — {t(`case.payments.purpose.${e.purpose}`)}: <strong>{dirhams(t, e.amountCents)}</strong>
+                {e.uncertain ? <ProvisionalMark text={t('common.provisionalValue')} /> : null} — {dateTime(t, e.at)}
               </li>
             ))}
           </ul>

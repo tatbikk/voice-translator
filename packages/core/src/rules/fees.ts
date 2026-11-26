@@ -5,6 +5,8 @@
 // without a fixed amount, and the appeal surcharge. Amounts are in centimes,
 // rounded half up at each line. Whatever the references do not settle is marked
 // uncertain in the table, and the mark goes with every line that rests on it.
+// An amount of zero is no fixed amount: such a claim is one without a fixed
+// amount (decision 68).
 import type { Dated } from './in-force';
 import type { Setting } from './time-limits';
 
@@ -32,9 +34,9 @@ export interface FeeRuleSet extends Dated {
   readonly source: string;
   readonly schedule: {
     /**
-     * How the bands apply to the base. A table loaded before this became a
-     * setting does not have it: its bands are applied the one way the engine
-     * knows, and the way itself adds no mark.
+     * How the bands apply to the base. Only the table loaded before this became
+     * a setting (2026-08-23.1; the validation of the rule files refuses its
+     * absence from any other) does not have it: see BEFORE_SETTINGS.
      */
     readonly method?: Setting<FeeMethod>;
     readonly bands: readonly FeeBand[];
@@ -44,9 +46,8 @@ export interface FeeRuleSet extends Dated {
     readonly outsideBase: readonly ClaimNature[];
     /**
      * The fee, in centimes, of each claim without a fixed amount whose nature is
-     * not outside the base: it has a line of its own in the assessment. A table
-     * loaded before this became a setting does not have it: such a claim is
-     * then only listed among those left out of the base.
+     * not outside the base: it has a line of its own in the assessment. Absent
+     * from the same table only: see BEFORE_SETTINGS.
      */
     readonly unvaluedClaimFee?: Setting<number>;
     readonly appealSurcharge: Setting<number>;
@@ -68,6 +69,8 @@ export interface FeeLine {
 }
 
 export interface FeeAssessment {
+  /** the way the bands were applied: kept with the amount, a stored record that does not say it is shown uncertain */
+  readonly method: FeeMethod;
   readonly baseCents: number;
   readonly totalCents: number;
   readonly lines: readonly FeeLine[];
@@ -88,13 +91,24 @@ const PROPORTIONAL: Readonly<Record<FeeMethod, Proportional>> = {
   },
 };
 
-function proportionalBy(method: Setting<FeeMethod> | undefined): Proportional {
-  // A table without the setting was loaded when the engine knew one way only.
-  if (!method) return PROPORTIONAL.BAND_RATE_ON_WHOLE_BASE;
+function proportionalBy(method: Setting<FeeMethod>): Proportional {
   const known = (PROPORTIONAL as Partial<Record<string, Proportional>>)[method.value];
   if (!known) throw new Error(`fee schedule: unknown method ${method.value}`);
   return known;
 }
+
+/**
+ * What the engine applied, before they were settings, in place of the two
+ * settings the table loaded before (2026-08-23.1) does not have: the rate of
+ * the band on the whole base, and no fee for an unvalued claim. Nothing settled
+ * them for that table more than for its successor (open questions 40 and 41):
+ * the lines that rest on them are marked uncertain, the amounts are those that
+ * table was applied with.
+ */
+const BEFORE_SETTINGS = {
+  method: { value: 'BAND_RATE_ON_WHOLE_BASE', uncertain: true, articles: [619] },
+  unvaluedClaimFee: { value: 0, uncertain: true, articles: [619] },
+} as const satisfies { method: Setting<FeeMethod>; unvaluedClaimFee: Setting<number> };
 
 export function assessCourtFee(input: {
   readonly claims: readonly { nature: ClaimNature; amountCents: number | null }[];
@@ -102,7 +116,8 @@ export function assessCourtFee(input: {
   readonly schedule: FeeRuleSet;
 }): FeeAssessment {
   const { schedule } = input.schedule;
-  const { method, unvaluedClaimFee } = schedule;
+  const method = schedule.method ?? BEFORE_SETTINGS.method;
+  const unvaluedClaimFee = schedule.unvaluedClaimFee ?? BEFORE_SETTINGS.unvaluedClaimFee;
   const proportional = proportionalBy(method);
 
   const excluded: ClaimNature[] = [];
@@ -110,9 +125,8 @@ export function assessCourtFee(input: {
   let baseCents = 0;
   for (const claim of input.claims) {
     if (schedule.outsideBase.includes(claim.nature)) excluded.push(claim.nature);
-    else if (claim.amountCents !== null) baseCents += claim.amountCents;
-    else if (unvaluedClaimFee) unvalued.push(claim.nature);
-    else excluded.push(claim.nature);
+    else if (claim.amountCents !== null && claim.amountCents > 0) baseCents += claim.amountCents;
+    else unvalued.push(claim.nature);
   }
 
   const lines: FeeLine[] = [];
@@ -126,9 +140,10 @@ export function assessCourtFee(input: {
       rateBasisPoints: band.rateBasisPoints,
       basis: 'fees.basis.proportional',
       claimNature: null,
-      uncertain: band.uncertain || (method?.uncertain ?? false) || (effectiveBase !== baseCents && schedule.minimumBase.uncertain),
+      uncertain: band.uncertain || method.uncertain || (effectiveBase !== baseCents && schedule.minimumBase.uncertain),
     });
     if (band.surchargeCents > 0) {
+      // The way the bands apply chooses the band, hence its fixed surcharge too.
       lines.push({
         kind: 'SURCHARGE',
         amountCents: band.surchargeCents,
@@ -136,10 +151,11 @@ export function assessCourtFee(input: {
         rateBasisPoints: null,
         basis: 'fees.basis.surcharge',
         claimNature: null,
-        uncertain: band.uncertain,
+        uncertain: band.uncertain || method.uncertain,
       });
     }
     if (input.filing === 'APPEAL') {
+      // A rate on the lines above: it rests on them as on its own rate.
       const subtotal = lines.reduce((sum, l) => sum + l.amountCents, 0);
       lines.push({
         kind: 'APPEAL_SURCHARGE',
@@ -148,22 +164,22 @@ export function assessCourtFee(input: {
         rateBasisPoints: schedule.appealSurcharge.value,
         basis: 'fees.basis.appealSurcharge',
         claimNature: null,
-        uncertain: schedule.appealSurcharge.uncertain,
+        uncertain: schedule.appealSurcharge.uncertain || lines.some((l) => l.uncertain),
       });
     }
   }
-  if (unvaluedClaimFee) {
-    for (const nature of unvalued) {
-      lines.push({
-        kind: 'UNVALUED_CLAIM',
-        amountCents: unvaluedClaimFee.value,
-        baseCents: null,
-        rateBasisPoints: null,
-        basis: 'fees.basis.unvaluedClaim',
-        claimNature: nature,
-        uncertain: unvaluedClaimFee.uncertain,
-      });
-    }
+  // One line for each unvalued claim, outside the appeal surcharge: provisional answers of the
+  // engine to open question 41, of no effect while the fee is 0 (decision 68).
+  for (const nature of unvalued) {
+    lines.push({
+      kind: 'UNVALUED_CLAIM',
+      amountCents: unvaluedClaimFee.value,
+      baseCents: null,
+      rateBasisPoints: null,
+      basis: 'fees.basis.unvaluedClaim',
+      claimNature: nature,
+      uncertain: unvaluedClaimFee.uncertain,
+    });
   }
   lines.push({
     kind: 'PLEADING',
@@ -174,7 +190,7 @@ export function assessCourtFee(input: {
     claimNature: null,
     uncertain: schedule.pleadingFee.uncertain,
   });
-  return { baseCents, totalCents: lines.reduce((sum, l) => sum + l.amountCents, 0), lines, excluded };
+  return { method: method.value, baseCents, totalCents: lines.reduce((sum, l) => sum + l.amountCents, 0), lines, excluded };
 }
 
 /** Whether an amount rests on something the table marks uncertain: one of its lines does. */
@@ -187,10 +203,14 @@ export function feeAssessmentUncertain(assessment: Pick<FeeAssessment, 'lines'>)
  * the mark «قيمة مؤقتة غير مؤكدة» goes with the amount wherever it is shown,
  * from what was recorded when it was computed, not from the table in force on
  * the day it is shown. A record that does not say what the amount rests on
- * (no lines, or a line without its flag) is shown uncertain.
+ * (no lines, a line without its flag, or no way of applying the bands: written
+ * before 26 November 2026, when the way of the bands and the fee of an unvalued
+ * claim were rules of the code, marked nowhere) is shown uncertain.
  */
 export function storedFeeUncertain(breakdown: unknown): boolean {
-  const lines: unknown = typeof breakdown === 'object' && breakdown !== null ? (breakdown as { lines?: unknown }).lines : undefined;
+  const record = typeof breakdown === 'object' && breakdown !== null ? (breakdown as { lines?: unknown; method?: unknown }) : {};
+  if (!(FEE_METHODS as readonly unknown[]).includes(record.method)) return true;
+  const { lines } = record;
   if (!Array.isArray(lines) || lines.length === 0) return true;
   return lines.some((line: unknown) => {
     const flag = typeof line === 'object' && line !== null ? (line as { uncertain?: unknown }).uncertain : undefined;

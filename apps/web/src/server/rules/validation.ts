@@ -56,11 +56,18 @@ const timeLimits: z.ZodType<TimeLimitRuleSet> = z
   .refine((set) => new Set(set.rules.map((r) => r.code)).size === set.rules.length, { error: 'a rule code appears twice', path: ['rules'] });
 
 const cents = z.number().int().min(0);
+/**
+ * The one fee version loaded before the way of applying the bands and the fee of
+ * an unvalued claim were settings (independent review IR-03, IR-04). Any other
+ * must set both: without them the engine would apply what the code applied
+ * before, for which nothing in the references stands.
+ */
+const FEE_VERSIONS_BEFORE_SETTINGS: readonly string[] = ['2026-08-23.1'];
 const fees: z.ZodType<FeeRuleSet> = z
   .strictObject({
     ...dated,
     schedule: z.strictObject({
-      /** the way the bands apply to the base; absent from the version loaded before it became a setting (independent review IR-03) */
+      /** the way the bands apply to the base; absent only from the version loaded before it became a setting (independent review IR-03) */
       method: setting(z.enum(FEE_METHODS)).exactOptional(),
       bands: z
         .array(z.strictObject({ upToCents: cents.nullable(), rateBasisPoints: z.number().int().min(0), surchargeCents: cents, uncertain: z.boolean() }))
@@ -68,13 +75,18 @@ const fees: z.ZodType<FeeRuleSet> = z
       minimumBase: setting(cents),
       pleadingFee: setting(cents),
       outsideBase: z.array(z.enum(['DEBT', 'DAMAGES', 'LEGAL_INTEREST', 'PROVISIONAL_ENFORCEMENT', 'COSTS', 'OTHER'])),
-      /** the fee of a claim without a fixed amount that is not outside the base; absent from the same version (independent review IR-04) */
+      /** the fee of a claim without a fixed amount that is not outside the base; absent only from the same version (independent review IR-04) */
       unvaluedClaimFee: setting(cents).exactOptional(),
       appealSurcharge: setting(cents),
     }),
   })
   .refine(endsAfterStart, END_AFTER_START)
-  .refine((set) => set.schedule.bands.at(-1)?.upToCents === null, { error: 'the last band has no upper bound', path: ['schedule', 'bands'] });
+  .refine((set) => set.schedule.bands.at(-1)?.upToCents === null, { error: 'the last band has no upper bound', path: ['schedule', 'bands'] })
+  .refine((set) => set.schedule.method !== undefined || FEE_VERSIONS_BEFORE_SETTINGS.includes(set.version), { error: 'the way of applying the bands is required', path: ['schedule', 'method'] })
+  .refine((set) => set.schedule.unvaluedClaimFee !== undefined || FEE_VERSIONS_BEFORE_SETTINGS.includes(set.version), {
+    error: 'the fee of an unvalued claim is required',
+    path: ['schedule', 'unvaluedClaimFee'],
+  });
 
 const holidays: z.ZodType<HolidayRuleSet> = z
   .strictObject({

@@ -10,6 +10,7 @@ import {
 } from '@mahkama/core';
 import { clock } from '../clock';
 import { getDb } from '../db';
+import { paidAmountUncertain } from '../payments/uncertainty';
 import { timeLimitRules } from '../rules/store';
 
 // What the eight tabs of the case page show (interface book, «العناصر
@@ -93,8 +94,10 @@ export interface CaseView {
   }[];
   readonly payments: {
     readonly fees: readonly { id: string; filing: string; totalCents: bigint; assessedAt: Date; uncertain: boolean }[];
-    readonly payments: readonly { id: string; purpose: string; amountCents: bigint; status: string; operationRef: string; paidAt: Date }[];
-    readonly treasury: readonly { id: string; direction: string; purpose: string; amountCents: bigint; at: Date }[];
+    /** `uncertain`: the amount rests on something the fee table marked uncertain (independent review IR-26) */
+    readonly payments: readonly { id: string; purpose: string; amountCents: bigint; status: string; operationRef: string; paidAt: Date; uncertain: boolean }[];
+    /** `uncertain`: an entry of a court fee carries the mark of the payment it records */
+    readonly treasury: readonly { id: string; direction: string; purpose: string; amountCents: bigint; at: Date; uncertain: boolean }[];
   };
   readonly decisions: readonly { id: string; kind: string; subjectCode: string; issuedAt: Date; pronouncedAt: Date | null; final: boolean }[];
 }
@@ -120,7 +123,7 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       envelopes: { orderBy: { createdAt: 'asc' }, include: { certificate: { select: { id: true } }, receipt: { select: { id: true } } } },
       timeLimits: { orderBy: { endsAt: 'asc' } },
       fees: { orderBy: { assessedAt: 'asc' } },
-      payments: { orderBy: { paidAt: 'asc' } },
+      payments: { orderBy: { paidAt: 'asc' }, include: { intent: { select: { breakdown: true } } } },
       treasury: { orderBy: { at: 'asc' } },
       decisions: { orderBy: { issuedAt: 'asc' } },
       notes: { orderBy: { createdAt: 'asc' } },
@@ -260,8 +263,17 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
         status: p.status,
         operationRef: p.operationRef,
         paidAt: p.paidAt,
+        uncertain: paidAmountUncertain(p, file.fees),
       })),
-      treasury: file.treasury.map((e) => ({ id: e.id, direction: e.direction, purpose: e.purpose, amountCents: e.amountCents, at: e.at })),
+      treasury: file.treasury.map((e) => ({
+        id: e.id,
+        direction: e.direction,
+        purpose: e.purpose,
+        amountCents: e.amountCents,
+        at: e.at,
+        // The entry of a payment reads the payment's mark; one without it, the assessments of the file.
+        uncertain: paidAmountUncertain(file.payments.find((p) => p.id === e.paymentId) ?? { purpose: e.purpose, amountCents: e.amountCents, intent: null }, file.fees),
+      })),
     },
     // A judgment not yet pronounced exists only for the panel (and for the
     // clerk whose turn it is to sign, through the document itself).
