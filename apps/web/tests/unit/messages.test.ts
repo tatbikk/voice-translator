@@ -118,6 +118,24 @@ describe('message files', () => {
     expect(ar['filing.fee.uncertainWhy']).toMatch(/طريقة/);
     expect(ar['filing.fee.uncertainWhy']).toMatch(/غير محدد القيمة|غير المحددة القيمة/);
   });
+
+  it('word every kind of address the case page shows, the quality of a party, and the place of a natural person’s address on the card (independent review IR-08)', () => {
+    const schema = readFileSync(join(REPO, 'apps', 'web', 'prisma', 'schema.prisma'), 'utf8');
+    const block = /^enum AddressKind \{([^}]*)\}/m.exec(schema)?.[1] ?? '';
+    const kinds = block.split('\n').map((line) => line.replace(/\/\/.*$/, '').trim()).filter((line) => /^[A-Z_]+$/.test(line));
+    expect(kinds).toContain('RESIDENCE');
+    for (const kind of kinds) expect(ar[`case.parties.address.${kind}`], kind).toBeTruthy();
+    expect(ar['case.parties.quality']).toBe(ar['filing.card.quality']);
+    // «الموطن» and «محل الإقامة» are two choices of the card, worded as art. 77 words them.
+    expect(ar['filing.card.addressKinds.DOMICILE']).toBe('الموطن');
+    expect(ar['filing.card.addressKinds.RESIDENCE']).toBe('محل الإقامة');
+    expect(ar['filing.card.addressKinds.DOMICILE']).toBe(ar['case.parties.address.DOMICILE']);
+    expect(ar['filing.card.addressKinds.RESIDENCE']).toBe(ar['case.parties.address.RESIDENCE']);
+    // The locality of the address, from the list of the first screen, or outside the Kingdom and its country (arts. 88, 89).
+    for (const key of ['filing.card.address', 'filing.card.locality', 'filing.card.localityHint', 'filing.card.abroad', 'filing.card.country']) expect(ar[key], key).toBeTruthy();
+    expect(ar['filing.card.localityHint']).toMatch(/88/);
+    expect(ar['filing.card.localityHint']).toMatch(/89/);
+  });
 });
 
 describe('glossary', () => {

@@ -190,6 +190,25 @@ describe('the case card (art. 77)', () => {
     expect(parsed.summary).toBe('سطر أول\nسطر ثان');
   });
 
+  it('keeps with an address its locality of the districts table, or the country of an address outside the Kingdom, never both (independent review IR-08)', () => {
+    const guarantor = MODEL.parties.find((p) => p.key === 'jim')!;
+    const others = MODEL.parties.filter((p) => p !== guarantor);
+    const abroad = { value: 'باريس، شارع المثال، رقم 4', country: `فرنسا${String.fromCodePoint(0x200f)}`, source: 'DECLARED' as const };
+    // A residence is a residence: the card keeps it apart from the domicile (art. 77; G012).
+    const residence = FilingCardSchema.parse({ ...MODEL, parties: [...others, { ...guarantor, domicile: undefined, residence: abroad }] });
+    const kept = residence.parties.find((p) => p.key === 'jim')!;
+    expect(kept.domicile).toBeUndefined();
+    expect(kept.residence).toEqual({ value: 'باريس، شارع المثال، رقم 4', country: 'فرنسا', source: 'DECLARED' });
+    // A country left blank in the form is absent.
+    const blank = FilingCardSchema.parse({ ...MODEL, parties: [...others, { ...guarantor, domicile: { ...guarantor.domicile!, country: ' ' } }] });
+    expect(blank.parties.find((p) => p.key === 'jim')?.domicile).toEqual(guarantor.domicile);
+    // One address is in one place: a locality of the table, or a country outside the Kingdom.
+    const both = FilingCardSchema.safeParse({ ...MODEL, parties: [...others, { ...guarantor, domicile: { ...guarantor.domicile!, country: 'فرنسا' } }] });
+    expect(both.success).toBe(false);
+    if (!both.success) expect(both.error.issues.map((i) => i.path.join('.'))).toContain('parties.2.domicile.country');
+    expect(FilingCardSchema.safeParse({ ...MODEL, parties: [...others, { ...guarantor, residence: { ...abroad, country: 'ب'.repeat(101) } }] }).success).toBe(false);
+  });
+
   it('names the four sections the depositor attests «مطابق للمقال»', () => {
     expect([...CARD_SECTIONS]).toEqual(['PLAINTIFFS', 'DEFENDANTS', 'SUMMARY', 'CLAIMS']);
   });

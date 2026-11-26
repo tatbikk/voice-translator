@@ -70,7 +70,14 @@ async function fileModelCase(page: Page): Promise<string> {
       await expect(block.getByLabel('الاسم')).toHaveValue(party.name);
     } else {
       await block.getByLabel('الاسم').fill(party.name);
-      await block.getByLabel('الموطن أو محل الإقامة').fill(party.domicile?.value ?? '');
+      // «الموطن» or «محل الإقامة» (art. 77, G012), the address, and its locality from the list of the
+      // first screen (independent review IR-08): the guarantor of the model case is domiciled in Casablanca.
+      const kind = block.getByRole('group', { name: 'الموطن أو محل الإقامة' });
+      await expect(kind.getByRole('radio', { name: 'الموطن', exact: true })).toBeChecked();
+      await expect(kind.getByRole('radio', { name: 'محل الإقامة', exact: true })).not.toBeChecked();
+      await block.getByLabel('العنوان', { exact: true }).fill(party.domicile?.value ?? '');
+      await block.getByLabel('المدينة', { exact: true }).selectOption(party.domicile?.locality ?? '');
+      await expect(block.getByLabel('البلد', { exact: true })).toHaveCount(0);
     }
     if (party.quality) await block.getByLabel('صفة الطرف').fill(party.quality);
     if (party.email) await block.getByLabel('البريد الإلكتروني').fill(party.email);

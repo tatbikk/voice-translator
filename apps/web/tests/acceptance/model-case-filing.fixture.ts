@@ -10,6 +10,8 @@ export interface CardAddress {
   readonly value: string;
   /** the code of a locality of the districts table (rules/districts.json), when known */
   readonly locality?: string;
+  /** the country of an address outside the Kingdom (art. 89), never with a locality */
+  readonly country?: string;
   readonly source: 'DECLARED' | 'COMMERCIAL_REGISTER';
 }
 
