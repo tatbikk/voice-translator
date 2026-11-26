@@ -1,6 +1,6 @@
 import 'server-only';
 import { verifyEventChain } from '../events/verify';
-import { issueFilingReceipt, issuePaymentReceipt, prepareFixedCopy } from '../filings/generated';
+import { issueFilingReceipt, issuePaymentReceipt, issueSignatureCertificate, prepareFixedCopy } from '../filings/generated';
 import { cleanupExpired } from '../security/maintenance';
 import { flushThrottleSummaries } from '../security/refusals';
 import type { JobHandlers } from './queue';
@@ -17,4 +17,5 @@ export const JOB_HANDLERS: JobHandlers = {
   'filing.fixed-copy': (payload, context) => prepareFixedCopy(payload.draftId, payload.textDigest, context),
   'payment.receipt': (payload, context) => issuePaymentReceipt(payload.paymentId, context),
   'filing.receipt': (payload, context) => issueFilingReceipt(payload.caseFileId, context),
+  'filing.signature-certificate': (payload, context) => issueSignatureCertificate(payload.documentId, context),
 };

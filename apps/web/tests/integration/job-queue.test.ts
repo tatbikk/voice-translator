@@ -41,6 +41,7 @@ function handlers(overrides: Partial<JobHandlers> = {}): JobHandlers & { readonl
     'filing.fixed-copy': record('filing.fixed-copy'),
     'payment.receipt': record('payment.receipt'),
     'filing.receipt': record('filing.receipt'),
+    'filing.signature-certificate': record('filing.signature-certificate'),
     ...overrides,
   };
 }

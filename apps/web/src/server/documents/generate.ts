@@ -16,7 +16,7 @@ import { renderTemplate, type TemplateScope } from './templates';
 // while the signature component is simulated every page carries the fixed line
 // «صادرة عن بيئة العرض — لا أثر قانوني لها» (prompt, rule 9).
 
-export const TEMPLATE_NAMES = ['registration-receipt', 'order', 'judgment', 'application-copy', 'payment-receipt', 'filing-receipt'] as const;
+export const TEMPLATE_NAMES = ['registration-receipt', 'order', 'judgment', 'application-copy', 'payment-receipt', 'filing-receipt', 'signature-certificate'] as const;
 export type TemplateName = (typeof TEMPLATE_NAMES)[number];
 
 export interface DocumentHeader {

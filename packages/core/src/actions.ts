@@ -121,12 +121,21 @@ const CLERKS = [
   'CHIEF_CLERK',
 ] as const;
 
-/** Who may open a case file (interface book): each role in its relation with the file. */
-export const CASE_VIEW_HOLDERS: readonly Holder[] = [
-  { roles: ['LAWYER'], relations: ['COUNSEL'] },
+/**
+ * The judges and the staff of the file's court, each in its relation with the
+ * file: the court's side of those who may open it. The prosecution and the royal
+ * commissioner, though of the court, are not of them (decision 71).
+ */
+export const COURT_SIDE_HOLDERS: readonly Holder[] = [
   { roles: JUDGES, relations: ['RAPPORTEUR'] },
   { roles: [...JUDGES, 'PANEL_PRESIDENT', 'PANEL_MEMBER'], relations: ['PANEL'] },
   { roles: ['COURT_PRESIDENT', 'ENFORCEMENT_JUDGE', ...CLERKS], relations: ['COURT_STAFF'] },
+];
+
+/** Who may open a case file (interface book): each role in its relation with the file. */
+export const CASE_VIEW_HOLDERS: readonly Holder[] = [
+  { roles: ['LAWYER'], relations: ['COUNSEL'] },
+  ...COURT_SIDE_HOLDERS,
   { roles: ['PUBLIC_PROSECUTOR'], relations: ['PROSECUTION'] },
   { roles: ['ROYAL_COMMISSIONER'], relations: ['COMMISSIONER'] },
   { roles: ['LITIGANT'], relations: ['LITIGANT'] },

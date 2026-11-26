@@ -62,6 +62,7 @@
   "case.documents.noSignature": "غير موقعة",
   "case.documents.signatures": "التوقيعات: {count}",
   "case.documents.simulatedStamp": "توقيع تجريبي",
+  "case.documents.attests": "تشهد بتوقيع «{document}»",
   "case.documents.empty": "لا توجد في هذا الملف وثيقة يحق لكم الاطلاع عليها.",
   "case.documents.verify.button": "التحقق من التوقيع",
   "case.documents.verify.checking": "جار التحقق من البصمة الرقمية للوثيقة.",

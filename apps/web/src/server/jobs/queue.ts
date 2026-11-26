@@ -32,6 +32,8 @@ export const JOB_TYPES = {
   'payment.receipt': z.strictObject({ paymentId: z.uuid() }),
   /** «وصل الإيداع» of a registered file */
   'filing.receipt': z.strictObject({ caseFileId: z.uuid() }),
+  /** «شهادة توقيع» of the electronic application signed at registration (decision 72) */
+  'filing.signature-certificate': z.strictObject({ documentId: z.uuid() }),
 } as const;
 
 /** Technical values of the queue (real time), not legal rules. */
@@ -53,6 +55,7 @@ export const JOB_POLICY = {
     'filing.fixed-copy': 90_000,
     'payment.receipt': 90_000,
     'filing.receipt': 90_000,
+    'filing.signature-certificate': 90_000,
   },
 } as const;
 

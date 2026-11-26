@@ -53,6 +53,8 @@ export interface CaseView {
     signatures: number;
     /** a signature of the simulated provider: the document carries the visible stamp «توقيع تجريبي» (audit G046) */
     simulatedSignature: boolean;
+    /** the document this one attests («شهادة توقيع», decision 72): listed right after it */
+    attestsDocumentId: string | null;
   }[];
   readonly parties: readonly {
     id: string;
@@ -156,7 +158,8 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
   }
   // The timeline shows only what the viewer may know (review P1-S-01): nothing
   // about a document hidden from them, and nothing of the deliberation outside the panel.
-  const visibleDocumentIds = new Set(file.documents.filter((d) => documentVisible(subject, snapshot, d.visibility, d.id)).map((d) => d.id));
+  const visible = file.documents.filter((d) => documentVisible(subject, snapshot, d.visibility, d.id, d.depositedByUserId));
+  const visibleDocumentIds = new Set(visible.map((d) => d.id));
 
   return {
     header: {
@@ -186,22 +189,21 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       // How many referrals the review found: «ولم يجد موجبا للإحالة» when none (study, «المرحلة الثانية»).
       referrals: e.action === 'case.referrals.reviewed' && typeof (e.details as { referrals?: unknown }).referrals === 'number' ? (e.details as { referrals: number }).referrals : null,
     })),
-    documents: file.documents
-      .filter((d) => documentVisible(subject, snapshot, d.visibility, d.id))
-      .map((d) => ({
-        id: d.id,
-        docType: d.docType,
-        title: d.title,
-        declaredNature: d.declaredNature,
-        channel: d.channel,
-        depositor: d.depositedByPartyId ? (partyName.get(d.depositedByPartyId) ?? null) : null,
-        depositedAt: d.depositedAt,
-        generated: d.generated,
-        simulated: d.simulated,
-        withdrawn: d.withdrawnAt !== null,
-        signatures: d.circles.reduce((n, c) => n + c.signatures.length, 0),
-        simulatedSignature: d.circles.some((c) => c.signatures.some((s) => s.provider === 'SIMULATED')),
-      })),
+    documents: withAttestations(visible).map((d) => ({
+      id: d.id,
+      docType: d.docType,
+      title: d.title,
+      declaredNature: d.declaredNature,
+      channel: d.channel,
+      depositor: d.depositedByPartyId ? (partyName.get(d.depositedByPartyId) ?? null) : null,
+      depositedAt: d.depositedAt,
+      generated: d.generated,
+      simulated: d.simulated,
+      withdrawn: d.withdrawnAt !== null,
+      signatures: d.circles.reduce((n, c) => n + c.signatures.length, 0),
+      simulatedSignature: d.circles.some((c) => c.signatures.some((s) => s.provider === 'SIMULATED')),
+      attestsDocumentId: d.attestsDocumentId,
+    })),
     parties: file.parties.map((p) => ({
       id: p.id,
       side: p.side,
@@ -288,6 +290,28 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
 }
 
 const PRIVATE_ADDRESS_KINDS: ReadonlySet<string> = new Set(['ELECTRONIC', 'PHONE']);
+
+/**
+ * The documents in the order they were deposited, each document that attests
+ * another one («شهادة توقيع», decision 72) right after the one it attests, when
+ * the viewer sees it; otherwise in its own place.
+ */
+export function withAttestations<T extends { readonly id: string; readonly attestsDocumentId: string | null }>(documents: readonly T[]): T[] {
+  const ids = new Set(documents.map((d) => d.id));
+  const attached = (d: T) => d.attestsDocumentId !== null && d.attestsDocumentId !== d.id && ids.has(d.attestsDocumentId);
+  const placed = new Set<string>();
+  const ordered: T[] = [];
+  const place = (d: T) => {
+    if (placed.has(d.id)) return;
+    placed.add(d.id);
+    ordered.push(d);
+    for (const a of documents) if (a.attestsDocumentId === d.id && attached(a)) place(a);
+  };
+  for (const d of documents) if (!attached(d)) place(d);
+  // Nothing is ever left out of the list, whatever the links.
+  for (const d of documents) place(d);
+  return ordered;
+}
 
 /**
  * «قيمة مؤقتة غير مؤكدة» for a stored time limit, from what its computation

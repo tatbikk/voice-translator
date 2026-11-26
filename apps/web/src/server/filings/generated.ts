@@ -14,8 +14,9 @@ import { draftStorageKey, sha256 } from './drafts';
 // The documents the worker prints for the filing path (review P1-A-06): the
 // fixed copy of an application pasted or deposited as a Word document (study:
 // «نسخة ثابتة غير قابلة للتعديل هي التي تدخل الملف وتبلغ للخصم»), the receipt
-// of a payment (art. 628: «بوصل يتضمن تاريخ وساعة الإجراء القضائي»), and
-// «وصل الإيداع». Every page carries the demo line while the signature is simulated.
+// of a payment (art. 628: «بوصل يتضمن تاريخ وساعة الإجراء القضائي»),
+// «وصل الإيداع», and «شهادة توقيع» of the electronic application once signed
+// (decision 72). Every page carries the demo line while the signature is simulated.
 
 const t = translator('ar');
 
@@ -38,7 +39,12 @@ export function provisionalMark(payment: PaidAmount, fileAssessments: readonly S
 /** The digest of the paragraphs a fixed copy is printed from. */
 export const paragraphsDigest = (paragraphs: readonly string[]) => sha256(JSON.stringify(paragraphs));
 
-function input(template: TemplateName, header: Omit<GenerateInput['header'], 'logoSlot' | 'dateLabel' | 'date' | 'nationalRefLabel' | 'caseNumberLabel'> & { caseNumberLabel?: string }, data: GenerateInput['data']): GenerateInput {
+function input(
+  template: TemplateName,
+  header: Omit<GenerateInput['header'], 'logoSlot' | 'dateLabel' | 'date' | 'nationalRefLabel' | 'caseNumberLabel'> & { caseNumberLabel?: string },
+  data: GenerateInput['data'],
+  signatures: GenerateInput['signatures'] = [],
+): GenerateInput {
   return {
     template,
     header: {
@@ -50,7 +56,7 @@ function input(template: TemplateName, header: Omit<GenerateInput['header'], 'lo
       ...header,
     },
     data,
-    signatures: [],
+    signatures,
     environmentLine: t('documents.environmentLine'),
     pageLabel: t('documents.pageLabel'),
   };
@@ -351,5 +357,110 @@ export async function issueFilingReceipt(caseFileId: string, context: PrintConte
     });
     await appendEvent(tx, { action: 'document.stored', details: { documentId: id, sha256: digest, byteSize: bytes.byteLength, generated: true, docType: 'FILING_RECEIPT' }, caseFileId });
     await appendEvent(tx, { action: 'filing.receipt.issued', details: { caseFileId, documentId: id }, caseFileId });
+  });
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * «شهادة توقيع» of the electronic application signed at registration (independent review IR-07,
+ * decision 72). The fixed copy is printed before it is signed, and the signature is on its bytes,
+ * which never change: the stamp «توقيع تجريبي», the signer and his role, the date and hour of the
+ * signature (Morocco time), the references of the file and the hash signed go on a document of their
+ * own, printed beside it. It joins the file linked to the document it attests, at that document's
+ * visibility, once: a second run finds it and prints nothing.
+ */
+export async function issueSignatureCertificate(documentId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
+  const db = getDb();
+  const doc = await db.document.findUnique({
+    where: { id: documentId },
+    select: {
+      id: true,
+      caseFileId: true,
+      sha256: true,
+      docType: true,
+      title: true,
+      generated: true,
+      visibility: true,
+      caseFile: { select: { number: true, code: true, year: true, nationalRef: true, court: { select: { name: true } } } },
+      // The circle of the filing, completed on the hash the document still has.
+      circles: {
+        where: { status: 'COMPLETED', purpose: 'APPLICATION_FILING' },
+        orderBy: { openedAt: 'asc' },
+        select: { id: true, documentSha256: true, signatures: { orderBy: { position: 'asc' }, select: { signerUserId: true, signerRole: true, signedAt: true, provider: true } } },
+      },
+    },
+  });
+  if (!doc) return;
+  const circle = doc.circles.find((c) => c.documentSha256 === doc.sha256 && c.signatures.length > 0);
+  if (!circle) return;
+  if (await db.document.findFirst({ where: { attestsDocumentId: doc.id, docType: 'SIGNATURE_CERTIFICATE' }, select: { id: true } })) return;
+
+  const names = new Map(
+    (await db.user.findMany({ where: { id: { in: circle.signatures.map((s) => s.signerUserId) } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]),
+  );
+  const signers = circle.signatures.map((s) => ({
+    name: names.get(s.signerUserId) ?? '',
+    role: t(`roles.${s.signerRole}`),
+    when: t('documents.signedAt', { date: formatMoroccoDate(s.signedAt), time: formatMoroccoTime(s.signedAt) }),
+    stamp: t(s.provider === 'SIMULATED' ? 'signature.stamp.simulated' : 'signature.stamp.qualified'),
+  }));
+  const signedTitle = isApplication(doc) ? t(doc.generated ? 'documents.title.application-copy' : 'terms.initialApplication') : (doc.title ?? t(`case.docType.${doc.docType}`));
+  const file = doc.caseFile;
+  const generate = input(
+    'signature-certificate',
+    {
+      headerLines: [file.court.name, t('documents.registry')],
+      title: t('documents.title.signature-certificate'),
+      caseNumber: `${String(file.number)}/${String(file.code)}/${String(file.year)}`,
+      nationalRef: file.nationalRef,
+    },
+    {
+      intro: t('documents.signatureCertificate.intro'),
+      rows: [
+        { label: t('documents.signatureCertificate.document'), value: signedTitle },
+        ...signers.flatMap((s) => [
+          { label: t('documents.signatureCertificate.signer'), value: s.name },
+          { label: t('documents.signatureCertificate.role'), value: s.role },
+          { label: t('documents.signatureCertificate.signedAt'), value: s.when },
+          { label: t('documents.signatureCertificate.kind'), value: s.stamp },
+        ]),
+      ],
+      hashLabel: t('documents.signatureCertificate.hash'),
+      hash: circle.documentSha256,
+      closing: t('documents.signatureCertificate.closing'),
+    },
+    signers.map((s) => ({ role: s.role, name: s.name, stamp: s.stamp, when: s.when, pendingText: '' })),
+  );
+  const bytes = await printOrRecord('signature-certificate', generate, doc.caseFileId, context);
+  if (!bytes) return;
+  const id = randomUUID();
+  const key = `cases/${doc.caseFileId}/${id}`;
+  const digest = sha256Hex(bytes);
+  await documentStore().put(key, bytes, 'application/pdf');
+  await eventTransaction(async (tx) => {
+    // The document attested is locked: one certificate, whatever runs at the same time.
+    await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${doc.id}::uuid FOR UPDATE`;
+    if (await tx.document.findFirst({ where: { attestsDocumentId: doc.id, docType: 'SIGNATURE_CERTIFICATE' }, select: { id: true } })) return;
+    await tx.document.create({
+      data: {
+        id,
+        caseFileId: doc.caseFileId,
+        storageKey: key,
+        sha256: digest,
+        byteSize: bytes.byteLength,
+        mediaType: 'application/pdf',
+        docType: 'SIGNATURE_CERTIFICATE',
+        title: t('documents.title.signature-certificate'),
+        channel: 'ELECTRONIC',
+        depositedAt: clock.now(),
+        generated: true,
+        simulated: circle.signatures.some((s) => s.provider === 'SIMULATED'),
+        visibility: doc.visibility,
+        attestsDocumentId: doc.id,
+      },
+    });
+    await appendEvent(tx, { action: 'document.stored', details: { documentId: id, sha256: digest, byteSize: bytes.byteLength, generated: true, docType: 'SIGNATURE_CERTIFICATE' }, caseFileId: doc.caseFileId });
+    await appendEvent(tx, { action: 'signature.certificate.issued', details: { caseFileId: doc.caseFileId, documentId: id, attestsDocumentId: doc.id, circleId: circle.id }, caseFileId: doc.caseFileId });
   });
 }

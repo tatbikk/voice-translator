@@ -278,5 +278,14 @@
   "documents.filingReceipt.channel.ELECTRONIC": "المودع إلكترونيا عبر المنصة",
   "documents.filingReceipt.channel.PAPER": "المودع ورقيا بمكتب التقييد",
   "documents.filingReceipt.generatedNature": "ولدتها المنصة",
-  "documents.filingReceipt.scannedNature": "نسخة ممسوحة ضوئيا، وأصلها الورقي بكتابة الضبط"
+  "documents.filingReceipt.scannedNature": "نسخة ممسوحة ضوئيا، وأصلها الورقي بكتابة الضبط",
+  "documents.title.signature-certificate": "شهادة توقيع",
+  "documents.signatureCertificate.intro": "تشهد المنصة بأن الوثيقة المبينة أسفله وقعت إلكترونيا عند إيداع المقال الافتتاحي بطريقة إلكترونية في الملف المشار إلى مراجعه أعلاه، طبقا للمادة 76 من القانون رقم 58.25 المتعلق بالمسطرة المدنية، وفق البيانات الآتية.",
+  "documents.signatureCertificate.document": "الوثيقة الموقعة",
+  "documents.signatureCertificate.signer": "اسم الموقع",
+  "documents.signatureCertificate.role": "صفة الموقع",
+  "documents.signatureCertificate.signedAt": "تاريخ التوقيع وساعته",
+  "documents.signatureCertificate.kind": "خاتم التوقيع",
+  "documents.signatureCertificate.hash": "البصمة الرقمية للوثيقة الموقعة",
+  "documents.signatureCertificate.closing": "تحفظ هذه الشهادة في الملف مقترنة بالوثيقة الموقعة، ولا تغير شيئا من الوثيقة ولا من بصمتها الرقمية. ويثبت أن الوثيقة لم تتغير بعد توقيعها متى طابقت بصمتها الرقمية البصمة المبينة أعلاه."
 }

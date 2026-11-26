@@ -7,12 +7,12 @@
 // built for this request: a subject without any relation with the file is
 // answered NOT_FOUND, as for a file that does not exist; a subject who knows
 // the file but may not act is answered ROLE_NOT_PERMITTED or CONDITION_NOT_MET.
-import { ACTIONS, CASE_VIEW_HOLDERS, isActionCode, type ActionRule } from './actions';
+import { ACTIONS, CASE_VIEW_HOLDERS, COURT_SIDE_HOLDERS, isActionCode, type ActionRule } from './actions';
 import { CONDITIONS } from './conditions';
 import { conditionHolds, envelopeConditionHolds, holdsRelation, type Holder } from './procedure/conditions';
 import type { CaseSnapshot } from './procedure/snapshot';
 import { ROLES, type RoleCode } from './roles';
-import type { AuthorizationContext, Resource, Subject, UserSubject } from './subject';
+import type { AuthorizationContext, DocumentVisibility, Resource, Subject, UserSubject } from './subject';
 
 export type DenyReason =
   | 'UNAUTHENTICATED'
@@ -47,14 +47,24 @@ export function knowsCase(subject: UserSubject, snapshot: CaseSnapshot): boolean
   return (['EXPERT', 'GARNISHEE', 'SUMMONS_HOLDER'] as const).some((r) => holdsRelation(subject, snapshot, r));
 }
 
-/** Whether a document of the given visibility may be shown to the subject. */
+/**
+ * Whether a document of the given visibility, deposited by the given user (null
+ * for what the platform printed), may be shown to the subject. The application as
+ * uploaded in Word is its depositor's and the court's (decision 71): the person
+ * who deposited it, not his party's other counsel, and the judges and staff of
+ * the file's court, not the prosecution nor the royal commissioner.
+ */
 export function documentVisible(
   subject: UserSubject,
   snapshot: CaseSnapshot,
-  visibility: 'CASE' | 'PANEL' | 'JUDGE',
+  visibility: DocumentVisibility,
   documentId: string,
+  depositorUserId: string | null,
 ): boolean {
   if (visibility === 'CASE') return true;
+  if (visibility === 'DEPOSITOR_AND_COURT') {
+    return (depositorUserId !== null && depositorUserId === subject.userId) || COURT_SIDE_HOLDERS.some((h) => holds(subject, snapshot, h));
+  }
   const judge = holdsRelation(subject, snapshot, 'RAPPORTEUR');
   if (visibility === 'JUDGE') return judge;
   if (judge || holdsRelation(subject, snapshot, 'PANEL')) return true;
@@ -110,7 +120,7 @@ function decideCaseScoped(rule: ActionRule, subject: UserSubject, resource: Reso
     // document its visibility. A document one may not see does not exist for him.
     const holders = rule.caseHolders ?? [];
     if (!holders.some((h) => holds(subject, snapshot, h))) return deny('NOT_FOUND');
-    if (resource.kind === 'case-document' && !documentVisible(subject, snapshot, resource.visibility, resource.documentId)) return deny('NOT_FOUND');
+    if (resource.kind === 'case-document' && !documentVisible(subject, snapshot, resource.visibility, resource.documentId, resource.depositorUserId)) return deny('NOT_FOUND');
     return { allowed: true, rule };
   }
   if (!context.now) throw new Error('authorize: platform time is required for a case file');

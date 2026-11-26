@@ -22,6 +22,13 @@ export type Subject =
 
 export type UserSubject = Extract<Subject, { kind: 'user' }>;
 
+/**
+ * Who may see a document of a file (schema enum DocumentVisibility): everyone
+ * the file is open to; its depositor and the judges and staff of the file's
+ * court (the application as uploaded in Word, decision 71); the panel; the judge.
+ */
+export type DocumentVisibility = 'CASE' | 'DEPOSITOR_AND_COURT' | 'PANEL' | 'JUDGE';
+
 /** The resource an action applies to, as far as authorization needs to know it. */
 export type Resource =
   | { readonly kind: 'notification'; readonly ownerUserId: string }
@@ -38,12 +45,14 @@ export type Resource =
   | { readonly kind: 'demo-account'; readonly userId: string; readonly isDemo: boolean }
   /** a case file, as the server built it from the database for this request */
   | { readonly kind: 'case'; readonly snapshot: CaseSnapshot }
-  /** one document of a case file, with the visibility the file gives it */
+  /** one document of a case file, with the visibility the file gives it and the user who deposited it */
   | {
       readonly kind: 'case-document';
       readonly snapshot: CaseSnapshot;
-      readonly visibility: 'CASE' | 'PANEL' | 'JUDGE';
+      readonly visibility: DocumentVisibility;
       readonly documentId: string;
+      /** null for what the platform printed */
+      readonly depositorUserId: string | null;
     }
   /** a bailiff's envelope */
   | { readonly kind: 'envelope'; readonly snapshot: EnvelopeSnapshot }

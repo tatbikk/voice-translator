@@ -36,7 +36,7 @@ import { caseTypeOf, checksOf, coveringIntent, loadDraft, parseCard, type DraftW
 // 53) and the national identifier, creates the file at «مقيد» with its parties,
 // claims, documents, fee and payment, signs the fixed copy, decides and records
 // the referrals (even when none is due), informs whoever must be informed, and
-// asks the worker for «وصل الإيداع».
+// asks the worker for «وصل الإيداع» and, for the signed application, «شهادة توقيع».
 
 type Tx = Prisma.TransactionClient;
 
@@ -69,6 +69,13 @@ export function nationalRefOf(mode: 'demo' | 'production', year: number, courtCo
 }
 
 const DOC_TYPES = { APPLICATION_COPY: 'APPLICATION', APPLICATION_ORIGINAL: 'APPLICATION_SOURCE', EXHIBIT: 'EXHIBIT', PAYMENT_RECEIPT: 'PAYMENT_RECEIPT' } as const;
+
+/**
+ * The application as uploaded in Word is kept as filed, with its tracked changes, comments and author, for its
+ * depositor and the court only; the fixed copy is the application served on the opponent (independent review IR-06,
+ * decision 71). Every other document joins the file at the file's visibility.
+ */
+const VISIBILITY = { APPLICATION_COPY: 'CASE', APPLICATION_ORIGINAL: 'DEPOSITOR_AND_COURT', EXHIBIT: 'CASE', PAYMENT_RECEIPT: 'CASE' } as const;
 
 /** Whether an address of the card lies within the district of the file's court (independent review IR-08). */
 type WithinDistrict = (address: CardAddress) => boolean | null;
@@ -301,7 +308,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
           depositedAt: doc.uploadedAt,
           generated: doc.generated,
           simulated: doc.kind === 'PAYMENT_RECEIPT',
-          visibility: 'CASE',
+          visibility: VISIBILITY[doc.kind],
         },
       });
       await tx.filingDocument.update({ where: { id: doc.id }, data: { documentId } });
@@ -318,7 +325,8 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     }
     if (!applicationDocumentId || !applicationSha) throw new Error('registration: no application copy');
 
-    // 8. The signature of the electronic application (art. 76).
+    // 8. The signature of the electronic application (art. 76), and «شهادة توقيع» the worker prints beside it:
+    // the stamp, the signer and the hash go on a document of their own, never into the bytes signed (decision 72).
     if (fresh.channel === 'ELECTRONIC') {
       await signAloneInTransaction(tx, {
         documentId: applicationDocumentId,
@@ -328,6 +336,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         signer: { userId: subject.userId, roleAssignmentId: subject.roleAssignmentId, role: subject.role },
         actor,
       });
+      await enqueue(tx, 'filing.signature-certificate', { documentId: applicationDocumentId });
     }
 
     // 9. The fee, its payment and the treasury entry are linked to the file.

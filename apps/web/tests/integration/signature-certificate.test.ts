@@ -135,13 +135,11 @@ describe('«شهادة توقيع» of the electronic application (independent r
     expect(containsRightToLeft(text, TITLE), all).toBe(true);
     expect(containsRightToLeft(text, STAMP), all).toBe(true);
     expect(containsRightToLeft(text, LAWYER_ROLE), all).toBe(true);
-    // A phrase that mixes Arabic words with digits or Latin letters: each of its words, read in its own direction.
-    const printed = (phrase: string) => phrase.split(/\s+/).every((word) => flat.includes(word) || containsRightToLeft(text, word));
-    expect(printed(lawyer.fullName), `the signer’s name: ${all}`).toBe(true);
+    expect(containsRightToLeft(text, lawyer.fullName), `the signer’s name: ${all}`).toBe(true);
     expect(flat, 'the hash of the signed application').toContain(application.sha256);
     expect(signature.documentSha256).toBe(application.sha256);
-    expect(flat, 'the hour of the signature, Morocco time').toContain(formatMoroccoTime(signature.signedAt).replace(/\s+/g, ''));
-    expect(printed(formatMoroccoDate(signature.signedAt)), `the date of the signature: ${all}`).toBe(true);
+    // The date and hour of the signature, Morocco time, as one phrase.
+    expect(containsRightToLeft(text, `${formatMoroccoDate(signature.signedAt)} على الساعة ${formatMoroccoTime(signature.signedAt)}`), `the date and hour of the signature: ${all}`).toBe(true);
     expect(flat, 'the number of the file').toContain(`${String(file.number)}/${String(file.code)}/${String(file.year)}`);
     expect(flat, 'the national identifier').toContain(file.nationalRef);
     // The environment line, on every page, as on every generated document.

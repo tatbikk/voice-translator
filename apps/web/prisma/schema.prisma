@@ -710,6 +710,8 @@ enum DocumentChannel {
 enum DocumentVisibility {
   /// everyone related to the file
   CASE
+  /// its depositor and the judges and staff of the file's court (the application as uploaded in Word, decision 71)
+  DEPOSITOR_AND_COURT
   /// the panel, before pronouncement (judgment drafts)
   PANEL
   /// the judge alone
@@ -740,11 +742,16 @@ model Document {
   visibility            DocumentVisibility @default(CASE)
   /// Phase 2: pages of a scan (paper filing)
   pageCount             Int?
+  /// the document a «شهادة توقيع» attests (decision 72); never changes once set
+  attestsDocumentId     String?            @db.Uuid
+  attests               Document?          @relation("DocumentAttestation", fields: [attestsDocumentId], references: [id])
 
-  circles    SignatureCircle[]
-  paragraphs DocumentParagraph[]
+  circles      SignatureCircle[]
+  paragraphs   DocumentParagraph[]
+  attestations Document[]        @relation("DocumentAttestation")
 
   @@index([caseFileId])
+  @@index([attestsDocumentId])
 }
 
 enum TimeLimitStatus {

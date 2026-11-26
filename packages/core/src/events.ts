@@ -186,6 +186,8 @@ export const EVENT_TYPES = {
   'filing.refused': { outcome: 'DENIED', details: detailsOf({ draftId: id.nullable(), reason: code }) },
   'filing.submitted': { outcome: 'DONE', details: detailsOf({ draftId: id, caseFileId: id, channel }) },
   'filing.receipt.issued': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id }) },
+  /** «شهادة توقيع» printed beside the signed application, linked to it (independent review IR-07, decision 72) */
+  'signature.certificate.issued': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id, attestsDocumentId: id, circleId: id }) },
   'payment.intent.opened': {
     outcome: 'DONE',
     details: detailsOf({ intentId: id, draftId: id, amountCents: count, method: z.enum(['ONLINE', 'COUNTER']), ruleVersion: code }),

@@ -242,6 +242,12 @@ function Documents({ t, view }: { t: Translator; view: CaseView }) {
     none: t('case.documents.verify.none'),
     failed: t('case.documents.verify.failed'),
   };
+  // «شهادة توقيع» comes right after the document it attests, and names it (decision 72).
+  const titleOf = (d: CaseView['documents'][number]) => d.title ?? t(`case.docType.${d.docType}`);
+  const attested = (d: CaseView['documents'][number]) => {
+    const target = d.attestsDocumentId ? view.documents.find((o) => o.id === d.attestsDocumentId) : undefined;
+    return target ? titleOf(target) : null;
+  };
   return (
     <TableFrame label={t('case.tabs.documents')}>
       <table className={TABLE.table}>
@@ -261,8 +267,9 @@ function Documents({ t, view }: { t: Translator; view: CaseView }) {
           {view.documents.map((d) => (
             <tr key={d.id} className={TABLE.row}>
               <th scope="row" className={TABLE.rowHeader}>
-                {d.title ?? t(`case.docType.${d.docType}`)}
+                {titleOf(d)}
                 {d.withdrawn ? <p className="mt-1 font-normal text-text-muted">{t('case.documents.withdrawn')}</p> : null}
+                {attested(d) ? <p className="mt-1 font-normal text-text-muted">{t('case.documents.attests', { document: attested(d) ?? '' })}</p> : null}
               </th>
               <td className={TABLE.td}>{d.declaredNature ? t(`case.nature.${d.declaredNature}`) : t('case.nature.none')}</td>
               <td className={TABLE.td}>{t(`case.channel.${d.channel}`)}</td>

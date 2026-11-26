@@ -13,8 +13,9 @@ export async function caseResource(caseFileId: string, now: Date): Promise<Resou
 }
 
 export async function documentResource(caseFileId: string, documentId: string, now: Date): Promise<Resource | null> {
-  const doc = await getDb().document.findFirst({ where: { id: documentId, caseFileId }, select: { visibility: true } });
+  const doc = await getDb().document.findFirst({ where: { id: documentId, caseFileId }, select: { visibility: true, depositedByUserId: true } });
   if (!doc) return null;
   const snapshot = await caseSnapshot(caseFileId, now);
-  return snapshot ? { kind: 'case-document', snapshot, visibility: doc.visibility, documentId } : null;
+  // The depositor with the visibility: the application as uploaded in Word is his and the court's (decision 71).
+  return snapshot ? { kind: 'case-document', snapshot, visibility: doc.visibility, documentId, depositorUserId: doc.depositedByUserId } : null;
 }

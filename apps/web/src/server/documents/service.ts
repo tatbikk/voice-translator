@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
+import type { DocumentVisibility } from '@mahkama/core';
 import { clock } from '../clock';
 import { getDb } from '../db';
 import { appendEvent, eventTransaction, type EventActor } from '../events/append';
@@ -15,7 +16,7 @@ export interface StoreDocumentInput {
   readonly mediaType: 'application/pdf';
   readonly docType: string;
   readonly title?: string | null;
-  readonly visibility: 'CASE' | 'PANEL' | 'JUDGE';
+  readonly visibility: DocumentVisibility;
   readonly channel: 'ELECTRONIC' | 'PAPER';
   readonly declaredNature: 'ORIGINAL' | 'CERTIFIED_COPY' | 'PHOTOCOPY' | null;
   readonly generated: boolean;
@@ -71,7 +72,7 @@ export interface StoredDocument {
   readonly sha256: string;
   readonly mediaType: string;
   readonly docType: string;
-  readonly visibility: 'CASE' | 'PANEL' | 'JUDGE';
+  readonly visibility: DocumentVisibility;
   readonly storageKey: string;
 }
 
