@@ -8,7 +8,9 @@
 // study: «لا يكتمل الإيداع دونها»), the depositor's attestation of each section
 // (study: «مطابق للمقال»), and, on paper, the record of each original. The fee
 // is checked by the authorization itself (decision 55; prompt: «لا يتم الإيداع
-// بلا أداء»).
+// بلا أداء»). And the category of a public-law person (decision 66): the
+// warning of art. 605 and the ground of the communication of art. 20 are read
+// from it, and the parties of a registered file are not amended.
 import { CARD_SECTIONS, type CardParty, type CardSection, type FilingCard } from './card';
 import { principalValueCents, type CaseTypeRule, type JurisdictionRuleSet, type ReferralRuleSet, type Specialty } from './rules';
 
@@ -23,6 +25,7 @@ export const CHECK_CODES = [
   'CASE_TYPE_MISSING',
   'COURT_MISSING',
   'NO_PLAINTIFF',
+  'PUBLIC_ENTITY_KIND_MISSING',
   // warnings (art. 77)
   'NO_DEFENDANT',
   'PARTY_QUALITY_MISSING',
@@ -146,6 +149,13 @@ export function preSignatureChecks(input: CheckInput): FilingCheck[] {
   }
   if (channel === 'PAPER' && blank(input.paperDepositor?.name)) out.push(check('PAPER_DEPOSITOR_MISSING', 'BLOCKING', 76));
   if (!card.parties.some((p) => p.side === 'PLAINTIFF')) out.push(check('NO_PLAINTIFF', 'BLOCKING', 77));
+  // The one statement of a party that blocks (decision 66): which public-law person it is. Art. 20
+  // communicates the case whatever the answer; the warning of art. 605 below cannot be given without it.
+  for (const party of card.parties) {
+    if (party.personKind === 'PUBLIC' && party.publicEntityKind === undefined) {
+      out.push(check('PUBLIC_ENTITY_KIND_MISSING', 'BLOCKING', 20, { partyKey: party.key }));
+    }
+  }
   for (const section of CARD_SECTIONS) {
     if (!input.attested.includes(section)) out.push(check('SECTION_NOT_ATTESTED', 'BLOCKING', null, { section }));
   }

@@ -38,9 +38,13 @@ export function referralsFor(input: ReferralInput): Referral[] {
     if (item !== undefined) add({ target: 'PROSECUTION', ground: 'PRINCIPAL_PARTY', article: prosecution.principalParty.article, item, reasonCode: 'PARTY_CAPACITY' });
   }
 
-  // Art. 20, first case: cases concerning the State and the other public-law persons.
+  // Art. 20, first case: cases concerning the State and the other public-law persons. The table
+  // gives the item of each category, and the item of any public-law person whatever its category,
+  // even none (independent review IR-01, decision 66); a category kept on another kind of person counts for nothing.
+  const { publicEntityKinds, anyPublicLawPerson } = prosecution.communication;
   for (const party of input.parties) {
-    const item = party.personKind === 'PUBLIC' && party.publicEntityKind ? prosecution.communication.publicEntityKinds[party.publicEntityKind] : undefined;
+    if (party.personKind !== 'PUBLIC') continue;
+    const item = (party.publicEntityKind ? publicEntityKinds[party.publicEntityKind] : undefined) ?? anyPublicLawPerson;
     if (item !== undefined) add({ target: 'PROSECUTION', ground: 'COMMUNICATION', article: prosecution.communication.article, item, reasonCode: 'PUBLIC_PARTY' });
   }
 

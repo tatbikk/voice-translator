@@ -89,8 +89,19 @@ export const ReferralRuleSetSchema = z
       .object({
         /** art. 18, item 4: cases concerning the incapable, the absent and the missing */
         principalParty: z.object({ article: z.literal(18), capacityStatuses: z.partialRecord(z.enum(CAPACITY_STATUSES), z.number().int().min(1).max(4)) }).strict(),
-        /** art. 20, item 1: cases concerning the State and other public-law persons */
-        communication: z.object({ article: z.literal(20), publicEntityKinds: z.partialRecord(z.enum(PUBLIC_ENTITY_KINDS), z.number().int().min(1).max(5)) }).strict(),
+        /**
+         * Art. 20, item 1: cases concerning the State and other public-law persons. The item by
+         * category of the card, and (since version 2026-11-26.1, decision 66) the item for any
+         * public-law person whatever its category, even none: «أو بأي شخص آخر من أشخاص القانون
+         * العام». A version without it communicates only the categories it lists.
+         */
+        communication: z
+          .object({
+            article: z.literal(20),
+            anyPublicLawPerson: z.number().int().min(1).max(5).optional(),
+            publicEntityKinds: z.partialRecord(z.enum(PUBLIC_ENTITY_KINDS), z.number().int().min(1).max(5)),
+          })
+          .strict(),
       })
       .strict(),
     /** art. 101: a copy of the application to the royal commissioner before administrative courts */

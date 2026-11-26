@@ -229,10 +229,12 @@ export function CardStep({ view, t, busy, update }: StepProps) {
               </Field>
             ) : null}
             {party.personKind === 'PUBLIC' ? (
-              <Field id={`${party.key}-public`} label={t('filing.card.publicEntityKind')}>
+              // Required to pay and to file (decision 66): the card is saved without it, and the check before signature blocks.
+              <Field id={`${party.key}-public`} label={t('filing.card.requiredField', { label: t('filing.card.publicEntityKind') })} hint={t('filing.card.publicEntityKindHint')}>
                 <select
                   id={`${party.key}-public`}
                   className={CONTROL}
+                  required
                   value={party.publicEntityKind ?? ''}
                   onChange={(e) => { setParty(index, { publicEntityKind: e.target.value === '' ? undefined : (e.target.value as Party['publicEntityKind']) }); }}
                 >
