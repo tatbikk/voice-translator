@@ -81,6 +81,8 @@ export type TimeLimitStep =
 export type TimeLimitUncertainty =
   /** the rule itself is marked uncertain in its table */
   | { readonly kind: 'RULE' }
+  /** the limit starts from a deemed service whose rule is marked uncertain (art. 85, س46): that rule, not the limit's */
+  | { readonly kind: 'DEEMED_SERVICE'; readonly rule: string }
   /** how art. 602 counts a limit for an act done electronically (س1) */
   | { readonly kind: 'ELECTRONIC_COUNTING' }
   /** Saturday and Sunday as days off (art. 603, س32) decided whether these days count */
@@ -253,7 +255,7 @@ export function computeTimeLimit(input: TimeLimitInput): TimeLimitResult {
  */
 export function deemedServiceDate(refusalAt: Date, rule: TimeLimitRule): { day: string; at: Date; uncertainties: readonly TimeLimitUncertainty[] } {
   const day = addDays(moroccoDay(refusalAt), rule.amount);
-  return { day, at: startOfMoroccoDay(day), uncertainties: rule.uncertain ? [{ kind: 'RULE' }] : [] };
+  return { day, at: startOfMoroccoDay(day), uncertainties: rule.uncertain ? [{ kind: 'DEEMED_SERVICE', rule: rule.code }] : [] };
 }
 
 /**
