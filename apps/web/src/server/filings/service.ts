@@ -470,9 +470,10 @@ export const UpdateDocumentBody = z
   .strict();
 export type UpdateDocumentInput = z.infer<typeof UpdateDocumentBody>;
 
-export async function updateDocument(draft: DraftWithParts, documentId: string, body: UpdateDocumentInput, actor: EventActor): Promise<Outcome | null> {
+export async function updateDocument(draft: DraftWithParts, documentId: string, body: UpdateDocumentInput, actor: EventActor): Promise<Outcome> {
   const doc = draft.documents.find((d) => d.id === documentId);
-  if (!doc) return null;
+  // A document of another draft is unknown here, and the request is a refusal like any other (independent review IR-17).
+  if (!doc) return refused(draft.id, actor, 404, 'NOT_FOUND');
   if (doc.generated) return refused(draft.id, actor, 422, 'INVALID_INPUT', { document: 'errors.field.invalid' });
   const now = clock.now();
   const applied = await eventTransaction(async (tx) => {
@@ -508,7 +509,11 @@ export async function draftDocumentFile(
   actor: EventActor,
 ): Promise<{ bytes: Uint8Array; mediaType: string; title: string | null } | 'NOT_FOUND' | 'INTEGRITY'> {
   const doc = draft.documents.find((d) => d.id === documentId) ?? (await getDb().filingDocument.findFirst({ where: { id: documentId, draftId: draft.id } }));
-  if (!doc) return 'NOT_FOUND';
+  if (!doc) {
+    // A document of another draft is unknown here, and the request is a refusal like any other (independent review IR-17).
+    await refused(draft.id, actor, 404, 'NOT_FOUND');
+    return 'NOT_FOUND';
+  }
   const bytes = await documentStore().get(doc.storageKey);
   if (!bytes) return 'NOT_FOUND';
   // Each download is recorded, as on the file (decision 47, audit G100); and a changed copy too.

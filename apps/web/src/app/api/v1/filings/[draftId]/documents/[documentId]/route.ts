@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { SECURITY_POLICY } from '@mahkama/core';
 import { defineEndpoint } from '@/server/http/endpoint';
-import { notFound } from '@/server/http/responses';
 import { draftResource } from '@/server/filings/drafts';
 import { answer, withDraft } from '@/server/filings/http';
 import { UpdateDocumentBody, updateDocument } from '@/server/filings/service';
@@ -19,7 +18,6 @@ export const POST = defineEndpoint({
   body: UpdateDocumentBody,
   handler: ({ params: p, body, session }) =>
     withDraft(p.draftId, session, async (draft, caller) => {
-      const outcome = await updateDocument(draft, p.documentId, body, caller.session.actor);
-      return outcome ? answer(outcome) : notFound();
+      return answer(await updateDocument(draft, p.documentId, body, caller.session.actor));
     }),
 });
