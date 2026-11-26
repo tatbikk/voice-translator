@@ -86,6 +86,7 @@ const REASONS: Readonly<Record<string, TimeLimitUncertainty['kind'] | null>> = {
   'احتساب الأجل الإلكتروني': 'ELECTRONIC_COUNTING',
   'تجاوز أفق قائمة العطل': 'BEYOND_CALENDAR',
   'قاعدة غير مؤكدة': 'RULE',
+  'تسليم حكمي غير مؤكد': 'DEEMED_SERVICE',
 };
 
 /** The «قيمة مؤقتة غير مؤكدة» and «ما بني عليه» cells of a case against the result. */
@@ -251,7 +252,8 @@ describe('time limits in plain language', () => {
       expect(servedAt.day).toBe(deemed);
       // Served from the first instant of the tenth day, in Morocco.
       expect(servedAt.at.toISOString()).toBe(moroccoInstant(`${deemed} 00:00`).toISOString());
-      expect(servedAt.uncertainties, 'the deemed service carries the mark of its rule').toEqual([{ kind: 'RULE' }]);
+      // Its own kind, naming its rule: the rule of the limit it opens is not the uncertain one (review of IR-19).
+      expect(servedAt.uncertainties, 'the deemed service carries the mark of its rule').toEqual([{ kind: 'DEEMED_SERVICE', rule: 'DEEMED_SERVICE_AFTER_REFUSAL' }]);
       const found = ruleAt(code, servedAt.day);
       if (!found) throw new Error('no rule in force');
       const result = computeTimeLimit({
@@ -278,7 +280,10 @@ describe('time limits in plain language', () => {
     const served = deemedServiceDate(refusedAt, deemedRule.rule);
     const input = { rule: appeal.rule, settings: appeal.set.settings, trigger: served.at, electronic: false, calendar };
     expect(computeTimeLimit(input).uncertainties.map((u) => u.kind)).toEqual(['WEEKEND']);
-    expect(computeTimeLimit({ ...input, startUncertainties: served.uncertainties }).uncertainties.map((u) => u.kind).sort()).toEqual(['RULE', 'WEEKEND']);
+    expect(computeTimeLimit({ ...input, startUncertainties: served.uncertainties }).uncertainties.map((u) => u.kind).sort()).toEqual(['DEEMED_SERVICE', 'WEEKEND']);
+    // A limit whose own rule is uncertain says both, each once.
+    const both = computeTimeLimit({ ...input, rule: { ...appeal.rule, uncertain: true }, startUncertainties: served.uncertainties });
+    expect(both.uncertainties.map((u) => u.kind).sort()).toEqual(['DEEMED_SERVICE', 'RULE', 'WEEKEND']);
   });
 
   it('marks every computation that looked past an undeclared horizon, and none within a declared one', () => {
