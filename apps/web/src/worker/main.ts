@@ -7,7 +7,7 @@ import { closeDb } from '@/server/db';
 import { enforceBoot } from '@/server/boot/check';
 import { verifyEventChain } from '@/server/events/verify';
 import { JOB_HANDLERS } from '@/server/jobs/handlers';
-import { runDueJobs } from '@/server/jobs/queue';
+import { reviveUnreadJobs, runDueJobs } from '@/server/jobs/queue';
 import { log, errorFields } from '@/server/log';
 import { cleanupExpired } from '@/server/security/maintenance';
 import { flushThrottleSummaries } from '@/server/security/refusals';
@@ -20,6 +20,8 @@ const MAINTENANCE_EVERY_MS = 10 * 60_000;
 
 async function main(): Promise<void> {
   await enforceBoot('worker');
+  // The jobs an earlier worker declared dead unread, during a deployment (review of the IR-12 fix).
+  await reviveUnreadJobs();
   const scheduler = createScheduler({
     beforeEach: () => clock.refresh(),
     onError: (task, error) => {

@@ -130,6 +130,34 @@ export async function recoverStaleJobs(leaseMs: number = JOB_POLICY.leaseMs): Pr
   return { pending: rows.length - dead, dead };
 }
 
+/** Why a worker declared a job DEAD without running it: it could not read it. */
+const UNREAD = ['INVALID_PAYLOAD', 'UNKNOWN_JOB_TYPE'];
+
+/**
+ * Puts back to PENDING, its attempts reset, every job an earlier worker declared
+ * DEAD unread (an unknown type, or a payload its schemas refused) that this worker
+ * reads. During a deployment the new web may queue a job the old worker still
+ * claims: the legal basis added to four job types (decision 74) is refused by the
+ * old worker's strict schemas, and the receipt of art. 628 or the fixed copy would
+ * never be printed (review of the IR-12 fix). Run once at the start of the worker;
+ * a job this worker cannot read either stays dead. Returns how many were put back.
+ */
+export async function reviveUnreadJobs(): Promise<number> {
+  const db = getDb();
+  const rows = await db.job.findMany({ where: { status: 'DEAD', lastErrorClass: { in: UNREAD } }, select: { id: true, type: true, payload: true } });
+  let revived = 0;
+  for (const row of rows) {
+    if (!Object.hasOwn(JOB_TYPES, row.type) || !JOB_TYPES[row.type as JobType].safeParse(row.payload).success) continue;
+    const updated = await db.job.updateMany({
+      where: { id: row.id, status: 'DEAD', lastErrorClass: { in: UNREAD } },
+      data: { status: 'PENDING', attempts: 0, lastErrorClass: null, lockedAt: null, lockedBy: null, runAt: clock.now(), updatedAt: clock.systemNow() },
+    });
+    revived += updated.count;
+  }
+  if (revived > 0) log.warn('jobs put back after an earlier worker could not read them', { revived });
+  return revived;
+}
+
 async function claimOne(workerId: string): Promise<ClaimedJob | null> {
   const rows = await getDb().$queryRaw<ClaimedJob[]>`
     UPDATE "Job" SET "status" = 'RUNNING', "lockedAt" = ${clock.systemNow()}, "lockedBy" = ${workerId},
