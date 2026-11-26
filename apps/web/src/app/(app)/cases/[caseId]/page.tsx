@@ -304,6 +304,7 @@ function Parties({ t, view }: { t: Translator; view: CaseView }) {
             {p.displayName} <span className="text-base font-normal text-text-muted">— {t(`case.parties.side.${p.side}`)}</span>
           </h3>
           <dl className="mt-2 grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
+            {p.quality ? <Fact label={t('case.parties.quality')}>{p.quality}</Fact> : null}
             <Fact label={t('case.parties.kind.' + p.personKind)}>{p.legalForm ?? '—'}</Fact>
             {p.legalRepresentative ? <Fact label={t('case.parties.representative')}>{p.legalRepresentative}</Fact> : null}
             <Fact label={t('case.parties.counsel')}>{p.counsel.length > 0 ? p.counsel.join(t('actions.basis.articleSeparator')) : t('case.parties.noCounsel')}</Fact>

@@ -1,6 +1,18 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { filingReady, lawArticles, moroccoDay, referralsFor, type CardParty, type LegalBasis, type Referral, type ReferralRuleSet, type UserSubject } from '@mahkama/core';
+import {
+  addressWithinDistrict,
+  filingReady,
+  lawArticles,
+  moroccoDay,
+  referralsFor,
+  type CardAddress,
+  type CardParty,
+  type LegalBasis,
+  type Referral,
+  type ReferralRuleSet,
+  type UserSubject,
+} from '@mahkama/core';
 import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getEnv } from '../config/env';
@@ -11,7 +23,7 @@ import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor }
 import type { ErrorCode } from '../http/responses';
 import { enqueue } from '../jobs/queue';
 import { createNotification } from '../notifications/service';
-import { referralRules, ruleSetId } from '../rules/store';
+import { districtRules, referralRules, ruleSetId } from '../rules/store';
 import { checkSigningSecret, signAloneInTransaction } from '../signature/service';
 import { caseTypeOf, checksOf, coveringIntent, loadDraft, parseCard, type DraftWithParts } from './drafts';
 
@@ -58,17 +70,37 @@ export function nationalRefOf(mode: 'demo' | 'production', year: number, courtCo
 
 const DOC_TYPES = { APPLICATION_COPY: 'APPLICATION', APPLICATION_ORIGINAL: 'APPLICATION_SOURCE', EXHIBIT: 'EXHIBIT', PAYMENT_RECEIPT: 'PAYMENT_RECEIPT' } as const;
 
-function addressesOf(party: CardParty, now: Date): Prisma.PartyAddressCreateWithoutPartyInput[] {
+/** Whether an address of the card lies within the district of the file's court (independent review IR-08). */
+type WithinDistrict = (address: CardAddress) => boolean | null;
+
+/**
+ * The addresses of a party with their kind and source, each place with its locality or,
+ * outside the Kingdom, its country, and whether it lies within the court's district
+ * (arts. 77, 88 and 89): a residence stays a residence (G012).
+ */
+function addressesOf(party: CardParty, now: Date, within: WithinDistrict): Prisma.PartyAddressCreateWithoutPartyInput[] {
   const out: Prisma.PartyAddressCreateWithoutPartyInput[] = [];
-  const add = (kind: 'DOMICILE' | 'RESIDENCE' | 'REGISTERED_OFFICE' | 'BRANCH' | 'ELECTRONIC' | 'PHONE', value: string | undefined, source: 'DECLARED' | 'COMMERCIAL_REGISTER' = 'DECLARED') => {
-    if (value) out.push({ kind, value, source, validFrom: now });
+  const place = (kind: 'DOMICILE' | 'RESIDENCE' | 'REGISTERED_OFFICE' | 'BRANCH', address: CardAddress | undefined) => {
+    if (!address?.value) return;
+    out.push({
+      kind,
+      value: address.value,
+      source: address.source,
+      locality: address.locality ?? null,
+      country: address.country ?? null,
+      withinCourtDistrict: within(address),
+      validFrom: now,
+    });
   };
-  add('DOMICILE', party.domicile?.value, party.domicile?.source);
-  add('RESIDENCE', party.residence?.value, party.residence?.source);
-  add('REGISTERED_OFFICE', party.registeredOffice?.value, party.registeredOffice?.source);
-  add('BRANCH', party.branch?.value, party.branch?.source);
-  add('ELECTRONIC', party.email);
-  add('PHONE', party.phone);
+  const contact = (kind: 'ELECTRONIC' | 'PHONE', value: string | undefined) => {
+    if (value) out.push({ kind, value, source: 'DECLARED', validFrom: now });
+  };
+  place('DOMICILE', party.domicile);
+  place('RESIDENCE', party.residence);
+  place('REGISTERED_OFFICE', party.registeredOffice);
+  place('BRANCH', party.branch);
+  contact('ELECTRONIC', party.email);
+  contact('PHONE', party.phone);
   return out;
 }
 
@@ -115,11 +147,13 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
   if (!stored || sha256Hex(stored) !== copy.sha256) return refused(draftId, actor, 409, 'DOCUMENT_CHANGED');
 
   const card = parseCard(draft.card);
-  const [caseType, rules, court] = await Promise.all([
+  const [caseType, rules, districts, court] = await Promise.all([
     caseTypeOf(draft.caseType, now),
     referralRules(now),
+    districtRules(now),
     getDb().court.findUniqueOrThrow({ where: { id: draft.courtId }, select: { id: true, code: true, specialty: true } }),
   ]);
+  const within: WithinDistrict = (address) => addressWithinDistrict({ districts, courtCode: court.code, address });
   if (!caseType) return refused(draftId, actor, 409, 'DRAFT_INCOMPLETE');
   if (card.parties.length === 0) return refused(draftId, actor, 409, 'DRAFT_INCOMPLETE');
   const referralRuleSetId = await ruleSetId('REFERRALS', rules.version);
@@ -193,7 +227,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
       },
     });
 
-    // 6. The parties, their addresses with their source, counsel, the claims.
+    // 6. The parties with their quality, their addresses with their source and place, counsel, the claims.
     const partyIds = new Map<string, string>();
     for (const [position, party] of freshCard.parties.entries()) {
       const id = randomUUID();
@@ -205,6 +239,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
           side: party.side,
           personKind: party.personKind,
           displayName: party.name,
+          quality: party.quality ?? null,
           legalForm: party.legalForm ?? null,
           legalRepresentative: party.legalRepresentative ?? null,
           idNumber: party.idNumber ?? null,
@@ -213,7 +248,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
           agentName: party.agent?.name ?? null,
           agentAddress: party.agent?.address ?? null,
           position: position + 1,
-          addresses: { create: addressesOf(party, now) },
+          addresses: { create: addressesOf(party, now, within) },
         },
       });
       // Counsel of the filing is a plaintiff's only (review P2-S-02; the card's schema refuses it on another side).
@@ -309,7 +344,12 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
 
     await tx.filingDraft.update({ where: { id: draftId }, data: { status: 'FILED', filedAt: now, caseFileId, updatedAt: now } });
     await appendEvent(tx, { action: 'filing.submitted', details: { draftId, caseFileId, channel: fresh.channel }, caseFileId, actor });
-    await appendEvent(tx, { action: 'case.registered', details: { caseFileId, draftId, number, code, year, channel: fresh.channel }, caseFileId, actor });
+    await appendEvent(tx, {
+      action: 'case.registered',
+      details: { caseFileId, draftId, number, code, year, channel: fresh.channel, districtsVersion: districts.version },
+      caseFileId,
+      actor,
+    });
     await appendEvent(tx, {
       action: 'case.referrals.reviewed',
       details: { caseFileId, ruleVersion: rules.version, referrals: referrals.length, grounds: groundsText(referrals) },

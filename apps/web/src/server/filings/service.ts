@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   stripInvisible,
+  CARD_ADDRESS_FIELDS,
   CARD_SECTIONS,
   FilingCardSchema,
   SECURITY_POLICY,
@@ -119,9 +120,25 @@ function cardFieldErrors(error: z.ZodError): Record<string, string> {
   return fields;
 }
 
-const ADDRESS_FIELDS = ['domicile', 'residence', 'registeredOffice', 'branch'] as const;
+const ADDRESS_FIELDS = CARD_ADDRESS_FIELDS;
 /** A locality code of the districts table, as the card's schema accepts it. */
 const LOCALITY_CODE = /^[a-z][a-z0-9-]{1,40}$/;
+
+/**
+ * The addresses of the card sent whose locality the districts table in force does not
+ * list (independent review IR-08): the card offers its localities only, and the file's
+ * court reads its district from them. Keyed as the card's other field errors.
+ */
+function unknownLocalities(card: FilingCard, localities: readonly string[]): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const [index, party] of card.parties.entries()) {
+    for (const field of ADDRESS_FIELDS) {
+      const locality = party[field]?.locality;
+      if (locality !== undefined && !localities.includes(locality)) fields[`card.parties.${String(index)}.${field}.locality`] = 'errors.field.invalid';
+    }
+  }
+  return fields;
+}
 const sameText = (a: string, b: string) => stripInvisible(a).replace(/\s+/g, ' ').trim() === stripInvisible(b).replace(/\s+/g, ' ').trim();
 
 /**
@@ -147,8 +164,8 @@ async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
         if (!sameCompany || !given || !sameText(given, address.value)) next[field] = { ...address, source: 'DECLARED' };
         else {
           // The register's own locality for the address it gives (it gives one for the registered
-          // office only), never one typed beside it.
-          const { locality: _typed, ...rest } = address;
+          // office only), never a locality or a country typed beside it.
+          const { locality: _typed, country: _abroad, ...rest } = address;
           const locality = field === 'registeredOffice' && entry.locality && LOCALITY_CODE.test(entry.locality) ? entry.locality : null;
           next[field] = { ...rest, ...(locality ? { locality } : {}) };
         }
@@ -181,6 +198,8 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
   if (body.card !== undefined) {
     const parsed = FilingCardSchema.safeParse(body.card);
     if (!parsed.success) return refused(draft.id, actor, 422, 'INVALID_INPUT', cardFieldErrors(parsed.error));
+    const unknown = unknownLocalities(parsed.data, (await districtRules(now)).localities);
+    if (Object.keys(unknown).length > 0) return refused(draft.id, actor, 422, 'INVALID_INPUT', unknown);
     card = await withRegisterSources(parsed.data);
     // A section the server rewrote (an address no longer «from the register») is not attested in
     // this request: the depositor attests what he sees, and sees it again first.

@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   PROCEDURE_ACTIONS,
+  addressWithinDistrict,
   assessCourtFee,
   computeTimeLimit,
   formatMoroccoDate,
@@ -23,7 +24,7 @@ import { storeDocument } from '@/server/documents/service';
 import { DocumentGenerationError, generatePdf, type GenerateInput, type TemplateName } from '@/server/documents/generate';
 import { openSignatureCircle, setSigningSecret, signDocument } from '@/server/signature/service';
 import { paidAmountUncertain } from '@/server/payments/uncertainty';
-import { feeSchedule, holidayCalendar, timeLimitRules } from '@/server/rules/store';
+import { districtRules, feeSchedule, holidayCalendar, timeLimitRules } from '@/server/rules/store';
 import { lawArticlesText } from '@/i18n/legal-basis';
 import { translator } from '@/i18n/translate';
 import { DEMO_CASE_CONTENT, DEMO_TEXTS, type DemoCaseContent } from './seed-data/cases';
@@ -256,7 +257,7 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
   const courtKey: DemoCourtKey = content.caseType === 'APPEAL_COMMERCIAL' ? 'appeal' : 'firstInstance';
   const row = await db.caseFile.findFirst({
     where: { courtId: ctx.courtIds[courtKey], number: content.number, isDemo: true },
-    include: { court: { select: { name: true } }, _count: { select: { parties: true } }, nextHearing: { select: { startsAt: true } } },
+    include: { court: { select: { name: true, code: true } }, _count: { select: { parties: true } }, nextHearing: { select: { startsAt: true } } },
   });
   if (!row || row._count.parties > 0) return false;
 
@@ -277,7 +278,10 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
   const stamped = status !== 'REGISTERED';
   const rapporteurUserId = content.rapporteur && stamped ? await userId(content.rapporteur) : null;
 
-  // The parties, their addresses and their counsel.
+  // The parties with their quality, their addresses with their locality, and their counsel. Whether
+  // an address lies within the court's district is read from the districts table in force, as at
+  // registration (independent review IR-08), never assumed.
+  const districts = await districtRules(now);
   const parties: Party[] = [];
   for (const [index, p] of content.parties.entries()) {
     const id = randomUUID();
@@ -289,6 +293,7 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
         side: p.side,
         personKind: p.personKind,
         displayName: p.name,
+        quality: p.quality,
         legalForm: p.legalForm ?? null,
         litigantUserId,
         eServiceAcceptedAt: p.litigant ? registeredAt : null,
@@ -301,7 +306,8 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
         kind: p.personKind === 'LEGAL' ? 'REGISTERED_OFFICE' : 'DOMICILE',
         value: p.address,
         source: p.addressSource,
-        withinCourtDistrict: true,
+        locality: p.locality,
+        withinCourtDistrict: addressWithinDistrict({ districts, courtCode: row.court.code, address: { locality: p.locality } }),
         validFrom: registeredAt,
       },
     });

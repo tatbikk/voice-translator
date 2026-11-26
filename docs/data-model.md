@@ -200,6 +200,8 @@
 | `RoleAssignment` (عمودان مضافان) | الصفة | `professionalNumber` (الرقم الوطني للمحامي)، `professionalBody` (هيئته)، م 77 |
 | `CaseParty` (أعمدة مضافة) | الطرف | `publicEntityKind` (`STATE`، `LOCAL_AUTHORITY`، `PUBLIC_ESTABLISHMENT`، `OTHER_PUBLIC`، `STATE_JUDICIAL_AGENT`، `LOCAL_AUTHORITIES_AGENT`؛ م 20 و605)، `capacityStatus` (`FULL`، `INCAPABLE`، `ABSENT`؛ م 18)، `agentName` و`agentAddress` (وكيل المدعي، م 77) |
 | `PartyAddress` (قيمتان مضافتان) | العنوان | `kind`: `RESIDENCE` محل الإقامة، و`BRANCH` مقر الفرع (م 77) |
+| `CaseParty` (عمود مضاف بعد المراجعة المستقلة، IR-08) | الطرف | `quality` (صفة الطرف، م 77، منقولة من «بطاقة الدعوى» عند التقييد) |
+| `PartyAddress` (عمودان مضافان بعد المراجعة المستقلة، IR-08) | العنوان | `locality` (رمز المدينة في جدول الدوائر)، `country` (بلد العنوان الواقع خارج تراب المملكة، م 89)، ولا يجتمعان؛ و`withinCourtDistrict` يحسب عند التقييد من جدول الدوائر الساري لمحكمة الملف: فراغ حين لا تعرف المدينة، و«لا» خارج تراب المملكة (م 88 و89، القرار 69) |
 
 ### الجداول المرجعية الجديدة في `RuleSet`
 

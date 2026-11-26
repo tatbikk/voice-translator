@@ -11,7 +11,11 @@ export interface DemoParty {
   readonly personKind: 'NATURAL' | 'LEGAL';
   readonly name: string;
   readonly legalForm?: string;
+  /** the party's «صفة» (art. 77), as the application states it */
+  readonly quality: string;
   readonly address: string;
+  /** the locality code of the address in the districts table (rules/districts.json) */
+  readonly locality: string;
   readonly addressSource: 'DECLARED' | 'COMMERCIAL_REGISTER';
   readonly counsel?: 'lawyer.plaintiff' | 'lawyer.defendants';
   /** the party is the demo litigant, who accepted electronic service */
@@ -54,8 +58,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: null,
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة حاء زاي للبناء', legalForm: sarl, address: 'الدار البيضاء، زنقة النموذج، رقم 12', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة طاء ياء للتجهيز', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 40', addressSource: 'DECLARED' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة حاء زاي للبناء', quality: 'مدعية', legalForm: sarl, address: 'الدار البيضاء، زنقة النموذج، رقم 12', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة طاء ياء للتجهيز', quality: 'مدعى عليها', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 40', locality: 'casablanca', addressSource: 'DECLARED' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 125_000 },
@@ -70,8 +74,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة ياء دال للتوزيع', legalForm: sa, address: 'الدار البيضاء، زنقة المثال، رقم 3', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'NATURAL', name: 'السيد خاء زاي', address: 'المحمدية، حي النموذج، رقم 7', addressSource: 'DECLARED' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة ياء دال للتوزيع', quality: 'مدعية', legalForm: sa, address: 'الدار البيضاء، زنقة المثال، رقم 3', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'NATURAL', name: 'السيد خاء زاي', quality: 'مدعى عليه', address: 'المحمدية، حي النموذج، رقم 7', locality: 'mohammedia', addressSource: 'DECLARED' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 92_000 },
@@ -85,8 +89,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiSecond',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة لام هاء للنسيج', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 18', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة ميم واو للخدمات', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 55', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة لام هاء للنسيج', quality: 'مدعية', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 18', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة ميم واو للخدمات', quality: 'مدعى عليها', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 55', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 210_000 },
@@ -100,8 +104,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة نون زاي للأغذية', legalForm: sa, address: 'الدار البيضاء، شارع المثال، رقم 9', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة سين هاء للتبريد', legalForm: sarl, address: 'برشيد، المنطقة الصناعية النموذجية، رقم 2', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة نون زاي للأغذية', quality: 'مدعية', legalForm: sa, address: 'الدار البيضاء، شارع المثال، رقم 9', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة سين هاء للتبريد', quality: 'مدعى عليها', legalForm: sarl, address: 'برشيد، المنطقة الصناعية النموذجية، رقم 2', locality: 'berrechid', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 340_000 },
@@ -115,8 +119,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiSecond',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة عين دال للمعادن', legalForm: sa, address: 'الدار البيضاء، زنقة النموذج، رقم 30', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة فاء زاي للتصدير', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 71', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة عين دال للمعادن', quality: 'مدعية', legalForm: sa, address: 'الدار البيضاء، زنقة النموذج، رقم 30', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة فاء زاي للتصدير', quality: 'مدعى عليها', legalForm: sarl, address: 'الدار البيضاء، شارع المثال، رقم 71', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
     ],
     claims: [{ party: 'p', category: 'PRINCIPAL', nature: 'DAMAGES', dirhams: 150_000 }],
     judgment: {
@@ -137,9 +141,9 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'judge.rapporteur',
     panel: 'fiFirst',
     parties: [
-      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة صاد واو للأثاث', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 14', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
-      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة قاف هاء للتجارة', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 88', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
-      { key: 'g', side: 'GUARANTOR', personKind: 'NATURAL', name: 'السيد جيم', address: 'الدار البيضاء، حي المثال، رقم 5', addressSource: 'DECLARED', counsel: 'lawyer.defendants', litigant: true },
+      { key: 'p', side: 'PLAINTIFF', personKind: 'LEGAL', name: 'شركة صاد واو للأثاث', quality: 'مدعية', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 14', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'd', side: 'DEFENDANT', personKind: 'LEGAL', name: 'شركة قاف هاء للتجارة', quality: 'مدعى عليها', legalForm: sarl, address: 'الدار البيضاء، شارع النموذج، رقم 88', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'g', side: 'GUARANTOR', personKind: 'NATURAL', name: 'السيد جيم', quality: 'كفيل متضامن', address: 'الدار البيضاء، حي المثال، رقم 5', locality: 'casablanca', addressSource: 'DECLARED', counsel: 'lawyer.defendants', litigant: true },
     ],
     claims: [
       { party: 'p', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 300_000 },
@@ -164,8 +168,8 @@ export const DEMO_CASE_CONTENT: readonly DemoCaseContent[] = [
     rapporteur: 'counsellor.rapporteur',
     panel: 'apFirst',
     parties: [
-      { key: 'a', side: 'APPELLANT', personKind: 'LEGAL', name: 'شركة راء واو للتأمين', legalForm: sa, address: 'الرباط، شارع النموذج، رقم 6', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
-      { key: 'r', side: 'RESPONDENT', personKind: 'LEGAL', name: 'شركة شين دال للنقل', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 21', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
+      { key: 'a', side: 'APPELLANT', personKind: 'LEGAL', name: 'شركة راء واو للتأمين', quality: 'مستأنفة', legalForm: sa, address: 'الرباط، شارع النموذج، رقم 6', locality: 'rabat', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.defendants' },
+      { key: 'r', side: 'RESPONDENT', personKind: 'LEGAL', name: 'شركة شين دال للنقل', quality: 'مستأنف عليها', legalForm: sarl, address: 'الدار البيضاء، زنقة المثال، رقم 21', locality: 'casablanca', addressSource: 'COMMERCIAL_REGISTER', counsel: 'lawyer.plaintiff' },
     ],
     claims: [{ party: 'a', category: 'PRINCIPAL', nature: 'DEBT', dirhams: 150_000 }],
   },

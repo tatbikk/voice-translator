@@ -196,9 +196,10 @@ export const EVENT_TYPES = {
   'payment.expired': { outcome: 'DONE', details: detailsOf({ intentId: id }) },
   'payment.receipt.issued': { outcome: 'DONE', details: detailsOf({ draftId: id, paymentId: id, documentId: id }) },
   'registers.commercial.looked-up': { outcome: 'DONE', details: detailsOf({ found: z.boolean() }) },
+  /** with the version of the districts table each address was placed by, within or outside the court's district (independent review IR-08) */
   'case.registered': {
     outcome: 'DONE',
-    details: detailsOf({ caseFileId: id, draftId: id, number: count, code: count, year: count, channel }),
+    details: detailsOf({ caseFileId: id, draftId: id, number: count, code: count, year: count, channel, districtsVersion: code }),
   },
   /**
    * Recorded even when no referral is due (study, «المرحلة الثانية»): the number

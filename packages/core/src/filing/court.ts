@@ -56,6 +56,32 @@ export function suggestCourt(input: SuggestionInput): CourtSuggestion {
   };
 }
 
+export interface DistrictInput {
+  readonly districts: DistrictRuleSet;
+  /** the code of the court the case is registered in */
+  readonly courtCode: string;
+  readonly address: { readonly locality?: string | null | undefined; readonly country?: string | null | undefined };
+}
+
+/**
+ * Whether an address of a party lies within the district of the court (independent
+ * review IR-08), on which the time to appear depends: five days within the district,
+ * fifteen elsewhere in the Kingdom (art. 88), three months for a party with neither
+ * domicile nor residence in the Kingdom (art. 89). An address outside the Kingdom lies
+ * within no district of it. Otherwise the districts table answers for a locality it
+ * lists and a court it gives a district; for any other, the answer is unknown (null),
+ * never a guess. The time itself is computed in Phase 3.
+ */
+export function addressWithinDistrict(input: DistrictInput): boolean | null {
+  const { districts, courtCode, address } = input;
+  if (address.country) return false;
+  const locality = address.locality ?? null;
+  if (!locality || !districts.localities.includes(locality)) return null;
+  const district = districts.districts.find((d) => d.courtCode === courtCode);
+  if (!district) return null;
+  return district.localities.includes(locality);
+}
+
 /** The principal value of claims for the suggestion, from the card's claims. */
 export function principalOf(claims: readonly { nature: ClaimNature; amountCents: number | null }[], jurisdiction: JurisdictionRuleSet): number | null {
   return principalValueCents(claims, jurisdiction);

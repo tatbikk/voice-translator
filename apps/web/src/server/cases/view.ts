@@ -59,6 +59,8 @@ export interface CaseView {
     side: string;
     personKind: string;
     displayName: string;
+    /** the party's «صفة» (art. 77), as the case card stated it: shown with the party, as its name (independent review IR-08) */
+    quality: string | null;
     legalForm: string | null;
     legalRepresentative: string | null;
     /** trade register or identity number: to the court and to counsel only (review P1-S-14) */
@@ -205,6 +207,7 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       side: p.side,
       personKind: p.personKind,
       displayName: p.displayName,
+      quality: p.quality,
       legalForm: p.legalForm,
       legalRepresentative: p.legalRepresentative,
       idNumber: seesContacts || ownParty(p) ? p.idNumber : null,

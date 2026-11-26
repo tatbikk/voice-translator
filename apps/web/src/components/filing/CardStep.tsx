@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { filerCounselByDefault, type CardSection, type FilingCard } from '@mahkama/core';
 import { apiGet } from '@/components/client/api';
 import { Button } from '@/components/ui/Button';
-import { CONTROL, Check, Field, type StepProps } from './parts';
+import { CONTROL, Check, Choice, Field, type StepProps } from './parts';
 
 // 3. «بطاقة الدعوى» (art. 77): the parties, the summary and the claims, typed by
 // hand (decision 54); a company's data may be fetched from the commercial
@@ -12,7 +12,8 @@ import { CONTROL, Check, Field, type StepProps } from './parts';
 // attestation holds as long as the section is unchanged. On the electronic
 // channel a party that becomes a plaintiff starts with «ينوب المحامي المودع عن
 // هذا الطرف» ticked (decision 67): the lawyer unticks the plaintiff, among
-// several, who keeps another counsel.
+// several, who keeps another counsel. A natural person's address is his
+// «الموطن» or his «محل الإقامة», with its locality (decision 69).
 
 type Party = FilingCard['parties'][number];
 type Claim = FilingCard['claims'][number];
@@ -87,8 +88,22 @@ export function CardStep({ view, t, busy, update }: StepProps) {
     unattest('CLAIMS');
     setClaims((list) => list.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   };
-  /** An address as typed: declared by the lawyer, whatever it was taken from. */
-  const declared = (address: Party['domicile'], value: string) => ({ ...(address ?? { source: 'DECLARED' as const }), value, source: 'DECLARED' as const });
+  // Whether the address of a natural person is his residence, not his domicile (G012): a card read
+  // again shows the choice it was saved with.
+  const [residents, setResidents] = useState<ReadonlySet<string>>(() => new Set(view.draft.card.parties.filter((p) => p.residence && !p.domicile).map((p) => p.key)));
+  const placeFieldOf = (party: Party): PlaceField => (residents.has(party.key) ? 'residence' : 'domicile');
+  /** The other choice: the address typed goes with it, and an address of the other kind takes its place. */
+  const chooseKind = (index: number, field: PlaceField) => {
+    const party = parties[index];
+    if (!party || placeFieldOf(party) === field) return;
+    setResidents((set) => {
+      const next = new Set(set);
+      if (field === 'residence') next.add(party.key);
+      else next.delete(party.key);
+      return next;
+    });
+    setParty(index, { domicile: party.residence, residence: party.domicile });
+  };
   const fromRegister = (address: Party['domicile']) =>
     address?.source === 'COMMERCIAL_REGISTER' ? <p className="-mt-3 mb-4 text-sm text-text-muted">{t('filing.card.addressFromRegister')}</p> : null;
 
@@ -255,14 +270,14 @@ export function CardStep({ view, t, busy, update }: StepProps) {
           </div>
 
           {party.personKind === 'NATURAL' ? (
-            <Field id={`${party.key}-domicile`} label={t('filing.card.domicile')}>
-              <input
-                id={`${party.key}-domicile`}
-                className={CONTROL}
-                value={party.domicile?.value ?? ''}
-                onChange={(e) => { setParty(index, { domicile: declared(party.domicile, e.target.value) }); }}
-              />
-            </Field>
+            <NaturalPersonAddress
+              party={party}
+              field={placeFieldOf(party)}
+              localities={view.localities}
+              t={t}
+              onKind={(field) => { chooseKind(index, field); }}
+              onAddress={(field, address) => { setParty(index, field === 'residence' ? { residence: address } : { domicile: address }); }}
+            />
           ) : (
             <>
               <Field id={`${party.key}-office`} label={t('filing.card.registeredOffice')}>
@@ -322,7 +337,15 @@ export function CardStep({ view, t, busy, update }: StepProps) {
               <Check checked={party.representedByFiler === true} onChange={(checked) => { setParty(index, { representedByFiler: checked }); }} label={t(paper ? 'filing.card.representedByPaperLawyer' : 'filing.card.representedByFiler')} />
             )}
             {parties.length > 1 ? (
-              <Button variant="quiet" onClick={() => { unattest(sectionOf(party.side)); setParties((list) => list.filter((_, i) => i !== index)); }}>
+              <Button
+                variant="quiet"
+                onClick={() => {
+                  unattest(sectionOf(party.side));
+                  setParties((list) => list.filter((_, i) => i !== index));
+                  // A party added later may take the key again: it starts with «الموطن» chosen.
+                  setResidents((set) => (set.has(party.key) ? new Set([...set].filter((k) => k !== party.key)) : set));
+                }}
+              >
                 {t('filing.card.removeParty', { n: index + 1 })}
               </Button>
             ) : null}
@@ -427,6 +450,83 @@ export function CardStep({ view, t, busy, update }: StepProps) {
         {t('filing.save')}
       </Button>
     </div>
+  );
+}
+
+type Address = NonNullable<Party['domicile']>;
+type PlaceField = 'domicile' | 'residence';
+const PLACE_FIELDS: readonly PlaceField[] = ['domicile', 'residence'];
+const PLACE_KINDS: Readonly<Record<PlaceField, 'DOMICILE' | 'RESIDENCE'>> = { domicile: 'DOMICILE', residence: 'RESIDENCE' };
+/** The choice «خارج تراب المملكة» of the list of localities: never a locality code, which starts with a letter. */
+const ABROAD = '@abroad';
+
+/** An address as typed: declared by the lawyer, whatever it was taken from. */
+function declared(address: Party['domicile'], value: string): Address {
+  return { ...(address ?? { source: 'DECLARED' as const }), value, source: 'DECLARED' };
+}
+
+/** The address in the place chosen: a locality of the list, outside the Kingdom (its country typed next), or none. */
+function placed(address: Party['domicile'], place: string): Address {
+  const { locality: _locality, country, ...rest } = declared(address, address?.value ?? '');
+  if (place === '') return rest;
+  if (place === ABROAD) return { ...rest, country: country ?? '' };
+  return { ...rest, locality: place };
+}
+
+/**
+ * The address of a natural person: «الموطن» or «محل الإقامة» (art. 77), each kept as what it is
+ * (G012), with its locality from the list of the first screen, or outside the Kingdom with its
+ * country (arts. 88 and 89; independent review IR-08).
+ */
+function NaturalPersonAddress({
+  party,
+  field,
+  localities,
+  t,
+  onKind,
+  onAddress,
+}: {
+  party: Party;
+  field: PlaceField;
+  localities: readonly string[];
+  t: StepProps['t'];
+  onKind: (field: PlaceField) => void;
+  onAddress: (field: PlaceField, address: Address) => void;
+}) {
+  const address = party[field];
+  const place = address?.country !== undefined ? ABROAD : (address?.locality ?? '');
+  return (
+    <>
+      <fieldset className="mb-5">
+        <legend className="mb-2 font-medium">{t('filing.card.domicile')}</legend>
+        <div className="flex flex-wrap gap-6">
+          {PLACE_FIELDS.map((f) => (
+            <Choice key={f} name={`${party.key}-addressKind`} checked={field === f} onChange={() => { onKind(f); }} label={t(`filing.card.addressKinds.${PLACE_KINDS[f]}`)} />
+          ))}
+        </div>
+      </fieldset>
+      <div className="grid gap-x-6 sm:grid-cols-2">
+        <Field id={`${party.key}-address`} label={t('filing.card.address')}>
+          <input id={`${party.key}-address`} className={CONTROL} value={address?.value ?? ''} onChange={(e) => { onAddress(field, declared(address, e.target.value)); }} />
+        </Field>
+        <Field id={`${party.key}-locality`} label={t('filing.card.locality')} hint={t('filing.card.localityHint')}>
+          <select id={`${party.key}-locality`} className={CONTROL} value={place} onChange={(e) => { onAddress(field, placed(address, e.target.value)); }}>
+            <option value="">{t('filing.choose')}</option>
+            {localities.map((code) => (
+              <option key={code} value={code}>
+                {t(`localities.${code}`)}
+              </option>
+            ))}
+            <option value={ABROAD}>{t('filing.card.abroad')}</option>
+          </select>
+        </Field>
+        {place === ABROAD ? (
+          <Field id={`${party.key}-country`} label={t('filing.card.country')}>
+            <input id={`${party.key}-country`} className={CONTROL} value={address?.country ?? ''} onChange={(e) => { onAddress(field, { ...declared(address, address?.value ?? ''), country: e.target.value }); }} />
+          </Field>
+        ) : null}
+      </div>
+    </>
   );
 }
 

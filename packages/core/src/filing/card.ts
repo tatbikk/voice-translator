@@ -45,9 +45,14 @@ const AddressSchema = z
     value: text(300),
     /** a locality of the districts table (rules/districts.json), by its code */
     locality: optional(z.string().regex(/^[a-z][a-z0-9-]{1,40}$/)),
+    /** the country of an address outside the Kingdom (art. 89), as declared; never with a locality */
+    country: optional(text(100)),
     source: z.enum(['DECLARED', 'COMMERCIAL_REGISTER']),
   })
   .strict();
+
+/** The fields of a party that hold a place where the party may be found (art. 77). */
+export const CARD_ADDRESS_FIELDS = ['domicile', 'residence', 'registeredOffice', 'branch'] as const;
 
 /** An address or an agent left blank in the form is absent. */
 const blankObject = (field: string) => (value: unknown) =>
@@ -124,6 +129,13 @@ export const FilingCardSchema = z
       }
       if (party.agent !== undefined && party.side !== 'PLAINTIFF') {
         ctx.addIssue({ code: 'custom', path: ['parties', index, 'agent'], message: 'the agent of art. 77 is the plaintiff’s' });
+      }
+      // An address lies in a locality of the districts table or outside the Kingdom, not both (independent review IR-08).
+      for (const field of CARD_ADDRESS_FIELDS) {
+        const address = party[field];
+        if (address?.locality !== undefined && address.country !== undefined) {
+          ctx.addIssue({ code: 'custom', path: ['parties', index, field, 'country'], message: 'a locality of the Kingdom or a country, not both' });
+        }
       }
     }
   });

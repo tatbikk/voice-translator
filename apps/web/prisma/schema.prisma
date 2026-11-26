@@ -595,6 +595,8 @@ model CaseParty {
   capacityStatus      String?
   agentName           String?
   agentAddress        String?
+  /// IR-08: the party's capacity in the suit (art. 77: «صفة»), as the case card states it
+  quality             String?
   /// procedural facts about the party (PartyFact codes)
   facts               String[]   @default([])
   position            Int        @default(0)
@@ -635,6 +637,11 @@ model PartyAddress {
   kind                AddressKind
   value               String
   source              AddressSource
+  /// IR-08: the locality code of the districts table (rules/districts.json), when known
+  locality            String?
+  /// IR-08: the country of an address outside the Kingdom (art. 89), as declared; never with a locality
+  country             String?
+  /// from the districts table in force at registration, for the file's court: null when the locality is unknown
   withinCourtDistrict Boolean?
   validFrom           DateTime      @db.Timestamptz(3)
   supersededAt        DateTime?     @db.Timestamptz(3)
