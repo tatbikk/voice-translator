@@ -5,9 +5,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CHECK_CODES, ROLE_CODES, ROLES } from '@mahkama/core';
+import { CHECK_CODES, CLAIM_NATURE_CODES, ROLE_CODES, ROLES, assessCourtFee, type FeeRuleSet } from '@mahkama/core';
 import { AR_FILES, MESSAGES } from '@/i18n/messages';
 import { PAGES } from '@/server/http/page-registry';
+import { ruleSourceFiles } from '@/server/rules/store';
 
 const REPO = join(import.meta.dirname, '..', '..', '..', '..');
 const ar = MESSAGES.ar;
@@ -94,6 +95,28 @@ describe('message files', () => {
     expect(text).toBeTruthy();
     // The lawyer reads, in the check, the label of the box he finds on the card.
     expect(text).toContain(`«${ar['filing.card.representedByFiler'] ?? ''}»`);
+  });
+
+  it('word the basis of every line of a fee, the line of an unvalued claim included, and the mark that goes with an unsettled amount (independent review IR-04, IR-26)', () => {
+    const table = ruleSourceFiles().find((f) => f.kind === 'FEES' && f.validTo === null)?.content as FeeRuleSet;
+    const assessment = assessCourtFee({
+      claims: [
+        { nature: 'DEBT', amountCents: 5_000_000 },
+        { nature: 'OTHER', amountCents: null },
+      ],
+      filing: 'APPEAL',
+      schedule: table,
+    });
+    expect(assessment.lines.map((line) => line.kind)).toEqual(['PROPORTIONAL', 'SURCHARGE', 'APPEAL_SURCHARGE', 'UNVALUED_CLAIM', 'PLEADING']);
+    for (const line of assessment.lines) expect(ar[line.basis], line.basis).toBeTruthy();
+    // The line of an unvalued claim names the claim: every nature has its label.
+    for (const nature of CLAIM_NATURE_CODES) expect(ar[`case.claims.nature.${nature}`], nature).toBeTruthy();
+    expect(ar['fees.basis.unvaluedClaim']).toContain('{claim}');
+    // One wording of the mark, the glossary's, for the screens and the printed receipts.
+    expect(ar['common.provisionalValue']).toBe('قيمة مؤقتة غير مؤكدة');
+    // The screen of the fee says what is unsettled: the rates, the way they apply, the claim without amount.
+    expect(ar['filing.fee.uncertainWhy']).toMatch(/طريقة/);
+    expect(ar['filing.fee.uncertainWhy']).toMatch(/غير محدد القيمة|غير المحددة القيمة/);
   });
 });
 

@@ -110,10 +110,14 @@ async function fileModelCase(page: Page): Promise<string> {
   await expect(fee).toContainText(FILING.uncertain);
   await page.getByRole('button', { name: FILING.pay }).click();
   await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.payment);
+  // The amount rests on rates not checked on the official text: the mark goes with it (independent review IR-26).
+  await expect(page.locator('main')).toContainText(/5[.\u202F\u00A0 ]?570/);
+  await expect(page.locator('main')).toContainText(FILING.uncertain);
   await expect(page.getByRole('button', { name: FILING.fail })).toBeVisible();
   await expect(page.getByRole('button', { name: FILING.cancel })).toBeVisible();
   await page.getByRole('button', { name: FILING.succeed }).click();
   await expect(page.getByRole('heading', { name: FILING.paymentReceipt })).toBeVisible();
+  await expect(page.getByRole('region', { name: FILING.paymentReceipt })).toContainText(FILING.uncertain);
   await page.getByRole('link', { name: FILING.backToDraft }).click();
 
   // 6. The check before signature warns about the defendant's e-mail, then signature and filing.
@@ -133,6 +137,9 @@ async function fileModelCase(page: Page): Promise<string> {
   await expect(receipt).toContainText(/[0-9a-f]{64}/);
   await expect(receipt).toContainText(FILING.natures.ORIGINAL);
   await expect(receipt).toContainText(FILING.natures.CERTIFIED_COPY);
+  // «وصل الإيداع» shows the fee paid with its mark (independent review IR-26).
+  await expect(receipt).toContainText(/5[.\u202F\u00A0 ]?570/);
+  await expect(receipt).toContainText(FILING.uncertain);
   return (await receipt.textContent()) ?? '';
 }
 
@@ -168,6 +175,8 @@ test.describe('the filing and the registration (Phase 2)', () => {
     const first = incoming.getByRole('article').first();
     await expect(first).toBeVisible();
     await expect(first.getByText(OFFICES.caseCard)).toBeVisible();
+    // The fee paid rests on rates not checked on the official text: the card says so (independent review IR-26).
+    await expect(first).toContainText(FILING.uncertain);
     await expect(first.getByRole('button', { name: OFFICES.stamp })).toBeVisible();
     await expect(first.getByRole('button', { name: OFFICES.reclassify })).toBeVisible();
     await expect(first.getByRole('button', { name: OFFICES.noteToJudge })).toBeVisible();
@@ -242,6 +251,8 @@ test.describe('the filing and the registration (Phase 2)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(PAGE_TITLES.cashier);
     const payments = page.getByRole('region', { name: OFFICES.incomingPayments });
     await expect(payments).toContainText(/5[.\u202F\u00A0 ]?570/);
+    // And the mark of an amount that rests on an unsettled rule (independent review IR-26).
+    await expect(payments).toContainText(FILING.uncertain);
     await expect(page.getByRole('region', { name: OFFICES.deposits })).toBeVisible();
   });
 

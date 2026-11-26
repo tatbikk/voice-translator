@@ -48,7 +48,7 @@ export interface DraftView {
     readonly caseFileId: string | null;
   };
   readonly documents: readonly DraftDocumentView[];
-  readonly fee: { readonly totalCents: number; readonly uncertain: boolean; readonly lines: readonly { kind: string; amountCents: number; basis: string; uncertain: boolean }[] } | null;
+  readonly fee: { readonly totalCents: number; readonly uncertain: boolean; readonly lines: readonly { kind: string; amountCents: number; basis: string; uncertain: boolean; claimNature?: string | null }[]; readonly excluded: readonly string[] } | null;
   readonly payment: { readonly status: 'NONE' | 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'EXPIRED'; readonly intentId: string | null; readonly operationRef: string | null };
   readonly claimsLocked: boolean;
   readonly checks: readonly CheckView[];

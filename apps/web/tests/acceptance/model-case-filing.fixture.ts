@@ -218,3 +218,22 @@ export function withCounselBox(card: Card, box: (party: CardParty) => boolean | 
 export function withParties(card: Card, extra: readonly CardParty[]): Card {
   return { ...card, parties: [...card.parties, ...extra] };
 }
+
+/** The same card with other claims (independent review IR-03, IR-04, IR-26). */
+export function withClaims(card: Card, claims: readonly CardClaim[]): Card {
+  return { ...card, claims };
+}
+
+/**
+ * A debt whose amount was left empty, and «طلب آخر» without amount: neither is outside the base
+ * by rule, and the fee of a claim of undetermined value is an open question (س41). Each has a
+ * line of its own in the fee, marked «قيمة مؤقتة غير مؤكدة».
+ */
+export const UNVALUED_DEBT: CardClaim = { key: 'debt', nature: 'DEBT', amountCents: null };
+export const UNVALUED_OTHER: CardClaim = { key: 'other', nature: 'OTHER', amountCents: null, description: 'فسخ عقد التوريد' };
+
+/** A claim the fee table puts outside the base (study): alone, it calls for the pleading fee only, which is settled. */
+export const ENFORCEMENT_ONLY: CardClaim = { key: 'enforcement', nature: 'PROVISIONAL_ENFORCEMENT', amountCents: null };
+
+/** The pleading fee: 10 dirhams (study, «المرحلة الأولى»). */
+export const PLEADING_FEE_CENTS = 1_000;

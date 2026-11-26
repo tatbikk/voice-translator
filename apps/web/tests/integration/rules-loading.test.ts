@@ -102,7 +102,7 @@ describe('a version loaded open-ended is closed when its successor comes (review
    * The release on a database that holds the first version of a table as it was loaded,
    * open-ended and without its successor: the version is closed, the successor loaded, both recorded.
    */
-  async function upgrade(kind: 'HOLIDAYS' | 'REFERRALS'): Promise<{ closed: (typeof files)[number]; successor: (typeof files)[number] }> {
+  async function upgrade(kind: 'HOLIDAYS' | 'REFERRALS' | 'FEES'): Promise<{ closed: (typeof files)[number]; successor: (typeof files)[number] }> {
     const closed = files.find((f) => f.kind === kind && f.validTo !== null);
     const successor = files.find((f) => f.kind === kind && f.validTo === null);
     if (!closed || !successor) throw new Error(`the ${kind} table holds a closed version and its successor`);
@@ -156,6 +156,20 @@ describe('a version loaded open-ended is closed when its successor comes (review
     expect(Object.keys(communication(closed).publicEntityKinds).sort()).toEqual(['LOCAL_AUTHORITY', 'OTHER_PUBLIC', 'PUBLIC_ESTABLISHMENT', 'STATE']);
     expect(communication(successor).anyPublicLawPerson).toBe(1);
     expect(communication(successor).publicEntityKinds).toMatchObject({ STATE_JUDICIAL_AGENT: 1, LOCAL_AUTHORITIES_AGENT: 1 });
+  }, 120_000);
+
+  it('upgrades the fee table loaded by Phase 1: closes it, loads the version that marks every band, the way the bands apply and the fee of an unvalued claim uncertain, records both (independent review IR-03, IR-04)', async () => {
+    const { closed, successor } = await upgrade('FEES');
+    const schedule = (table: { content: unknown }) =>
+      (table.content as { schedule: { bands: { rateBasisPoints: number; uncertain: boolean }[]; method?: { value: string; uncertain: boolean }; unvaluedClaimFee?: { value: number; uncertain: boolean } } }).schedule;
+    // The version loaded by Phase 1 is kept as it was applied; its successor has the same rates, all marked.
+    expect(schedule(closed).bands.map((band) => band.uncertain)).toEqual([false, false, true]);
+    expect(schedule(closed).method).toBeUndefined();
+    expect(schedule(closed).unvaluedClaimFee).toBeUndefined();
+    expect(schedule(successor).bands.map((band) => band.rateBasisPoints)).toEqual(schedule(closed).bands.map((band) => band.rateBasisPoints));
+    expect(schedule(successor).bands.map((band) => band.uncertain)).toEqual([true, true, true]);
+    expect(schedule(successor).method).toMatchObject({ value: 'BAND_RATE_ON_WHOLE_BASE', uncertain: true });
+    expect(schedule(successor).unvaluedClaimFee).toMatchObject({ value: 0, uncertain: true });
   }, 120_000);
 });
 

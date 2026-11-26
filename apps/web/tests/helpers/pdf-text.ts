@@ -160,3 +160,18 @@ export function readsRightToLeft(texts: readonly string[], line: string): boolea
   }
   return false;
 }
+
+/**
+ * Whether a right-to-left phrase appears on a page, alone or within a longer line:
+ * the same reading as readsRightToLeft, for a few words that share their line
+ * with others (an amount and the mark that goes with it).
+ */
+export function containsRightToLeft(texts: readonly string[], phrase: string): boolean {
+  const wanted = compact(phrase);
+  for (let i = 0; i < texts.length; i += 1) {
+    for (let k = 1; k <= 8 && i + k <= texts.length; k += 1) {
+      if (compact(texts.slice(i, i + k).reverse().join('')).includes(wanted)) return true;
+    }
+  }
+  return false;
+}

@@ -51,6 +51,29 @@ describe('the rule files of the repository', () => {
     const closed = files.filter((f) => f.kind === 'REFERRALS' && f.validTo !== null);
     expect(closed.map((f) => f.validTo)).toEqual([current[0]?.validFrom]);
   });
+
+  it('mark uncertain, in the fee table in force, every band, the way the bands apply and the fee of an unvalued claim (independent review IR-03, IR-04)', () => {
+    const current = files.filter((f) => f.kind === 'FEES' && f.validTo === null);
+    expect(current).toHaveLength(1);
+    const { schedule } = current[0]?.content as {
+      schedule: {
+        bands: { uncertain: boolean }[];
+        method?: { value: string; uncertain: boolean; articles: number[] };
+        unvaluedClaimFee?: { value: number; uncertain: boolean; articles: number[] };
+      };
+    };
+    expect(schedule.bands.map((band) => band.uncertain)).toEqual([true, true, true]);
+    expect(schedule.method).toEqual({ value: 'BAND_RATE_ON_WHOLE_BASE', uncertain: true, articles: [619] });
+    expect(schedule.unvaluedClaimFee).toEqual({ value: 0, uncertain: true, articles: [619] });
+    // The version loaded before is closed the day its successor takes effect, never rewritten:
+    // it keeps the two bands it presented as settled, and has neither setting.
+    const closed = files.filter((f) => f.kind === 'FEES' && f.validTo !== null);
+    expect(closed.map((f) => f.validTo)).toEqual([current[0]?.validFrom]);
+    const before = (closed[0]?.content as { schedule: { bands: { uncertain: boolean }[]; method?: unknown; unvaluedClaimFee?: unknown } }).schedule;
+    expect(before.bands.map((band) => band.uncertain)).toEqual([false, false, true]);
+    expect(before.method).toBeUndefined();
+    expect(before.unvaluedClaimFee).toBeUndefined();
+  });
 });
 
 describe('an invalid rule file is refused before loading (review P1-S-10)', () => {
@@ -68,6 +91,9 @@ describe('an invalid rule file is refused before loading (review P1-S-10)', () =
     ['a horizon before the start', 'HOLIDAYS', (c) => (c.coversUntil = '2020-01-01')],
     ['a last fee band with an upper bound', 'FEES', (c) => ((c.schedule as { bands: { upToCents: number | null }[] }).bands.at(-1)!.upToCents = 1)],
     ['a negative rate', 'INTEREST', (c) => ((c.rate as { value: number }).value = -1)],
+    ['a way of applying the fee bands the engine does not know', 'FEES', (c) => ((c.schedule as Record<string, unknown>).method = { value: 'EACH_SLICE_AT_ITS_RATE', uncertain: true, articles: [619] })],
+    ['a way of applying the fee bands without its uncertainty', 'FEES', (c) => ((c.schedule as Record<string, unknown>).method = { value: 'BAND_RATE_ON_WHOLE_BASE', articles: [619] })],
+    ['a negative fee for an unvalued claim', 'FEES', (c) => ((c.schedule as Record<string, unknown>).unvaluedClaimFee = { value: -1, uncertain: true, articles: [619] })],
     ['an item art. 20 does not have', 'REFERRALS', (c) => ((c.prosecution as { communication: { anyPublicLawPerson?: number } }).communication.anyPublicLawPerson = 6)],
   ];
   for (const [what, kind, change] of cases) {
