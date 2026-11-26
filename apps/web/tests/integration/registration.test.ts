@@ -249,7 +249,7 @@ describe('the lawyer who files electronically is counsel of the plaintiffs (inde
         WHERE p."caseFileId" = $1 AND r."endedAt" IS NULL ORDER BY p.position`,
       [caseFileId],
     );
-  const listed = async (user: TestUser) => (await casesOf(await subjectOf(user), { mode: 'demo', demoToolsEnabled: false, now: new Date() })).map((row) => row.id);
+  const listed = async (user: TestUser) => (await casesOf(await subjectOf(user), { mode: 'demo', demoToolsEnabled: false, now: new Date() })).rows.map((row) => row.id);
 
   it('registers him as counsel of the plaintiff by the default of the card, shows him the file in his space, and serves him the application he signed', async () => {
     // The card as the form opens it: the box «ينوب المحامي المودع عن هذا الطرف» of each party at the default of its side.

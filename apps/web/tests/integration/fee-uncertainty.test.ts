@@ -201,7 +201,7 @@ describe('the mark goes with the amount wherever it is shown (independent review
   });
 
   it('on the registry office card, for the fee paid and for the fee the claims call for', async () => {
-    const incoming = await incomingFiles(await subjectOf(cast.registry), context());
+    const incoming = (await incomingFiles(await subjectOf(cast.registry), context())).rows;
     expect(incoming.find((f) => f.caseFileId === model.caseFileId)).toMatchObject({
       feePaidCents: BigInt(MODEL_CASE_FEE_CENTS),
       feePaidUncertain: true,
