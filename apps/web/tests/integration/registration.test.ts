@@ -518,6 +518,30 @@ describe('the registry office: three buttons, and none to reject the application
     expect(await availableCodes(await as('prosecutor'), filed.caseFileId)).toEqual(['case.prosecution.conclusions', 'case.prosecution.view']);
   });
 
+  it('communicates, when its type is changed, a file registered whose only public-law party is a judicial agent; the same type is refused and recomputes nothing (review of IR-01)', async () => {
+    const filed = await fileCase(await as('lawyer'), secret, { exhibits: 1 });
+    // As a file was registered under the first referral table, which communicated four categories and not the agents.
+    await sql(`UPDATE "CaseParty" SET "personKind" = 'PUBLIC', "publicEntityKind" = 'STATE_JUDICIAL_AGENT' WHERE "caseFileId" = $1 AND side = 'DEFENDANT'`, [filed.caseFileId]);
+    expect(await count(`SELECT count(*) FROM "CaseParty" WHERE "caseFileId" = $1 AND "personKind" = 'PUBLIC'`, [filed.caseFileId])).toBeGreaterThan(0);
+    expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1`, [filed.caseFileId])).toBe(0);
+    expect(await count(`SELECT count(*) FROM "CaseFile" WHERE id = $1 AND "caseType" = $2`, [filed.caseFileId, COMMERCIAL_PAYMENT])).toBe(1);
+    const registry = await as('registry');
+
+    // Reclassified with the type it has: refused, and the referrals stay as they are.
+    await expectDenied(() => act(registry, filed.caseFileId, 'case.registration.reclassify', { caseType: COMMERCIAL_PAYMENT }), 422);
+    expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1`, [filed.caseFileId])).toBe(0);
+
+    // Another type: the referrals are recomputed with the table in force, and art. 20 (case 1) reaches the agent.
+    const res = await act(registry, filed.caseFileId, 'case.registration.reclassify', { caseType: '8203' });
+    expect(res.status, describeResponse(res)).toBe(200);
+    const referral = await one<{ target: string; ground: string; article: number; item: number | null }>(
+      'SELECT target::text, ground::text, article, item FROM "CaseReferral" WHERE "caseFileId" = $1',
+      [filed.caseFileId],
+    );
+    expect(referral).toEqual({ target: 'PROSECUTION', ground: 'COMMUNICATION', article: 20, item: 1 });
+    expect(await availableCodes(await as('prosecutor'), filed.caseFileId)).toEqual(['case.prosecution.conclusions', 'case.prosecution.view']);
+  });
+
   it('stamps once: two stamps at once leave one stamp, and the buttons that precede it disappear', async () => {
     const other = await fileCase(await as('lawyer'), secret);
     const registry = await as('registry');

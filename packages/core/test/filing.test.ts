@@ -315,8 +315,10 @@ describe('the check before signature: it warns, it does not refuse (study, «م�
     expect(FilingCardSchema.safeParse(against(office)).success, 'the card is saved without the category').toBe(true);
     const missing = checksOf({ card: against(office) });
     expect(missing.filter((c) => c.level === 'BLOCKING')).toEqual([
-      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: 20, partyKey: 'office', uncertain: false }),
+      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: null, partyKey: 'office', uncertain: false }),
     ]);
+    // The block is the platform's (decision 66): art. 20 communicates the case and neither asks for
+    // the category nor bars the payment, so the check cites no article; its message names art. 605.
     expect(filingReady(missing)).toBe(false);
     // Nothing can recall art. 605 while the category is unknown: this is why the check blocks instead of warning.
     expect(codes(missing)).not.toContain('STATE_JUDICIAL_AGENT_MISSING');

@@ -612,7 +612,7 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     const view = await getDraft(lawyer, unpaid);
     expect(view.draft.attestations).toContain('DEFENDANTS');
     expect(view.checks.filter((c) => c.level === 'BLOCKING')).toEqual([
-      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: 20, partyKey: PUBLIC_PERSON_WITHOUT_KIND.key }),
+      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: null, partyKey: PUBLIC_PERSON_WITHOUT_KIND.key }),
     ]);
     // The fee is not paid for it.
     const payment = await expectRefused(() => lawyer.post(`/api/v1/filings/${unpaid}/payment`, {}), 409, 'DRAFT_INCOMPLETE');
@@ -639,6 +639,29 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     expect(filed.status, describeResponse(filed)).toBe(200);
     expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1 AND target = 'PROSECUTION' AND article = 20 AND item = 1`, [filed.data!.caseFileId])).toBe(1);
     expect(await count('SELECT count(*) FROM "CaseReferral"')).toBe(before.referrals + 1);
+  });
+
+  it('refuses the payment at the counter while a public-law guarantor has no category, on the paper channel too (review of IR-01)', async () => {
+    const clerk = await as('clerk');
+    const guarantor = { ...PUBLIC_PERSON_WITHOUT_KIND, key: 'public-guarantor', side: 'GUARANTOR' as const, quality: 'كفيل' };
+    const draftId = await createPaperDraft(clerk);
+    const saved = await updateDraft(clerk, draftId, {
+      caseType: COMMERCIAL_PAYMENT,
+      card: withParties(MODEL_CASE, [guarantor]),
+      paperDepositor: { name: 'السيد نون', idNumber: 'DEMO-CIN-0002', quality: 'ممثل الشركة المدعية' },
+      attest: [...CARD_SECTIONS],
+    });
+    expect(saved.status, describeResponse(saved)).toBe(200);
+    const scan = await upload(clerk, draftId, { kind: 'APPLICATION', name: 'scan.pdf', bytes: pdfBytes('scan-public-guarantor'), pages: 2, location: 'خزانة التقييد، الرف 2' });
+    expect(scan.status, describeResponse(scan)).toBe(200);
+
+    const view = await getDraft(clerk, draftId);
+    expect(view.checks.filter((c) => c.level === 'BLOCKING')).toEqual([
+      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: null, partyKey: guarantor.key }),
+    ]);
+    const events = await expectRefused(() => clerk.post(`/api/v1/filings/${draftId}/payment`, {}), 409, 'DRAFT_INCOMPLETE');
+    expect(events.filter((e) => e.action === 'filing.refused' && e.details.draftId === draftId).map((e) => e.details.reason)).toEqual(['DRAFT_INCOMPLETE']);
+    expect(await count(`SELECT count(*) FROM "PaymentIntent" WHERE "draftId" = $1`, [draftId])).toBe(0);
   });
 
   it('refuses to pay or to file an electronic draft whose lawyer acts for no plaintiff, lists the check that blocks, and files once he acts for one (independent review IR-02)', async () => {
