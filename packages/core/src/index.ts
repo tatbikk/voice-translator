@@ -4,6 +4,7 @@ export * from './subject';
 export * from './conditions';
 export * from './actions';
 export * from './authorize';
+export * from './scope';
 export * from './events';
 export * from './event-chain';
 export * from './boot';

@@ -11,7 +11,10 @@ import { CaseNumber } from '@/components/ui/CaseNumber';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { ProvisionalMark } from '@/components/ui/ProvisionalMark';
+import { ListCut } from '@/components/ui/ListCut';
+import { listCutLines } from '@/components/shell/list-cut-lines';
 import { clock } from '@/server/clock';
+import { pageFrom, pageHref } from '@/server/lists/paging';
 import { caseTypesOfCourt, incomingFiles } from '@/server/offices/registry';
 import { screenMetadata } from '@/server/page-metadata';
 import { requirePage } from '@/server/permissions/guard';
@@ -27,13 +30,22 @@ const KINDS: Readonly<Record<string, ActKind>> = {
 // «مكتب التقييد» (study, «واجهة كتابة الضبط»): «الملفات الواردة», each with its
 // «بطاقة الدعوى» and three buttons — «تأشير» «تصحيح التصنيف» «ملاحظة إلى
 // القاضي» — and no button to reject the application (study, «الأصل القبول»).
-// «إيداع ورقي» records an application deposited at the office.
-export default async function RegistryPage() {
+// «إيداع ورقي» records an application deposited at the office. The files come
+// the one registered longest ago first, a page at a time (?page=N), and the
+// list says how many it shows of how many (independent review IR-11).
+export default async function RegistryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const context = await requirePage('registry', 'registry.incoming.list');
   const t = translator(context.locale);
   const now = clock.now();
   const authContext = { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now };
-  const [files, types] = await Promise.all([incomingFiles(context.subject, authContext), caseTypesOfCourt(context.subject.courtId ?? null, now)]);
+  const asked = pageFrom((await searchParams).page);
+  const [page, types] = await Promise.all([incomingFiles(context.subject, authContext, asked), caseTypesOfCourt(context.subject.courtId ?? null, now)]);
+  const files = page.rows;
+  const cut = listCutLines(t, page, {
+    list: t('registry.incoming'),
+    summaryKey: 'lists.cut.summaryOldestFirst',
+    hrefFor: (n) => pageHref('/registry', { page: page.page }, 'page', n),
+  });
   const canFilePaper = authorize(context.subject, 'filing.paper', { kind: 'new-filing' }, authContext).allowed;
   const dict = dictionary(context.locale, ['errors.', 'common.', 'filing.choose', 'filing.court.caseTypeOption', 'registry.']);
   const caseTypes = types.map((c) => ({ code: c.code, name: t(`case.type.${c.code}`) }));
@@ -128,6 +140,7 @@ export default async function RegistryPage() {
             </article>
           ))}
         </div>
+        <ListCut lines={cut} />
       </section>
     </Frame>
   );

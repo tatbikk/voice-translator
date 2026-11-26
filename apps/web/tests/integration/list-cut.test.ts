@@ -20,7 +20,7 @@ import { caseSnapshot } from '@/server/cases/snapshot';
 import { dashboardFor } from '@/server/dashboard/service';
 import { casesOf, draftsOf } from '@/server/filings/lists';
 import { cutOf, PAGE_SIZE, type Page } from '@/server/lists/paging';
-import { prosecutionReferrals } from '@/server/offices/prosecution';
+import { prosecutionReferrals, type ReferredFile } from '@/server/offices/prosecution';
 import { incomingFiles } from '@/server/offices/registry';
 import { one, sql } from '../helpers/db';
 import { createCaseFile, createCourt, createUser, type CourtFixture, type TestUser } from '../helpers/factories';
@@ -260,7 +260,7 @@ describe('«الإحالات» of the prosecution', () => {
 
   it('leaves out a file in which its conclusions can no longer be filed, which stays in «لائحة الملفات»', async () => {
     const subject = await subjectOf(cast.prosecutorA);
-    const principal = await allPages(async (page) => (await prosecutionReferrals(subject, context(), { principal: page, communication: 1 }))?.principalParty ?? emptyPage());
+    const principal = await allPages(async (page) => (await prosecutionReferrals(subject, context(), { principal: page, communication: 1 }))?.principalParty ?? emptyPage<ReferredFile>());
     expect(ids(principal)).not.toContain(seeded.judgedReferredA);
     const cases = await allPages((page) => casesOf(subject, context(), page));
     expect(cases.map((r) => r.id)).toContain(seeded.judgedReferredA);

@@ -33,5 +33,7 @@
   "account.switchRole": "تبديل الصفة",
   "account.demoAccount": "حساب من حسابات العرض",
   "dashboard.deadline.lastDay": "آخر يوم: {day}",
-  "dashboard.box.headingLabel": "{title}، العدد: {count}"
+  "dashboard.box.headingLabel": "{title}، العدد: {count}",
+  "dashboard.awaiting.cutSummary": "يعرض ما ينتظر منكم في الملفات من {from} إلى {to}، من أصل {total}، وهو عدد الملفات التي بلغت مرحلة تنتظر فيها المسطرة إجراء منكم، الأقدم أولا.",
+  "dashboard.deadlines.cutSummary": "يعرض من {from} إلى {to}، من أصل {total} من الآجال التي تقترب، أقربها انتهاء أولا."
 }

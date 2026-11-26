@@ -49,7 +49,7 @@ describe('the files a list may show (case.view)', () => {
   });
 
   it('follow the holders of «case.view» for every role, and are none for a role that never opens a file', () => {
-    expect(ACTIONS['case.view']?.caseHolders).toBe(CASE_VIEW_HOLDERS);
+    expect(ACTIONS['case.view'].caseHolders).toBe(CASE_VIEW_HOLDERS);
     for (const role of ['SYSTEM_ADMIN', 'RULES_LEGAL_VALIDATOR', 'BAILIFF', 'EXPERT', 'GARNISHEE_BANK'] as const) {
       expect(viewScope(subjectOf(role)), role).toEqual([]);
     }

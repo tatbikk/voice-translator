@@ -8,18 +8,25 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { TABLE } from '@/components/ui/table-style';
 import { TableFrame } from '@/components/ui/TableFrame';
+import { ListCut } from '@/components/ui/ListCut';
+import { listCutLines } from '@/components/shell/list-cut-lines';
 import { clock } from '@/server/clock';
 import { casesOf } from '@/server/filings/lists';
+import { pageFrom, pageHref } from '@/server/lists/paging';
 import { screenMetadata } from '@/server/page-metadata';
 import { requirePage } from '@/server/permissions/guard';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.cases');
 
-// «لائحة الملفات» (study, «واجهة المحامي»): the files the user may open.
-export default async function CasesPage() {
+// «لائحة الملفات» (study, «واجهة المحامي»): the files the user may open, a
+// page at a time (the page in the address, ?page=N), and under the table how
+// many are shown of how many (independent review IR-11).
+export default async function CasesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const context = await requirePage('cases', 'cases.list');
   const t = translator(context.locale);
-  const rows = await casesOf(context.subject, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() });
+  const page = await casesOf(context.subject, { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() }, pageFrom((await searchParams).page));
+  const rows = page.rows;
+  const cut = listCutLines(t, page, { list: t('screens.cases'), hrefFor: (n) => pageHref('/cases', { page: page.page }, 'page', n) });
   const numberLabel = t('common.caseNumberLabel');
   return (
     <Frame context={context}>
@@ -58,6 +65,7 @@ export default async function CasesPage() {
           </table>
         </TableFrame>
       )}
+      <ListCut lines={cut} />
     </Frame>
   );
 }

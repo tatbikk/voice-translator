@@ -1,15 +1,28 @@
 import 'server-only';
-import { authorize, availableActions, resolveLegalBasis, type AuthorizationContext, type LegalBasis, type UserSubject } from '@mahkama/core';
+import {
+  actionScope,
+  authorize,
+  availableActions,
+  resolveLegalBasis,
+  viewScope,
+  type AuthorizationContext,
+  type LegalBasis,
+  type UserSubject,
+} from '@mahkama/core';
 import { getDb } from '../db';
 import { caseTypeRules } from '../rules/store';
 import { caseSnapshot } from '../cases/snapshot';
+import { OLDEST_FIRST, scopesWhere } from '../cases/scope';
+import { emptyPage, PAGE_SIZE, readPage, withRows, type Page } from '../lists/paging';
 import { paidAmountUncertain } from '../payments/uncertainty';
 import { feeCalledFor } from './fees';
 
 // «مكتب التقييد» (study, «واجهة كتابة الضبط»): the files registered at the
-// clerk's court that the office has not stamped yet, newest first, each with
-// its case card and the buttons the core grants on it (three, and none to
-// reject the application).
+// clerk's court that the office has not stamped yet, each with its case card
+// and the buttons the core grants on it (three, and none to reject the
+// application). The query selects them by the state «تأشير» awaits, read from
+// the core's table (actionScope), the one registered longest ago first, a page
+// at a time with their total (independent review IR-11, decision 75).
 
 export interface IncomingFile {
   readonly caseFileId: string;
@@ -31,14 +44,15 @@ export interface IncomingFile {
   readonly actions: readonly { readonly code: string; readonly labelKey: string; readonly effectKey: string; readonly notifiedKey: string; readonly basis: LegalBasis }[];
 }
 
-const LIMIT = 30;
-
-export async function incomingFiles(subject: UserSubject, context: AuthorizationContext): Promise<IncomingFile[]> {
-  if (!authorize(subject, 'registry.incoming.list', undefined, context).allowed || !subject.courtId) return [];
-  const files = await getDb().caseFile.findMany({
-    where: { courtId: subject.courtId, status: 'REGISTERED', registrationStampedAt: null },
-    orderBy: [{ registeredAt: { sort: 'desc', nulls: 'last' } }, { number: 'desc' }],
-    take: LIMIT,
+export async function incomingFiles(subject: UserSubject, context: AuthorizationContext, page = 1): Promise<Page<IncomingFile>> {
+  if (!authorize(subject, 'registry.incoming.list', undefined, context).allowed || !subject.courtId || !context.now) return emptyPage(PAGE_SIZE.incoming);
+  const now = context.now;
+  const db = getDb();
+  const where = scopesWhere(subject, viewScope(subject), actionScope(subject, 'case.registration.stamp'));
+  const read = await readPage(PAGE_SIZE.incoming, page, () => db.caseFile.count({ where }), (window) => db.caseFile.findMany({
+    where,
+    orderBy: [...OLDEST_FIRST],
+    ...window,
     select: {
       id: true,
       number: true,
@@ -54,15 +68,15 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
       fees: { select: { totalCents: true, breakdown: true } },
       subject: true,
     },
-  });
-  const now = context.now ?? null;
+  }));
   const out: IncomingFile[] = [];
-  for (const f of files) {
-    const snapshot = now ? await caseSnapshot(f.id, now) : null;
+  for (const f of read.rows) {
+    const snapshot = await caseSnapshot(f.id, now);
     if (!snapshot) continue;
+    const resource = { kind: 'case' as const, snapshot };
+    if (!authorize(subject, 'case.view', resource, context).allowed) continue;
     // What the claims call for, computed again from them on the day of filing (review P2-A-13).
     const called = f.registeredAt ? await feeCalledFor(f.claims, f.registeredAt) : null;
-    const resource = { kind: 'case' as const, snapshot };
     const actions = availableActions(subject, resource, context)
       .filter((rule) => rule.procedure !== undefined)
       .map((rule) => ({ code: rule.code, labelKey: rule.labelKey, effectKey: rule.effectKey, notifiedKey: rule.notifiedKey, basis: resolveLegalBasis(rule, resource) }));
@@ -83,7 +97,7 @@ export async function incomingFiles(subject: UserSubject, context: Authorization
       actions,
     });
   }
-  return out;
+  return withRows(read, out);
 }
 
 /**

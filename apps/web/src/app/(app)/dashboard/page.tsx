@@ -17,18 +17,39 @@ import { CaseNumber } from '@/components/ui/CaseNumber';
 import { longDay } from '@/components/case/format';
 import type { Metadata } from 'next';
 import { buttonClass } from '@/components/ui/Button';
+import { ListCut, type ListCutLines } from '@/components/ui/ListCut';
+import { listCutLines } from '@/components/shell/list-cut-lines';
 import { screenMetadata } from '@/server/page-metadata';
+import { pageHref, pagesFrom, type Page } from '@/server/lists/paging';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.dashboard');
 
+/** The lists of the start page, each with its page in the address (independent review IR-11). */
+const LISTS = ['awaiting', 'deadlines', 'principal', 'communication'] as const;
+
 // «لوحة البداية»: what is expected of the user before the list of files, in
-// three boxes common to every role (study, «العناصر المشتركة»).
-export default async function DashboardPage() {
+// three boxes common to every role (study, «العناصر المشتركة»). The first two
+// boxes and the prosecution's referrals are read a page at a time, and say how
+// many they show of how many (independent review IR-11).
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const context = await requirePage('dashboard', 'dashboard.view');
   const t = translator(context.locale);
   const { subject, session } = context;
   const authContext = { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() };
-  const [data, referrals] = await Promise.all([dashboardFor(subject, session.session.previousLoginAt, authContext), prosecutionReferrals(subject, authContext)]);
+  const asked = pagesFrom(await searchParams, LISTS);
+  const [data, referrals] = await Promise.all([
+    dashboardFor(subject, session.session.previousLoginAt, authContext, asked),
+    prosecutionReferrals(subject, authContext, asked),
+  ]);
+  // The pages shown, so that a link to another page of one list keeps the others where they are.
+  const shown: Record<(typeof LISTS)[number], number> = {
+    awaiting: data.waiting.page,
+    deadlines: data.deadlines.page,
+    principal: referrals?.principalParty.page ?? 1,
+    communication: referrals?.communication.page ?? 1,
+  };
+  const cutOfList = (key: (typeof LISTS)[number], page: Page<unknown>, list: string, summaryKey: string) =>
+    listCutLines(t, page, { list, summaryKey, hrefFor: (n) => pageHref('/dashboard', shown, key, n) });
   const canFile = authorize(subject, 'filing.new', { kind: 'new-filing' }, authContext).allowed;
   const numberLabel = t('common.caseNumberLabel');
   const roleText = t(roleLabelKey(subject.role, session.courtDegree));
@@ -59,12 +80,13 @@ export default async function DashboardPage() {
         <Box
           id="awaiting"
           title={t('dashboard.boxes.awaitingAction')}
-          count={data.waiting.length}
-          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.awaitingAction'), count: data.waiting.length })}
+          count={data.waiting.rows.length}
+          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.awaitingAction'), count: data.waiting.rows.length })}
           emptyText={t('dashboard.empty.awaitingAction')}
+          footer={<ListCut lines={cutOfList('awaiting', data.waiting, t('dashboard.boxes.awaitingAction'), 'dashboard.awaiting.cutSummary')} />}
         >
           <ul className="space-y-3">
-            {data.waiting.map((w) => (
+            {data.waiting.rows.map((w) => (
               <li key={`${w.caseFileId}:${w.labelKey}`} className="text-sm">
                 <a href={`/cases/${w.caseFileId}`} className="font-semibold">
                   {t(w.labelKey)}
@@ -79,12 +101,13 @@ export default async function DashboardPage() {
         <Box
           id="deadlines"
           title={t('dashboard.boxes.approachingDeadlines')}
-          count={data.deadlines.length}
-          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.approachingDeadlines'), count: data.deadlines.length })}
+          count={data.deadlines.rows.length}
+          headingLabel={t('dashboard.box.headingLabel', { title: t('dashboard.boxes.approachingDeadlines'), count: data.deadlines.rows.length })}
           emptyText={t('dashboard.empty.approachingDeadlines')}
+          footer={<ListCut lines={cutOfList('deadlines', data.deadlines, t('dashboard.boxes.approachingDeadlines'), 'dashboard.deadlines.cutSummary')} />}
         >
           <ul className="space-y-3">
-            {data.deadlines.map((d) => (
+            {data.deadlines.rows.map((d) => (
               <li key={`${d.caseFileId}:${d.ruleCode}:${d.endsAt.toISOString()}`} className="text-sm">
                 <a href={`/cases/${d.caseFileId}`} className="font-semibold">
                   {t(`case.deadlines.rule.${d.ruleCode}`)}
@@ -130,8 +153,18 @@ export default async function DashboardPage() {
             {t('prosecution.referrals')}
           </h2>
           <div className="grid gap-6 lg:grid-cols-2">
-            <ReferralList t={t} title={t('prosecution.principalParty')} rows={referrals.principalParty} />
-            <ReferralList t={t} title={t('prosecution.communication')} rows={referrals.communication} />
+            <ReferralList
+              t={t}
+              title={t('prosecution.principalParty')}
+              rows={referrals.principalParty.rows}
+              cut={cutOfList('principal', referrals.principalParty, t('prosecution.principalParty'), 'lists.cut.summaryOldestFirst')}
+            />
+            <ReferralList
+              t={t}
+              title={t('prosecution.communication')}
+              rows={referrals.communication.rows}
+              cut={cutOfList('communication', referrals.communication, t('prosecution.communication'), 'lists.cut.summaryOldestFirst')}
+            />
           </div>
         </section>
       ) : null}
@@ -139,7 +172,7 @@ export default async function DashboardPage() {
   );
 }
 
-function ReferralList({ t, title, rows }: { t: Translator; title: string; rows: readonly ReferredFile[] }) {
+function ReferralList({ t, title, rows, cut }: { t: Translator; title: string; rows: readonly ReferredFile[]; cut: ListCutLines | null }) {
   const numberLabel = t('common.caseNumberLabel');
   return (
     <div className="card px-5 py-5">
@@ -164,6 +197,7 @@ function ReferralList({ t, title, rows }: { t: Translator; title: string; rows: 
           ))}
         </ul>
       )}
+      <ListCut lines={cut} />
     </div>
   );
 }

@@ -8,19 +8,26 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { TABLE } from '@/components/ui/table-style';
 import { TableFrame } from '@/components/ui/TableFrame';
+import { ListCut } from '@/components/ui/ListCut';
+import { listCutLines } from '@/components/shell/list-cut-lines';
 import { clock } from '@/server/clock';
 import { draftsOf } from '@/server/filings/lists';
+import { pageFrom, pageHref } from '@/server/lists/paging';
 import { screenMetadata } from '@/server/page-metadata';
 import { requirePage } from '@/server/permissions/guard';
 
 export const generateMetadata = (): Promise<Metadata> => screenMetadata('screens.filings');
 
-// «مشاريع الإيداع»: the lawyer's drafts, saved at any screen, and «دعوى جديدة».
-export default async function FilingsPage() {
+// «مشاريع الإيداع»: the lawyer's drafts, saved at any screen, and «دعوى جديدة»;
+// a page at a time (?page=N), saying how many are shown of how many
+// (independent review IR-11).
+export default async function FilingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const context = await requirePage('filings', 'filing.drafts.list');
   const t = translator(context.locale);
   const authContext = { mode: context.mode, demoToolsEnabled: context.demoToolsEnabled, now: clock.now() };
-  const drafts = await draftsOf(context.subject, authContext);
+  const page = await draftsOf(context.subject, authContext, pageFrom((await searchParams).page));
+  const drafts = page.rows;
+  const cut = listCutLines(t, page, { list: t('screens.filings'), hrefFor: (n) => pageHref('/filings', { page: page.page }, 'page', n) });
   // A button is shown only to whoever holds its act (the registry clerk lists the paper drafts, files none here).
   const canFile = authorize(context.subject, 'filing.new', { kind: 'new-filing' }, authContext).allowed;
   return (
@@ -62,6 +69,7 @@ export default async function FilingsPage() {
           </table>
         </TableFrame>
       )}
+      <ListCut lines={cut} />
     </Frame>
   );
 }

@@ -8,6 +8,7 @@ export function Box({
   count,
   emptyText,
   headingLabel,
+  footer,
   children,
 }: {
   id: string;
@@ -16,6 +17,8 @@ export function Box({
   emptyText: string;
   /** what a screen reader hears for the heading: the title with its count spelled out (I-09) */
   headingLabel: string;
+  /** shown whatever the count: what a box cut in pages says of the rest (independent review IR-11) */
+  footer?: ReactNode;
   children?: ReactNode;
 }) {
   const headingId = `${id}-title`;
@@ -35,7 +38,10 @@ export function Box({
           {count}
         </span>
       </h2>
-      <div className="flex-1 px-5 py-4">{count === 0 ? <EmptyState text={emptyText} /> : children}</div>
+      <div className="flex-1 px-5 py-4">
+        {count === 0 ? <EmptyState text={emptyText} /> : children}
+        {footer}
+      </div>
     </section>
   );
 }
