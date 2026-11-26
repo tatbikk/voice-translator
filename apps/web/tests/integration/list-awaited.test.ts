@@ -34,7 +34,7 @@ import * as scope from '@/server/cases/scope';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { dashboardFor, type WaitingItem } from '@/server/dashboard/service';
 import { PAGE_SIZE, type Page } from '@/server/lists/paging';
-import { one, sql } from '../helpers/db';
+import { one, runtime, sql } from '../helpers/db';
 import { createCaseFile, createCourt, createPanel, createUser, type CourtFixture, type TestUser } from '../helpers/factories';
 import { useFreshDatabase } from '../helpers/reset';
 
@@ -438,5 +438,16 @@ describe('the latest investigation of a file', () => {
 
   it('cannot be two in one file', async () => {
     await expect(sql(`UPDATE "Investigation" SET latest = true WHERE "caseFileId" = $1`, [seeded.twoInvestigations])).rejects.toThrow();
+  });
+
+  // Review of the IR-11 fix: the mark is kept on insertion and on a change of date or file, not on
+  // deletion; deleting the marked row would leave the file with none, and its facts with it. The
+  // runtime role deletes no investigation, as it deletes no document.
+  it('is never deleted by the platform, so that no file loses its mark', async () => {
+    const before = await marks(seeded.twoInvestigations);
+    await expect(runtime().query(`DELETE FROM "Investigation" WHERE "caseFileId" = $1 AND latest`, [seeded.twoInvestigations])).rejects.toThrow(/permission denied/);
+    await expect(runtime().query(`TRUNCATE "Investigation"`)).rejects.toThrow(/permission denied/);
+    expect(await marks(seeded.twoInvestigations)).toEqual(before);
+    expect(before.filter(Boolean)).toHaveLength(1);
   });
 });
