@@ -61,7 +61,7 @@
 | IR-17 | `apps/web/tests/integration/csrf.test.ts`؛ `web/app/api/v1/registers/commercial/route.ts:18`؛ `apps/web/tests/e2e/page-matrix.spec.ts` | اختبارات تسميها مذكرة المرحلة 2 دليلا ولا توجد: CSRF «ممددا إلى المسارات الجديدة» (الصف 18: الاختبار يمس مسارات المرحلة 0 وحدها)؛ والأسرار والسجلات «ممددا إلى الأحداث الجديدة» (الصف 25: مسارات الإيداع تجري تحت التقاط السجلات وفحص التسرب في آخر كل ملف اختبار، لكن لا معطى شخصيا من البطاقة مسجل للتتبع، ولا ملف أسرار وسجلات للمرحلة 2)؛ وحد استعلام السجل التجاري (الصف 22: حذف السطر لا يسقط اختبارا)؛ ووثيقة مشروع الغير (الصف 2: ربط الوثيقة بمشروعها في `web/server/filings/service.ts:472` إن أزيل لم يسقط اختبار، لأن الاختبارات تطلبها عبر مشروع الغير لا عبر مشروع الطالب)؛ وصفحات مشروع الغير وأدائه (الصف 2: المسارات البرمجية مختبرة، والصفحات لا: لا اختبار يطلب صفحة مشروع أو وصل أو أداء بصفة غير صاحبها). وضابط CSRF نفسه واحد في الغلاف ويحرسه اختبار المرحلة 0؛ الغائب هو التمديد الموعود | كتابة الاختبارات الخمسة قبل أن تمس المرحلة 3 غلاف المسارات وصفحات جديدة | قراءتان وطفرة | نعم: G093 وG097 وG095 وG102 في P2-C-06، مجمعة في صف واحد متوسط موعده «المرحلة 3» |
 | IR-18 | `core/procedure/transitions.ts:394-398`، `apps/web/tests/integration/case-visibility.test.ts:80-107`، `apps/web/tests/acceptance/model-case.fixture.ts` | مذكرة المرحلة 1 (الصف 4) تعد باختبار لزر لا يظهر بعد انصرام أجله. يثبت ذلك لتجريح الخبير وإيداع المبلغ والنقض، لا للاستئناف: حذف شرط الأجل من «الطعن بالاستئناف» لا يسقط اختبارا. واختبار التكامل المعنون بذلك يرفض الإجراء لغياب حكم منطوق به لا لانصرام الأجل، ولا شاهد إيجابي فيه. ولا اختبار تكامل يقدم ساعة المنصة لأجل | حالة «بعد الأجل» في مواصفة القبول، واختبار تكامل بحكم منطوق به: مقبول والأجل قائم، مرفوض وقد انصرم، بتقديم الساعة | طفرة | لا |
 | IR-19 | `core/rules/time-limits.ts:235`، `core/rules/calendar.ts:43` و`:78`، `core/procedure/conditions.ts:103` | حالات الآجال تتحقق من اليوم الأخير وحده، إلا حالات الساعات الثلاث. أربع طفرات لا يسقط معها اختبار في النواة: لحظة النهاية تجعل بداية اليوم الأخير؛ ويوم المغرب يؤخذ من تاريخ UTC؛ و`addMonths` بلا ضبط نهاية الشهر؛ و`>` تصير `>=` عند الانصرام. وتغيب حالات: إجراء بعد منتصف الليل بقليل بتوقيت المغرب، و31 يناير زائد شهر، و29 فبراير، ورفض يوافق يومه العاشر عطلة. والمرحلة 3 أول مرحلة تجري فيها آجال حقيقية | حالات بلغة عادية لهذه الحدود، والتحقق من لحظة النهاية لا من يومها فقط | طفرة | لا |
-| IR-20 | `web/server/cases/view.ts:172`، `apps/web/tests/integration/registration.test.ts:414-431`؛ `web/server/offices/registry.ts:31`، `web/server/offices/prosecution.ts:25`، `web/server/filings/lists.ts:21` و`:47` | ملاحظة مكتب التقييد إلى القاضي تحجب عن المحامي بمصفاة واحدة، والاختبار يتحقق من غياب نص الملاحظة لا من غياب حدثها عن خطه الزمني، ولا يطلب الصفحة. واللوائح الأربع (الملفات الواردة، والإحالات، ولائحة الملفات، والمشاريع): ثلاث منها يعرضها مسار المتصفح ولائحة الملفات لا يعرضها اختبار، ولا اختبار فيه محكمتان أو مالكان، فحذف قيد المحكمة أو المالك منها لا يسقط شيئا. والمرحلة 3 تضيف دفاع الخصم والمتقاضي قراء | تأكيد غياب `case.note.added` عن خط المحامي وحضوره عند رئيس المحكمة، واختبار لكل لائحة بمحكمتين ومالكين | قراءتان | لا |
+| IR-20 | `web/server/cases/view.ts:172`، `apps/web/tests/integration/registration.test.ts:414-431`؛ `web/server/offices/registry.ts:31`، `web/server/offices/prosecution.ts:25`، `web/server/filings/lists.ts:21` و`:47` | ملاحظة مكتب التقييد إلى القاضي تحجب عن المحامي بمصفاة واحدة، والاختبار يتحقق من غياب نص الملاحظة لا من غياب حدثها عن خطه الزمني، ولا يطلب الصفحة. واللوائح الأربع (الملفات الواردة، والإحالات، ولائحة الملفات، والمشاريع): ثلاث منها يعرضها مسار المتصفح ولائحة الملفات لا يعرضها اختبار، ولا اختبار فيه محكمتان أو مالكان، فحذف قيد المحكمة أو المالك منها لا يسقط شيئا (ثبت بالطفرة). وبالطفرة كذلك: حذف المصفاة التي تحجب وثائق الهيئة والقاضي من لائحة وثائق الملف (`web/server/cases/view.ts:184`) لا يسقط اختبارا، وحذف مصفاة حدث الملاحظة كذلك. والمرحلة 3 تضيف دفاع الخصم والمتقاضي قراء | تأكيد غياب `case.note.added` عن خط المحامي وحضوره عند رئيس المحكمة، واختبار أن وثائق الهيئة والقاضي لا تدرج لغير أهلها، واختبار لكل لائحة بمحكمتين ومالكين | قراءتان وطفرة | لا |
 | IR-21 | `apps/web/tests/integration/action-refusal-matrix.test.ts:53-66`، `apps/web/tests/integration/case-access.test.ts:67-75`، `apps/web/tests/e2e/filing.spec.ts:232-257` | اختبارات تثبت أقل مما تقول عناوينها: مصفوفة رفض الإجراءات تأخذ ما يجب رفضه من مسار اللائحة نفسه، فجدول يمنح أكثر مما يجب يقلصها بصمت، و«تغطي كل إجراء» تتحقق من أن العدد يفوق 80، وتجرب 11 صفة من 26 في حالتين؛ و«إجراء لا تتيحه الحالة» أربعة من خمسة فيه مرفوضة للصفة لا للحالة؛ والإحالة التلقائية في المتصفح تقرأ ملفا أودعه البذر عبر الخدمات لا عبر الواجهة؛ واختبار «الصندوق يرى الأداء ومطابقته للطلبات» لا يتحقق من المطابقة؛ وست إيداعات متزامنة والمذكرة تقول عشرين؛ ومصفوفة رفض الإجراءات بلا متقاض ولا موظف إدارة عمومية، وهما الصفتان اللتان تفتح المرحلة 3 فضاءيهما | لائحة مكتوبة لما يجب رفضه، وحالات مرفوضة للحالة وحدها مع شاهد إيجابي، وإحالة تنتج من الواجهة، وتأكيد المطابقة | قراءتان | جزئيا: G057 وG105 في P2-C-06. الباقي لم يرد |
 | IR-22 | `rules/time-limits.json:16`، `core/rules-tests/time-limits.md:29` | أجل إيداع مبلغ إجراء التحقيق مرمز خمسة عشر يوما ثابتة. والمادة 119 تجعله أجلا يحدده الأمر «أقصاه خمسة عشر يوما»، والجزاء معلق على «المهلة المبينة في الأمر». فإن أمر القاضي بثمانية أيام عرض العداد أسبوعا زائدا. لا أثر قبل المرحلة 4 | أجل يحدده القاضي بسقف في الجدول، وتصحيح الحالة المكتوبة | قراءتان | لا |
 | IR-23 | `core/procedure/transitions.ts:394-398`، `docs/state-machine.md:150` | «الطعن بالاستئناف» متاح في حالة «صدر الحكم» وحدها وينقل الملف إلى «مطعون فيه». والمادة 204 تعطي كل طرف ثلاثين يوما من تبليغه هو، والمادة 206 تجيز للمستأنف عليه استئنافا فرعيا. فبعد أول استئناف لا يجد الطرف الآخر زرا وأجله قائم. لا أثر قبل المرحلة 6 | استئناف لكل طرف في حالة «مطعون فيه»، وإجراء للاستئناف الفرعي غير مقيد بالأجل | قراءتان | لا |
@@ -88,7 +88,7 @@
 | IR-40 | `apps/web/src/cli/seed-data/cases.ts:29`، `apps/web/src/cli/seed-cases.ts:260` و`:575` | ملفات العرض للمرحلة 1 تحمل في `caseType` اسما لا رمزا. وصف السجل ناقص: على الملف المقيد «تصحيح التصنيف» يعرض 8201 ويقبله، فيدون تصحيحا من 8201 إلى 8201 بإشعاره؛ وإن قرأت قاعدة التوزيع في المرحلة 3 التخصص من النوع وجدته فارغا على ملف العرض الذي ينتظر التعيين بعينه. وتعديل البذر لا يكفي: يتخطى الملفات التي لها أطراف | رموز الجدول في البذر، ومعالجة ما بذر من قبل، أول خطوة في المرحلة 3 | قراءتان | نعم: P2-C-08، والوصف ناقص |
 | IR-41 | `web/server/filings/drafts.ts:211-217`، `web/server/filings/service.ts:140`، `web/components/filing/FilingWizard.tsx:59-61` و`:134`، `core/filing/card.ts:36-40` | مسار الإيداع: لائحة المحامين مقطوعة عند 200 واللائحة المقطوعة نفسها تتحقق من الاختيار؛ وحفظ البطاقة يستعلم السجل التجاري عن كل شركة (إلى خمسين في الحفظ) خارج حد السجل وبلا حدث؛ وعنوان وكيل بلا اسم يسقط بصمت؛ وبطاقة فيها طرف بلا اسم ترد كلها برسالة عامة، وخريطة الحقول التي يبنيها الخادم لا تعرض؛ و«التالي» وروابط الخطوات لا تحفظ؛ وعبارة «مصدر محاكى» تحت اللائحتين ثابتة في الواجهة لا مقروءة من المكون | حد واحد للاستعلام، وعرض الحقل المرفوض، وحفظ قبل الانتقال | قراءتان | جزئيا: G008 وG019 |
 | IR-42 | `web/server/filings/registration.ts:327`، `web/server/cases/executors.ts:209`، `apps/web/tests/helpers/e2e.ts:37` | إشعار الإحالة، عند التقييد وعند تصحيح التصنيف، يرسل إلى كل حامل للصفة في المحكمة ولو عطل حسابه؛ و25 اختبار مسار تتخطى على مشروع الهاتف («الحاسوب وحده»)، ومنها النفاذية وسياسة أمان المحتوى ومكتب التقييد والصندوق، والقاعدة السابعة تجعل الهاتف كالحاسوب | قيد `disabledAt` في الاستعلام، وتشغيل ما يمكن من المتخطى على الهاتف | قراءتان | جزئيا: G089 |
-| IR-43 | `docs/security/phase-2-review.md:89`، `apps/web/prisma/migrations` | الهجرتان اللتان عدلتا في مكانهما (L7): الفرع `main` على المستودع البعيد عند الالتزام `33ad8db` نفسه (`git ls-remote`)، فهما اليوم على الفرع المنشور، خلافا لما بني عليه L7. ولا يعرف من المستودع أي نص منهما طبقته القاعدة المنشورة. واختبار ترتيب أسماء الهجرات (P2-A-12) موعده المرحلة 3 ولم يكتب بعد | مقابلة بصمات `_prisma_migrations` في القاعدة المنشورة قبل أول هجرة للمرحلة 3، وكتابة اختبار الترتيب | قراءتان | جزئيا: P2-A-12 |
+| IR-43 | `docs/security/phase-2-review.md:89`، `apps/web/prisma/migrations` | الهجرتان اللتان عدلتا في مكانهما (L7): الفرع `main` على المستودع البعيد عند الالتزام `33ad8db` نفسه (`git ls-remote`)، فهما اليوم على الفرع المنشور، خلافا لما بني عليه L7. ولا يعرف من المستودع أي نص منهما طبقته القاعدة المنشورة. وأفادت جلسة البناء بعد صدور هذا التقرير أن قاعدة العرض أعيدت تهيئتها يوم 25 نونبر بعد نشر `33ad8db` وطبقت الهجرات الست من ملفاتها الحالية (سجل خدمة release)، فلا فرق في البصمات؛ لم أتحقق من ذلك بنفسي. واختبار ترتيب أسماء الهجرات (P2-A-12) موعده المرحلة 3 ولم يكتب بعد | مقابلة بصمات `_prisma_migrations` في القاعدة المنشورة قبل أول هجرة للمرحلة 3، وكتابة اختبار الترتيب | قراءتان | جزئيا: P2-A-12 |
 | IR-44 | `web/server/filings/registration.ts:137`، `core/authorize.ts:30` | بالطفرة: إعادة التحقق من الأداء تحت قفل المشروع، إن حذفت وحدها، لا يسقط اختبار (شرط النواة يسبقها؛ وحذفهما معا يسقط الاختبارات). وإفراغ `NEVER_CASE_CONTENT` لا يسقط اختبارا لأنه طبقة ثانية: لا قاعدة ملف تسمي المدبر ولا المختص القانوني، فيجابان 404 قبله؛ وإن فتح الجدول لهما معه سقطت الاختبارات، فالخاصية نفسها مختبرة. والحارس لا يغطي `cases.list` لأنه خارج نطاق `case.` | اختبار تزاحم يقيد الأداء بين الفحص والقفل، واختبار يؤكد سبب الرفض لمدبر له علاقة خبير | طفرة | لا |
 | IR-45 | `docs/decisions.md` (القرار 60)، `web/server/accounts/service.ts` | ملاحظتا تصميم: في الأداء بالصندوق يختار موظف التقييد صاحب المشروع نتيجة الأداء، وأمين الصندوق يقرأ الدفتر فقط؛ ومدبر النظام لا يفتح ملفا، لكنه ينشئ حسابا بأي صفة في أي محكمة لعنوان يملكه، والضابط كاشف لا مانع | فصل قبض الصندوق عن فتح الإيداع عند ربط بوابة حقيقية، ومصادقة ثانية على إنشاء حسابات الصفات القضائية | قراءتان | نعم: القرار 60، والسؤال المفتوح س24 منذ المرحلة 0 |
 | IR-14 | `core/actions.ts:343` (`filing.draft.submit` يشترط `DRAFT_PAID`)، `web/server/filings/registration.ts:135-137` | لا مسار لمن يعفيه القانون من الرسم: المادة 311 تمنح الأجير المساعدة القضائية «بحكم القانون»، والمادة 329 تجعل مسطرة قضاء القرب «مجانية ومعفاة من الرسوم القضائية» في طلبات الأشخاص الذاتيين. ورسم المرافعة يضاف دائما. لا أثر اليوم: محكمتا العرض تجاريتان، ولا نوع اجتماعي ولا نوع لقضاء القرب في جدول الأنواع (فيه نوع مدني عام 1201). وس20 يسجل المسطرة الشفوية خارج ما بني؛ الإعفاء من الرسم وحده غير مسجل | سؤال مفتوح للإعفاء، وسبب إعفاء في المشروع برسم صفر وسنده حين تبنى تلك الأنواع | قراءتان | جزئيا: س20 |
@@ -192,8 +192,16 @@
 | منع الإيداع المزدوج تحت القفل | كشفه التكامل |
 | إحالة المادة 20 للشخص العام | كشفته النواة والتكامل |
 | تدوين مراجعة الإحالات حين لا موجب | كشفه التكامل |
+| قيد المحكمة في لائحة الإحالات ولائحة الملفات الواردة، وقيد المالك في لائحة المشاريع (معطلة معا) | **لم يكشف** (IR-20): التكامل كله (1719) والوحدات (1741) ناجحة. مسار المتصفح لم يشغل على النسخة المعطلة |
+| حجب حدث ملاحظة مكتب التقييد عن الخط الزمني للمحامي | **لم يكشف** (IR-20) |
+| حجب وثائق المداولة (رؤية الهيئة والقاضي) من لائحة وثائق الملف | **لم يكشف** (IR-20). تحميل الوثيقة نفسها محروس بضابط آخر كشفه اختبار |
+| حدث تصحيح التصنيف | كشفه التكامل |
+| مقارنة البصمة في التحقق من سلسلة السجل | كشفته النواة والتكامل |
+| قفل سر التوقيع بعد المحاولات الخاطئة | كشفه التكامل |
+| حد الشطر في الرسم (`<=` تصير `<`) | **لم يكشف** (IR-03): لا حالة عند 5.000 درهم بالضبط، والحالة عند 20.000 تعطي المبلغ نفسه بالشطرين |
+| رسم المرافعة | كشفته النواة |
 
-وانقطع اختبار الطفرات عند حد الاستعمال قبل أن يبلغ: قيد المحكمة والمالك في لوائح المكاتب، وحجب ملاحظة مكتب التقييد ووثائق المداولة في العرض، وحدث تصحيح التصنيف، والتحقق من سلسلة السجل، وقفل سر التوقيع، وحدود شطور الرسم.
+ولم يشغل من الطفرات المخطط لها واحدة: مقارنة بصمة الوثيقة عند التحقق من التوقيع.
 
 **ما وجد صادقا:** المساعدات تدخل بالمسار الحقيقي ولا باب خلفيا فيها؛ والتحقق من الصلاحية يسبق التحقق من الجسم، واختبارات الرفض ترسل معرفات وأجساما صحيحة ولها شواهد إيجابية؛ ومصفوفة رفض المسارات مكتوبة توقعاتها باليد ومطابقة لملفات المسارات؛ ومواصفة إجراءات القضية النموذجية كتبت قبل الجدول التصريحي وتكشف جل طفراته؛ واختبارات سجل الأحداث وترتيب الضوابط والتوقيع وفحص الملفات؛ ومسار المتصفح يمشي من الشاشة الأولى إلى الوصل ويتحقق من ثلاثة أزرار بلا زر رد؛ وCI تشغل المجموعات الثلاث بلا `continue-on-error`.
 
@@ -247,3 +255,183 @@
 - **التشغيل المحلي:** الحاوية تعمل بحساب الجذر على PostgreSQL 16، ومتصفح الطباعة شغل عبر غلاف محلي خارج المستودع يعطل عزله. لا أثر لذلك في الكود، لكن عزل متصفح الطباعة لم يختبر هنا كما هو في الصورة المنشورة.
 - **الأثر تحت الحمل** في IR-15 لم يقس.
 - هذه مراجعة داخلية، ولا تقوم مقام تدقيق أمني مستقل ولا اختبار اختراق.
+
+## ما أصلح
+
+أصلحت البنود العشرة الأولى من «قبل بدئها» على الفرع `fix-1-2`، بإذن المالك، يوم 26 نونبر 2026. ولكل إصلاح التزام اختبارات قبل التزام الكود الذي تحرسه، ثم راجعه وكيل لم يكتبه، فأصلح ما وجدته مراجعته بالترتيب نفسه؛ ثم أصلحت الملاحظات المنخفضة لما قبل منها بملاحظات، وما وجدته مراجعة ثانية للإصلاحات كلها (ويشار إلى ذلك كله في الوثائق بـ«مراجعة IR-..»). والمعرفات المختصرة أدناه معرفات الالتزامات على الفرع، الأقدم أولا. ولم يدمج شيء منها في `main`، ولم يمس شيء في بيئة النشر. وشغل `npm run check` وملفات التكامل التي يمسها كل إصلاح أثناء الجولة؛ أما `npm run test:int` كاملا و`npm run test:e2e` فيشغلهما مرة واحدة في آخرها من يقبل الفرع، ولم تشغل أثناءها مواصفة المسار التي عدلت (`apps/web/tests/e2e/filing.spec.ts`). وما لم تصلحه الجولة من صفوف الجدول مدون في `docs/security/findings.md` بدرجته وموعده من قسم «ما يجب إصلاحه قبل المرحلة 3».
+
+### 1. IR-01: الإحالة بالمادة 20 لكل شخص من أشخاص القانون العام
+
+- **ما أصلح:** تبلغ إلى النيابة العامة قضية كل شخص من أشخاص القانون العام أيا كان صنفه، ومنه الوكيلان القضائيان، بإصدار ثان من جدول الإحالات (`2026-11-26.1`). وصار صنف شخص القانون العام بيانا يمنع غيابه الأداء والإيداع، بتنبيه لا يسند إلى مادة، لأن المنع من المنصة لا من المادة 20؛ وتسمى الحالة «الحالة 1» كما في المعجم.
+- **الالتزامات:**
+  - `c793352 Tests: art. 20 for every public-law person, and its category required to file (IR-01)`
+  - `d520a07 Art. 20 for every public-law person; its category required to pay and file (IR-01)`
+  - `74a1f8d Docs: decision 55 points to decision 66 (IR-01)`
+  - `31a34f9 Tests: the category check cites no article; the paper channel and an agent-only file (review of IR-01)`
+  - `87d163f The category check cites no article; «الحالة 1» of art. 20; the cut-off of IR-01 is the release (review of IR-01)`
+- **الاختبارات:** `packages/core/rules-tests/referrals.md`، `packages/core/test/rules/referrals.test.ts`، `packages/core/test/filing.test.ts`، `apps/web/tests/integration/registration.test.ts`، `apps/web/tests/integration/filing-refusals.test.ts`، `apps/web/tests/integration/rules-loading.test.ts`، `apps/web/tests/unit/rule-files.test.ts`، `apps/web/tests/unit/messages.test.ts`، ومعطيات `apps/web/tests/acceptance/model-case-filing.fixture.ts`.
+- **القرارات والأسئلة المفتوحة:** القرار 66، ومعه سطر في أثر القرار 55. ولا سؤال مفتوح: قرئت الحالة 1 من المادة 20 («أو بأي شخص آخر من أشخاص القانون العام») والمادة 605 حاسمتين.
+- **البقية:** صف «IR-01 (بقية)» (ملفات قيدت قبل النشر الذي يحمل الإصدار الجديد من جدول الإحالات)، وصف «P2-C-06» (وسم الصنف «(إلزامي)» في البطاقة لا يحرسه إلا وجود رسائله).
+
+### 2. IR-02: نيابة المحامي المودع عن المدعين
+
+- **ما أصلح:** في الإيداع بطريقة إلكترونية تبدأ خانة «ينوب المحامي المودع عن هذا الطرف» مختارة تحت كل مدع جديد، وصار ألا ينوب المحامي المودع عن أي مدع مانعا من الأداء والإيداع، فلا يقيد ملف إلكتروني يجاب مودعه عنه بـ404. وينسب المقال والطلبات إلى أول مدع ينوب عنه المحامي المودع، لا إلى أول مدع في البطاقة، وتقتبس رسالة المنع المادة 76 بقيدها «عند الاقتضاء». ويبقى الإيداع الورقي على القرار 59.
+- **الالتزامات:**
+  - `8dc4586 Tests: the lawyer who files electronically is counsel of a plaintiff (IR-02)`
+  - `93ac913 The lawyer who files electronically is counsel of a plaintiff, or nothing is paid or filed (IR-02)`
+  - `7b5f548 Tests: the application and the claims are the first plaintiff's the filing lawyer acts for (review of IR-02)`
+  - `8058c4f The application and the claims are the first plaintiff's the filing lawyer acts for; art. 76 quoted with «عند الاقتضاء» (review of IR-02)`
+- **الاختبارات:** `packages/core/test/filing.test.ts`، `apps/web/tests/integration/filing-refusals.test.ts`، `apps/web/tests/integration/registration.test.ts`، `apps/web/tests/unit/messages.test.ts`، `apps/web/tests/e2e/filing.spec.ts` (لم تشغل في الجولة)، ومعطيات `apps/web/tests/acceptance/model-case-filing.fixture.ts`.
+- **القرارات والأسئلة المفتوحة:** القرار 67، ومعه سطر في أثر القرار 55. ولا سؤال مفتوح.
+- **البقية:** صف «IR-02 (بقية)» (ملفات قيدت إلكترونيا قبل القرار 67 بلا محامي المدعي، مع استعلام جردها؛ وعلى الاستدعاء الإلكتروني في المرحلة 3 أن يعالج مدعيا بلا محام)، وصف «IR-02 (الأداء بعد المنع)»، وصف IR-25 (نسبة الطلبات كلها إلى مدع واحد).
+
+### 3. IR-10: مطبق واحد لما يعلنه الجدول التصريحي
+
+- **ما أصلح:** صار ما يعلنه الجدول التصريحي للإجراء من حالة موالية ووقائع تثبت وتنتهي وآجال تفتح وتستوفى وتقفل يطبقه مطبق واحد (`apps/web/src/server/cases/effects.ts`) داخل معاملة الإجراء بعد منفذه، ولا يشغل منفذ إلا به؛ ثم يتحقق من كل أثر معلن في صورة الملف المعاد بناؤها، فإن لم يتحقق فشلت المعاملة ودون الرفض. وتشتق الوقائع من معطيات الملف حيث يوجد ما تشتق منه وتخزن في غير ذلك، ويحسب الأجل بمحرك النواة ويحفظ مع ما بني عليه، وصار في `docs/state-machine.md` عمود «الآثار»، ويمنع اختبار بنية أن تكتب الحالة والوقائع ولحظة التأشير خارج المطبق.
+- **الالتزامات:**
+  - `7791dd6 Tests: every act's event carries its basis; one applier does what the table declares (IR-12, IR-10)`
+  - `fa42150 One applier does what the table declares; every act's event carries its basis (IR-10, IR-12)`
+  - `8844ab3 Tests: what the review of the IR-10 and IR-12 fix found (review of IR-10, IR-12)`
+  - `2b9bbb9 Derived facts of the investigation, a retraction, a limit met, a bounded trigger; the worker's events and the note carry their basis (review of IR-10, IR-12)`
+  - `56cf16b Tests: the detector of the applier's fields finds them written as shorthand properties (review of IR-10)`
+- **الاختبارات:** `packages/core/test/effects.test.ts`، `apps/web/tests/integration/act-effects.test.ts`، `apps/web/tests/integration/act-effects-route.test.ts`، `apps/web/tests/integration/seed.test.ts`، `apps/web/tests/architecture/act-effects.test.ts`، `apps/web/tests/unit/state-machine-doc.test.ts`.
+- **القرارات والأسئلة المفتوحة:** القرار 73؛ والسؤال س44.
+- **البقية:** صف «P1-A-05 / P2-A-04 / IR-10 (بقية)» (آثار المحطتين 3 و4 غير معلنة، ووقائع الطرف وأجله بعينه)، وصف «IR-10 (حساب الآجال)».
+
+### 4. IR-11: انتقاء اللوائح بالعلاقة والحالة
+
+- **ما أصلح:** لا تأخذ اللوائح أحدث الملفات ثم تصفيها: تنتقي «الملفات الواردة» و«الإحالات» و«ينتظر إجراء مني» و«آجال تقترب» و«لائحة الملفات» في استعلامها ما يخص المستعمل، بعلاقته بالملف والحالة التي ينتظر فيها إجراؤه، من نطاقات تشتقها النواة، وتقرأ كل شرط من شروط الإجراء من معطيات الملف؛ وتعرض ما ينتظر الأقدم أولا، صفحة صفحة، وتقول ما عرضت من كم وكيف يطلع على البقية. وتعلم قاعدة المعطيات آخر إجراء تحقيق، ولا يحذف دور التشغيل إجراء تحقيق، وتعرض «الإحالات» كل إحالة، ما يتاح فيه إيداع المستنتجات أولا.
+- **الالتزامات:**
+  - `3d2f9b7 Tests: the lists select by relation and state, the oldest first, in pages, and say when they are cut (IR-11)`
+  - `e0fd4c5 The lists select by relation and state, the oldest awaiting first, in pages, and say when they are cut (IR-11)`
+  - `ee55e0c Tests: what the review of the IR-11 fix found (review of IR-11)`
+  - `ba91de8 The lists read every condition of the act from the file's data; «الإحالات» lists every referral, the open ones first (review of IR-11)`
+  - `72b2946 Comment: art. 18 quoted as written in «الإحالات», and the limit of art. 20 §2 left to open question س45 (review of IR-11)`
+  - `c564a40 Tests: the runtime role deletes no investigation, so no file loses its latest mark (review of IR-11)`
+  - `5108997 The runtime role deletes no investigation; the lock an insertion must hold is recorded for phase 6 (review of IR-11)`
+- **الاختبارات:** `packages/core/test/scope.test.ts`، `apps/web/tests/unit/list-paging.test.ts`، `apps/web/tests/integration/list-cut.test.ts`، `apps/web/tests/integration/list-awaited.test.ts`؛ وعدلت `apps/web/tests/e2e/filing.spec.ts` ولم تشغل.
+- **القرارات والأسئلة المفتوحة:** القراران 75 و76، والهجرة `20261126160000_list_scope_facts`؛ والسؤال س45.
+- **البقية:** صف «IR-11 (بقية) / P1-S-06 / P1-A-10 / P2-A-09»، وصف «IR-11 (علامة آخر تحقيق)».
+
+### 5. IR-08: صفة الطرف ومكان عنوانه
+
+- **ما أصلح:** تحفظ عند التقييد صفة الطرف، ومع كل موطن أو محل إقامة أو مقر مدينته من جدول الدوائر أو بلده خارج تراب المملكة، ويحسب `withinCourtDistrict` من جدول الدوائر الساري لمحكمة الملف بدالة واحدة في النواة، و«غير معروف» حين لا تعرف المدينة. وفي البطاقة اختياران «الموطن» و«محل الإقامة»؛ ولا يحفظ ولا يقيد من الطرف إلا ما تعرضه البطاقة لنوعه؛ ولا تبقى مدينة السجل التجاري مع مقر أعيدت كتابته. وجدول الدوائر الساري موسوم غير مؤكد.
+- **الالتزامات:**
+  - `191528d Tests: the parties keep their quality, and their addresses their place, at registration (IR-08)`
+  - `1f98028 Tests: the demo parties carry their quality and the place of their addresses (IR-08)`
+  - `8dfc55f The parties keep their quality, and their addresses their place, at registration (IR-08)`
+  - `a50b665 Tests: the place of an address is the register's or the lawyer's, never a hidden one (review of IR-08)`
+  - `fe910c3 The place of an address is the register's or the lawyer's, never a hidden one (review of IR-08)`
+  - `4a072d7 Tests: a party is saved, checked and registered with what the card shows for its kind only (review of IR-08)`
+  - `1782064 Tests: the type of the card stored by the kind-of-party test (no change in what it checks)`
+  - `3781869 A party is saved, checked and registered with what the card shows for its kind only (review of IR-08)`
+  - `81c825e Tests: the type of the party of the kind-of-party core test (no change in what it checks)`
+- **الاختبارات:** `packages/core/rules-tests/court-district.md`، `packages/core/test/rules/court-district.test.ts`، `packages/core/test/filing.test.ts`، `apps/web/tests/integration/party-addresses.test.ts`، `apps/web/tests/integration/seed.test.ts`، `apps/web/tests/unit/messages.test.ts`، `apps/web/tests/unit/rule-files.test.ts`، `apps/web/tests/e2e/filing.spec.ts` (لم تشغل).
+- **القرارات والأسئلة المفتوحة:** القرار 69، والهجرتان `20261126130000_party_place_and_quality` و`20261126140000_party_address_district_needs_place`؛ والسؤال س42.
+- **البقية:** صف «IR-08 (بقية)».
+
+### 6. IR-12: السند القانوني في كل حدث
+
+- **ما أصلح:** صار كل حدث يكتبه إجراء من إجراءات الملف، أو عملية من عمليات مشروع الإيداع، أو التقييد وتوقيع المقال، أو الأداء، يحمل سند الإجراء الذي خوله كما يحله جدول الإجراءات في النواة، ويعرض الخط الزمني مواده تحت «السند». وما يطبعه الـworker يحمل سند الإجراء الذي طلب المهمة، ينقل معها في الطابور؛ ويعيد الـworker عند بدئه إلى الانتظار المهام التي أعلن عامل سابق موتها لأنه لم يقرأها. و«ملاحظة إلى القاضي» تستند إلى المادة 628، ومعها 619 حين يكون سببها نقص الرسم وحده.
+- **الالتزامات:** الأربعة الأولى من البند 3 (`7791dd6` و`fa42150` و`8844ab3` و`2b9bbb9`)، ثم:
+  - `581bda3 Tests: the worker puts back at its start the jobs an earlier worker declared dead unread (review of IR-12)`
+  - `cf9e455 The worker puts back at its start the jobs an earlier worker declared dead unread (review of IR-12)`
+- **الاختبارات:** `apps/web/tests/integration/act-legal-basis.test.ts`، `packages/core/test/note-basis.test.ts`، `apps/web/tests/integration/job-queue.test.ts`.
+- **القرارات والأسئلة المفتوحة:** القرار 74؛ والسؤال س43.
+- **البقية:** صف «IR-12 (بقية)» (الأحداث المكتوبة قبل الإصلاح لا تعدل).
+
+### 7. IR-09 وIR-06 وIR-07: ثلاثة قرارات للمالك
+
+- **ما أصلح:** IR-09 قرار للمالك دون تغيير في الكود (القرار 70، أدناه). IR-06: يحفظ المقال المحمل بصيغة Word في الملف كما أودع، بوضع رؤية جديد (`DEPOSITOR_AND_COURT`) تقرره دالة الصلاحيات الوحيدة في النواة: يراه مودعه وقضاة المحكمة وموظفوها وحدهم، ولا يجده غيرهم في لائحة الوثائق ولا في الخط الزمني، وتبلغ النسخة الثابتة وحدها. IR-07: يطبع الـworker بعد التوقيع عند التقييد «شهادة توقيع»، وثيقة مولدة من وثائق الملف بخاتم «توقيع تجريبي» واسم الموقع وصفته وتاريخ التوقيع وساعته وبصمة المقال الموقع، مقترنة به بعمود لا يتغير، ولا تتغير بايتات المقال ولا بصمته؛ ولا شهادة في الإيداع الورقي.
+- **الالتزامات:**
+  - `8c8381e Tests: the Word original is its depositor's and the court's; a signature certificate beside the signed application (IR-06, IR-07)`
+  - `9eaec49 The Word original is its depositor's and the court's; «شهادة توقيع» beside the signed application (IR-06, IR-07; decision on IR-09)`
+  - `182caa5 Tests: the Word original stays off the timeline of others, the certificate attests the fixed copy, none on paper (review of IR-06, IR-07)`
+  - `d9b0897 The schema declares the RESTRICT of a certificate's link and the uniqueness of a payment's reference; the data model and decision 71 complete (review of IR-06, IR-07)`
+- **الاختبارات:** `packages/core/test/document-visibility.test.ts`، `packages/core/test/authorize.test.ts`، `packages/core/test/panel-relation.test.ts`، `apps/web/tests/integration/application-original.test.ts`، `apps/web/tests/integration/signature-certificate.test.ts`، `apps/web/tests/integration/job-queue.test.ts`.
+- **القرارات والأسئلة المفتوحة:** القرارات 70 و71 و72، والهجرات `20261126150000_document_depositor_and_court` و`20261126150100_application_source_depositor_and_court` و`20261126150200_signature_certificate`. ولا سؤال مفتوح.
+- **البقية:** صف «IR-06 (بقية)»، وصف «IR-07 (بقية)»، وصف «IR-09».
+
+### 8. IR-03 وIR-04 وIR-26: وسم ما لم يتحقق منه في الرسوم، وحمل الوسم مع المبلغ
+
+- **ما أصلح:** إصدار ثان من جدول الرسوم (`2026-11-26.1`) لا يغير مبلغا، ورسم القضية النموذجية باق 5.570 درهما، ويسم «قيمة مؤقتة غير مؤكدة» كل ما لم يتحقق منه: الأشطر الثلاثة، وطريقة الاحتساب (`method`)، ورسم الطلب غير المحدد القيمة (`unvaluedClaimFee`)، وكلها إعدادات يقرؤها المحرك من الجدول لا قواعد في الكود. ولكل طلب غير محدد القيمة، ومنه ما كتب مبلغه صفرا، سطر موسوم في تفصيل الرسم، ولا يقبل إصدار لاحق خال من الإعدادين. وتحمل العبارة مع كل مبلغ يقوم على سطر موسوم إلى كل موضع يعرض فيه: صفحة «أداء (محاكاة)»، والصندوق، وبطاقة مكتب التقييد، وصفحة الملف، والوصلان المطبوعان.
+- **الالتزامات:**
+  - `2067684 Tests: the fee engine marks what is unsettled, and the mark goes with the amount (IR-03, IR-04, IR-26)`
+  - `b2f010f The fee table marks what was never checked, and the mark goes with the amount (IR-03, IR-04, IR-26)`
+  - `bc715e7 Tests: a zero amount, a later fee table without its settings, old records and the case page (review of IR-03, IR-04, IR-26)`
+  - `d495008 A zero amount, a later fee table, old records and the case page carry the mark (review of IR-03, IR-04, IR-26)`
+- **الاختبارات:** `packages/core/rules-tests/fees.md` (حالات 1.000 و5.000 و5.001 درهم، ودين وطلب آخر بلا مبلغ أو بمبلغ صفر)، `packages/core/test/rules/fees.test.ts`، `packages/core/test/filing.test.ts`، `apps/web/tests/integration/fee-uncertainty.test.ts`، `apps/web/tests/integration/rules-loading.test.ts`، `apps/web/tests/unit/rule-files.test.ts`، `apps/web/tests/unit/messages.test.ts`، `apps/web/tests/e2e/filing.spec.ts` (لم تشغل).
+- **القرارات والأسئلة المفتوحة:** القرار 68؛ والسؤالان س40 وس41.
+- **البقية:** صف «IR-03 وIR-04 (بقية)» (المبالغ نفسها تنتظر النص الرسمي للملحق المتعلق بالمصاريف القضائية)، وصف «IR-26 (بقية)»، وصف «P2-C-03 (بقية)»، وصف «P2-S-04» (أجله المعاد صوغه ينتظر تأكيد المالك، أدناه).
+
+### 9. IR-17 وIR-19 وIR-20، ومعها IR-18 وشطران من IR-44 وIR-54
+
+- **ما أصلح:** كتبت الاختبارات التي تسميها مذكرة المرحلة 2 دليلا (IR-17): CSRF على كل مسار يغير حالة، مأخوذا من سجل المسارات، ويمر استعلام السجل التجاري، وهو طلب GET له أثر، بخطوة CSRF؛ والأسرار والمعطيات الشخصية في مسارات المرحلة 2، الإلكترونية والورقية؛ وحد استعلام السجل التجاري؛ وصفحات مشروع الغير ووصله وأدائه؛ ووثيقة مشروع آخر تطلب عبر مشروع الطالب، وقد كشف اختبارها أن رفضها لا يدون، فصار يدون بمعرف الوثيقة ويمر بميزانية الرفض. وصارت حالات الآجال تتحقق من لحظة النهاية وحدود الأجل، وتقابل «السند» بمواد القاعدة؛ وحمل إصدار ثان من جدول الآجال المادة 602 مع كل أجل بأيام كاملة، ووسم التسليم الحكمي بعد رفض التسلم غير مؤكد، فيحمل وسمه إلى الأجل الذي يفتحه (IR-19، والشطر الأول من IR-54). ولا يجد المحامي في خطه الزمني حدث «ملاحظة إلى القاضي»، ولا في صفحة الملف وثائق الهيئة والقاضي المقرر (IR-20). ويثبت اختبار تكامل، بتقديم ساعة المنصة، أن «الطعن بالاستئناف» يعرض ويمر قبل نهاية أجله بدقيقة، ويغيب ويرفض مدونا بعدها بدقيقة (IR-18). ويجاب مدبر النظام والمختص القانوني «غير موجود» في كل إجراء من إجراءات الملف ولو كانا خبيره (الشطر الثاني من IR-44).
+- **الالتزامات:**
+  - `ec3d027 Tests: the pages of a draft, its receipt and its payment, the note to the judge and the panel's documents on the case page (IR-17, IR-20)`
+  - `36cae32 Tests: a document of another draft through one's own, the register's limit, the appeal after its limit (IR-17, IR-18)`
+  - `2aa3f19 Tests: CSRF on every state-changing route, driven from the endpoint registry (IR-17)`
+  - `78ad6ec Tests: secrets and personal data in the flows of Phase 2 (IR-17, Phase 2 memo row 25)`
+  - `d292f11 Tests: time-limit boundaries, the end instant, and the «السند» column against the table (IR-19)`
+  - `87e8d26 Tests: the administrator and the rules validator meet an unknown file even as its expert (IR-44)`
+  - `55f0b73 Tests: lint of the new tests (no change in what they check)`
+  - `ec70ade A document asked through a draft it is not in is a recorded refusal (IR-17); decisions 77 to 79`
+  - `ea23d91 Tests: what the review of the item H fix found (review of IR-17, IR-18, IR-19, IR-54)`
+  - `874668d Tests: the type of the answers collected by the refusal-budget test (no change in what it checks)`
+  - `6b21d1c A second time-limit table marks the deemed service and cites art. 602; a probed document meets the refusal budget; the register lookup passes the CSRF step (review of IR-17, IR-18, IR-19, IR-54); decision 80, open question 46`
+  - `e993158 Tests: a deemed service is marked as such, not as the rule of the limit it opens (review of IR-19)`
+  - `653aa0f A deemed service is marked as such in what a limit relied on, naming its rule (review of IR-19)`
+- **الاختبارات:** `apps/web/tests/integration/csrf-routes.test.ts`، `apps/web/tests/integration/secrets-and-logs-phase-2.test.ts`، `apps/web/tests/integration/pages-by-relation.test.ts` (بمساعد الصفحات `apps/web/tests/helpers/page-request.ts`)، `apps/web/tests/integration/filing-refusals.test.ts`، `apps/web/tests/integration/appeal-limit.test.ts`، `apps/web/tests/integration/rules-loading.test.ts`، `apps/web/tests/unit/registry-definitions.test.ts`، `apps/web/tests/unit/rule-files.test.ts`، `apps/web/tests/acceptance/model-case-actions.md` ومعطياتها `apps/web/tests/acceptance/model-case.fixture.ts`، `packages/core/rules-tests/time-limits.md`، `packages/core/test/rules/time-limits.test.ts`، `packages/core/test/authorize.test.ts`. وشطر اللوائح بمحكمتين ومالكين من IR-20 تحرسه `list-cut.test.ts` و`list-awaited.test.ts` (البند 4).
+- **القرارات والأسئلة المفتوحة:** القرارات 77 و78 و79 و80؛ والسؤال س46.
+- **البقية:** صف «P1-S-05 / P2-A-10 / IR-15 (بقية)» (تنزيل وثيقة المشروع نفسها بلا حد)، وصف «IR-18 (بقية)»، وصف «IR-44 (بقية)»، وصف «P1-S-14 (بقية) / IR-54 (شطره الثاني)»، وصف «P2-C-06».
+
+### 10. IR-40 وIR-43: رموز أنواع القضايا في بيانات العرض، وبصمات الهجرات
+
+- **ما أصلح:** IR-40: يحمل كل ملف من ملفات العرض في `caseType` رمزا من جدول أنواع القضايا الساري من تخصص محكمته، والرمز الذي في رقمه رمز نوعه (1067/8202 و312/8201)؛ والقاعدة المهيأة قبل الإصلاح تأخذهما في مكانها عند التشغيل الموالي لأمر التهيئة، مرة واحدة، بحدث `demo.case.type.recoded` لكل ملف. IR-43: صارت الهجرات مسرودة في `apps/web/prisma/migration-history.json` ببصمة SHA-256 لنص كل منها، ويرفض اختبار بنية تعديل هجرة مدرجة، وهجرة غير مدرجة أو في غير ترتيبها؛ ويرفض أمر النشر وأمر تهيئة العرض، قبل الهجرة، هجرة معلقة مؤرخة قبل آخر هجرة مطبقة، ويدونان في سجل خدمة النشر هجرة مطبقة تغير نصها، دون رفض.
+- **الالتزامات:**
+  - `958ef49 Tests: every demo file carries a code of the case-type table, and a database seeded before gets it in place (IR-40)`
+  - `9714382 The demo files carry the code of their case type; a database seeded before gets it at the next seed (IR-40)`
+  - `6490d48 Tests: a listed migration is never edited, and a new one is dated after the last (IR-43, P2-A-12)`
+  - `8dd5445 The migrations are listed with the SHA-256 of their text, in the order Prisma applies them (IR-43, P2-A-12)`
+  - `c04e06c Docs: decision 82 on the list of migrations; IR-40 and IR-43 closed, the release-time comparison left open (IR-40, IR-43)`
+  - `548f102 Tests: the release refuses a pending migration dated before the last one applied (review of IR-43, P2-A-12)`
+  - `9a10995 The release refuses a pending migration dated before the last one applied, and reports an applied migration that changed (review of IR-43, P2-A-12); decision 83`
+  - `e105966 Tests: the code inside a demo file's number follows its case type, in place on a database seeded before (review of IR-40)`
+  - `f01594c The code inside a demo file's number is its case type's, recoded in place with the type (review of IR-40)`
+- **الاختبارات:** `apps/web/tests/unit/rule-files.test.ts`، `apps/web/tests/integration/seed.test.ts`، `apps/web/tests/architecture/migrations.test.ts`، `apps/web/tests/unit/migration-guard.test.ts`، `apps/web/tests/integration/migration-guard.test.ts`.
+- **القرارات والأسئلة المفتوحة:** القرارات 81 و82 و83. ولا سؤال مفتوح.
+- **البقية:** صف «IR-43 (بقية)». ولا صف لـIR-40: ما بقي منه يجري عند النشر الموالي لبيئة العرض (أدناه).
+
+وفي الفرع غير ذلك: `5ef7eb9 Add the independent review report of phases 1 and 2`، و`71339b1 Tests: the reading-ease spec waits for the cookie the save request sets (no change in what it checks)`، و`1f574f1 Docs: the findings say they were last updated after the review of the fixes`، ثم التزام هذا القسم وما أدرج معه في `docs/security/findings.md` و`docs/open-questions.md`.
+
+### قرارات المالك
+
+- **IR-09 (القرار 70):** اختار المالك إبقاء الحال: يبقى «تأشير» و«تصحيح التصنيف» في حالة «مقيد» وحدها، ويزولان متى عين القاضي المقرر، أشر على الملف أم لم يؤشر. وبعد التعيين يرفع الرمز الخاطئ إلى القاضي بـ«ملاحظة إلى القاضي»، وتقرر المرحلة 3 مع شاشة القاضي المقرر هل يصحح التصنيف وكيف يعاد حساب الإحالات به (صف «IR-09»).
+- **IR-06 (القرار 71):** اختار المالك ثاني ما اقترحته المراجعة: يبقى الأصل في الملف كما أودع، بوضع رؤية يقصره على مودعه وعلى قضاة المحكمة وموظفيها، وتبلغ النسخة الثابتة وحدها. وبقي له أن يقرر هل يذكر «وصل الإيداع» الأصل وبصمته لمودعه وحده أم يبقى كما هو (صف «IR-06 (بقية)»).
+- **IR-07 (القرار 72):** اختار المالك ثاني ما اقترحته المراجعة: وثيقة «شهادة توقيع» مقترنة بالمقال، لا صفحة تضاف إليه، لأن الصفحة تغير بايتاته فتسقط دائرة توقيعه وتخالف البصمة المطبوعة في «وصل الإيداع».
+
+### ما ينتظر تأكيد المالك أو جواب المختص القانوني
+
+- **أجل P2-S-04 (القرار 68):** كان «قبل تحميل إصدار ثان لتعريفة الرسوم»، وحملت الجولة إصدارا ثانيا لا يغير مبلغا دون إصلاح P2-S-04؛ فصيغ الأجل «قبل تحميل أول إصدار يغير مبلغا، وفي كل حال قبل المرحلة 9»، ولم يؤكده المالك. فإما أن يؤكده، وإما أن يطلب إصلاح P2-S-04 الآن. واختبار الحارس الذي يثبت أن الإصدار الثاني لا يغير مبلغا كتب في التزام الكود `b2f010f` لا في التزام الاختبارات قبله.
+- **عرض صفة الطرف (القرار 69، «رابعا»):** تعرض بقواعد عرض وسائل الاتصال، كرقم التعريف، وهي إحدى قراءتين لما طلب؛ والأخرى أن تعرض لكل من يرى الطرف، وهي تغيير سطر في `apps/web/src/server/cases/view.ts` واختبار في `apps/web/tests/integration/party-addresses.test.ts`. ولم يؤكد المالك أيا منهما.
+- **هجرة مطبقة تغير نصها:** يدونها أمر النشر تحذيرا ولا يرفضه؛ ويجعلها رفضا بعد قراءة سطور الحارس في سجل أول نشر، بموافقة المالك (القرار 83، صف «IR-43 (بقية)»).
+- **القراءات القانونية المتروكة للمختص القانوني المصادق على القواعد:** الأسئلة المفتوحة س40 (طريقة احتساب الشطرين الأولين من تعريفة الرسم وحدهما الأدنى)، وس41 (رسم الطلب غير المحدد القيمة)، وس42 (دوائر نفوذ المحاكم)، وس43 (سند «ملاحظة إلى القاضي» حين لا يكون سببها نقص الرسم)، وس44 (جدول العطل الذي يحسب به الأجل، وإعادة حسابه)، وس45 (إيداع النيابة العامة مستنتجاتها، وإلى متى تودعها وهي طرف أصلي)، وس46 (الأيام العشرة بعد رفض التسلم والمادة 602)، وس47 الذي أضيف في آخر الجولة من صف IR-14 (الإيداع دون أداء الرسم لمن يعفيه القانون منه أو تشمله المساعدة القضائية). ومعها قراءة القرار 66 للوكيلين القضائيين في الحالة 1 من المادة 20: لم توسم ولم يطرح فيها سؤال، فإن خالفها المختص أخرج الصنفان في إصدار جديد من جدول الإحالات.
+
+### IR-43: قاعدة العرض المنشورة
+
+أفادت جلسة البناء أن قاعدة العرض المنشورة أعيدت تهيئتها يوم 25 نونبر 2026 بعد نشر `33ad8db`، وأن الهجرات الست طبقت من ملفاتها الحالية، بحسب سجل خدمة release، فلا فرق في البصمات. ولم يكن في هذه الجولة وصول إلى بيئة النشر، فلم يتحقق من ذلك فيها. وتقرأ سطور الحارس (`MIGRATION_CHANGED_AFTER_APPLIED`) في سجل أول نشر بعد هذه الجولة، وهي المقابلة المطلوبة للقاعدة المنشورة بقائمة الهجرات (صف «IR-43 (بقية)»، وموعده قبل أول نشر للمرحلة 3).
+
+### IR-40: إعادة الترميز في بيئة العرض
+
+لم تعد تهيئة أي قاعدة في هذه الجولة. ويجري الترميز على قاعدة العرض المنشورة في مكانها عند نشرها الموالي، بخطوة التهيئة التي يشغلها أمر النشر في بيئة العرض، دون إعادة تهيئة: يأخذ كل ملف من ملفات العرض نوعه ورمز رقمه مرة واحدة، بحدث `demo.case.type.recoded` يحمل الرمزين القديم والجديد، ولا يتغير شيء في تشغيل ثان (القرار 81).
+
+### البند 11: الجدول التصريحي للمحطتين 3 و4
+
+لم يمس في هذه الجولة الجدول التصريحي للمحطتين 3 و4 (`packages/core/src/procedure/transitions.ts`): تصححه جلسة المرحلة 3 قبل تنفيذه. وصفوف IR-46 إلى IR-52 في `docs/security/findings.md` بموعد «المرحلة 3، قبل تنفيذ المحطتين 3 و4». وفيها ثلاثة قرارات تنتظر المالك قبل البناء: استدعاء المدعي «فورا» والمادة 87 (IR-49)، ومن يأمر بقناة تبليغ غير المفوض القضائي (IR-50)، ومن ينوب عن رئيس المحكمة في التعيين (IR-52).
+
+### ما بقي مما يسبق المرحلة 3
+
+- **قبل بدئها، ولم يصلح في الجولة:** حدد قسم «سجل الملاحظات المفتوحة» أعلاه صفين قبل البدء لم تصلحهما الجولة، وموعدهما في السجل «قبل بدء المرحلة 3»: P2-A-11 (دالة واحدة لصف الوثيقة وحدثه، قبل أن تولد المرحلة 3 الاستدعاءات والشهادات)، ومن P2-C-06 ما يمس التوقيع والسجل والساعة (G050، وG057 وG105، وG098). أما G093 وG095 وG097 وG102 من الصف نفسه فكتبت مع IR-17.
+- **قبل أول دفع للمرحلة 3 إلى `main`:** F-03 وF-04 (تفعيل «Wait for CI»، وتشغيل اختبارات المسار على النسخة المنشورة)؛ وقبل أول نشر لها: مقابلة البصمات في صف «IR-43 (بقية)».
+- **في خطوتها الأولى أو مع أول شاشة تمسها:** IR-05 وIR-27 (قبل أول عداد جار، ومعهما P1-A-16)، وIR-13، وIR-24، وIR-25، وIR-30 (شطره الباقي)؛ وفي أولها P1-S-14 (بقية)، ومعها حامل رمز الاستدعاء من P1-A-04، وعلاقة العون القضائي بالطي من P1-A-15.
+- **يحتمل التأجيل إلى محطته:** باقي الصفوف، كل بموعده في السجل، ومنها IR-14 وسؤاله س47.
