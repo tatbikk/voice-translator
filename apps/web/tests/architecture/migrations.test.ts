@@ -1,14 +1,17 @@
 // Reviews P2-A-12 and IR-43 (L7): a migration once listed is never edited, and
-// every new one sorts after the last one listed.
+// the list follows the order in which Prisma applies the migrations.
 // - prisma/migration-history.json lists every migration of prisma/migrations,
-//   in order, with the SHA-256 of its migration.sql: the value Prisma records
-//   as the checksum of the migration in "_prisma_migrations" when it applies
-//   it. A deployed database can thus be compared with the list
-//   (SELECT migration_name, checksum FROM "_prisma_migrations").
+//   in the order of their names, with the SHA-256 of its migration.sql: the
+//   value Prisma records as the checksum of the migration in
+//   "_prisma_migrations" when it applies it. A deployed database can thus be
+//   compared with the list (SELECT migration_name, checksum FROM "_prisma_migrations").
 // - The text of a listed migration does not change: a change to the schema is
-//   a new migration, added at the end of the list.
-// - A new migration is named with a date after the last one listed, so that
-//   `prisma migrate deploy` applies it last, on every database.
+//   a new migration, dated after the last one so that it is listed last.
+// - This test cannot tell which migration is new: one dated before the last
+//   one and listed in its sorted place passes it. What refuses it is the guard
+//   the release runs before `prisma migrate deploy` (src/cli/migration-guard.ts,
+//   decision 83), on a database that has already applied a later one; the last
+//   case below checks that every path that deploys migrations runs it first.
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,6 +53,20 @@ describe('the migrations of prisma/migrations (reviews P2-A-12, IR-43)', () => {
     for (const m of history.migrations) {
       expect(m.sha256, m.name).toMatch(/^[0-9a-f]{64}$/);
       expect(sha256Of(m.name), `${m.name}: its migration.sql changed after it was listed`).toBe(m.sha256);
+    }
+  });
+
+  // This test cannot tell a new migration from an old one: a migration dated before the last one and
+  // listed in its sorted place passes it. The release refuses it, before it migrates (decision 83).
+  it('are applied, on every path that deploys them, only after the guard has let them through', () => {
+    for (const file of ['src/cli/release.ts', 'src/cli/seed.ts']) {
+      const source = readFileSync(join(WEB_ROOT, file), 'utf8');
+      const guard = source.indexOf('migrationsMayDeploy(');
+      const deploy = source.indexOf("'migrate', 'deploy'");
+      expect(deploy, `${file} runs prisma migrate deploy`).toBeGreaterThan(-1);
+      expect(guard, `${file} runs the migration guard`).toBeGreaterThan(-1);
+      expect(guard, `${file} runs the guard before prisma migrate deploy`).toBeLessThan(deploy);
+      expect(source.indexOf("'migrate', 'deploy'", deploy + 1), `${file} deploys once`).toBe(-1);
     }
   });
 });
