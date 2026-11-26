@@ -60,12 +60,20 @@ export async function apiPostBytes<T = Record<string, unknown>>(
   }
 }
 
-export async function apiGet<T = Record<string, unknown>>(path: string, options: { background?: boolean } = {}): Promise<ApiResult<T>> {
+/**
+ * A read. `csrf` sends the token too, for a GET with effects (the
+ * commercial-register lookup), which the server checks as it checks a
+ * state-changing request (decision 80).
+ */
+export async function apiGet<T = Record<string, unknown>>(path: string, options: { background?: boolean; csrf?: boolean } = {}): Promise<ApiResult<T>> {
+  const headers: Record<string, string> = {};
+  if (options.background) headers['X-Background-Refresh'] = '1';
+  if (options.csrf) headers['X-CSRF-Token'] = (await csrfToken()) ?? '';
   try {
     const res = await fetch(path, {
       credentials: 'same-origin',
       cache: 'no-store',
-      headers: options.background ? { 'X-Background-Refresh': '1' } : {},
+      headers,
     });
     return (await res.json()) as ApiResult<T>;
   } catch {

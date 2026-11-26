@@ -19,6 +19,8 @@ export interface EndpointMeta {
   readonly module: string;
   /** demo endpoints exist only in a demo build */
   readonly demoBuildOnly?: boolean;
+  /** a GET with effects, which passes the CSRF step (decision 80) */
+  readonly sideEffects?: true;
 }
 
 export const ENDPOINTS: readonly EndpointMeta[] = [
@@ -218,6 +220,7 @@ export const ENDPOINTS: readonly EndpointMeta[] = [
     path: '/api/v1/registers/commercial',
     access: { kind: 'action', action: 'registers.commercial.lookup' },
     module: '@/app/api/v1/registers/commercial/route',
+    sideEffects: true,
   },
   {
     id: 'demo.outbox',

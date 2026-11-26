@@ -2,7 +2,7 @@
   {
     "version": "2026-08-23.1",
     "validFrom": "2026-08-23",
-    "validTo": null,
+    "validTo": "2026-11-26",
     "source": "القانون رقم 58.25 المتعلق بالمسطرة المدنية، الجريدة الرسمية عدد 7485 بتاريخ 23 فبراير 2026؛ دخل حيز التنفيذ بعد ستة أشهر من نشره (م 643)",
     "settings": {
       "electronicCounting": { "value": "CONTINUOUS_TO_END_OF_LAST_DAY", "uncertain": true, "articles": [602, 639] },
@@ -25,6 +25,44 @@
       { "code": "APPEARANCE_IN_DISTRICT", "amount": 5, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appearance", "articles": [88] },
       { "code": "APPEARANCE_IN_KINGDOM", "amount": 15, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appearance", "articles": [88] },
       { "code": "APPEARANCE_ABROAD", "amount": 3, "unit": "MONTHS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appearance", "articles": [89] },
+      { "code": "APPEAL_TRANSMISSION", "amount": 15, "unit": "DAYS", "counting": "FULL", "startsFrom": "filing", "effectOnExpiry": "transmissionLate", "articles": [214, 602] },
+      { "code": "JUDGMENT_SUBSTITUTE_SIGNATURE", "amount": 24, "unit": "HOURS", "counting": "PLAIN_HOURS", "startsFrom": "impediment", "effectOnExpiry": "signatureLate", "articles": [110] },
+      { "code": "ENFORCEABILITY", "amount": 30, "unit": "YEARS", "counting": "FULL", "startsFrom": "judgment", "effectOnExpiry": "enforceabilityLost", "articles": [449, 602] },
+      { "code": "ENFORCEMENT_DEMAND", "amount": 10, "unit": "DAYS", "counting": "FULL", "startsFrom": "request", "effectOnExpiry": "agentLate", "articles": [486, 602] },
+      { "code": "COLLECTION_DEPOSIT", "amount": 48, "unit": "HOURS", "counting": "WORKING_HOURS", "startsFrom": "collection", "effectOnExpiry": "agentLate", "articles": [487] },
+      { "code": "EXECUTORY_SEIZURE", "amount": 4, "unit": "DAYS", "counting": "FULL", "startsFrom": "refusal", "effectOnExpiry": "agentLate", "articles": [489, 602] },
+      { "code": "GARNISHMENT_NOTICE", "amount": 48, "unit": "HOURS", "counting": "PLAIN_HOURS", "startsFrom": "garnishment", "effectOnExpiry": "clerkLate", "articles": [578] },
+      { "code": "GARNISHEE_DECLARATION", "amount": 8, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "declarationLate", "articles": [576, 602] },
+      { "code": "GARNISHMENT_DISPUTE", "amount": 15, "unit": "DAYS", "counting": "FULL", "startsFrom": "declaration", "effectOnExpiry": "fundsDeliverable", "articles": [580, 602] },
+      { "code": "FUNDS_PAYMENT", "amount": 10, "unit": "DAYS", "counting": "FULL", "startsFrom": "deposit", "effectOnExpiry": "agentLate", "articles": [593, 602] }
+    ]
+  },
+  {
+    "version": "2026-11-26.1",
+    "validFrom": "2026-11-26",
+    "validTo": null,
+    "source": "القانون رقم 58.25 المتعلق بالمسطرة المدنية، الجريدة الرسمية عدد 7485 بتاريخ 23 فبراير 2026؛ دخل حيز التنفيذ بعد ستة أشهر من نشره (م 643). وقاعدة التسليم الحكمي بعد رفض التسلم (م 85) موسومة «قيمة مؤقتة غير مؤكدة»: لا يحسم النص هل الأيام العشرة أجل تسري عليه المادة 602 فيمتد يومها العاشر إن صادف عطلة (docs/open-questions.md، س46). وتذكر المادة 602 مع كل أجل يحسب بأيام كاملة، ومنها مهلة استدعاء الخبير للأطراف (م 127) وآجال الحضور (م 88 و89)",
+    "settings": {
+      "electronicCounting": { "value": "CONTINUOUS_TO_END_OF_LAST_DAY", "uncertain": true, "articles": [602, 639] },
+      "weekendIsHoliday": { "value": true, "uncertain": true, "articles": [603] }
+    },
+    "rules": [
+      { "code": "APPEAL", "amount": 30, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appealClosed", "articles": [204, 602] },
+      { "code": "CASSATION", "amount": 30, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "cassationClosed", "articles": [380, 602] },
+      { "code": "CURE_DEFECTS", "amount": 0, "unit": "DAYS", "counting": "FULL", "fixedByJudge": true, "startsFrom": "service", "effectOnExpiry": "inadmissibility", "articles": [77] },
+      { "code": "REPLY", "amount": 0, "unit": "DAYS", "counting": "FULL", "fixedByJudge": true, "startsFrom": "order", "effectOnExpiry": "noReply", "articles": [6] },
+      { "code": "INVESTIGATION_DEPOSIT", "amount": 15, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "depositLapsed", "articles": [119, 602] },
+      { "code": "EXPERT_CHALLENGE", "amount": 10, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "challengeInadmissible", "articles": [126, 602] },
+      { "code": "CHALLENGE_RULING", "amount": 5, "unit": "DAYS", "counting": "FULL", "startsFrom": "filing", "effectOnExpiry": "rulingDue", "articles": [126, 602] },
+      { "code": "EXPERT_REPORT", "amount": 0, "unit": "DAYS", "counting": "FULL", "fixedByJudge": true, "startsFrom": "order", "effectOnExpiry": "expertLate", "articles": [124, 125] },
+      { "code": "EXPERT_SUMMONS_NOTICE", "amount": 5, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "summonsNotice", "articles": [127, 602] },
+      { "code": "FEE_OBJECTION", "amount": 10, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "objectionClosed", "articles": [197, 602] },
+      { "code": "RETURN_TO_HEARING", "amount": 1, "unit": "MONTHS", "counting": "FULL", "startsFrom": "return", "effectOnExpiry": "rapporteurLate", "articles": [104, 602] },
+      { "code": "COUNSELLOR_PREPARATION", "amount": 90, "unit": "DAYS", "counting": "FULL", "startsFrom": "return", "effectOnExpiry": "rapporteurLate", "articles": [356, 602] },
+      { "code": "DEEMED_SERVICE_AFTER_REFUSAL", "amount": 10, "unit": "DAYS", "counting": "CALENDAR", "startsFrom": "refusal", "effectOnExpiry": "deemedServed", "articles": [85], "uncertain": true },
+      { "code": "APPEARANCE_IN_DISTRICT", "amount": 5, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appearance", "articles": [88, 602] },
+      { "code": "APPEARANCE_IN_KINGDOM", "amount": 15, "unit": "DAYS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appearance", "articles": [88, 602] },
+      { "code": "APPEARANCE_ABROAD", "amount": 3, "unit": "MONTHS", "counting": "FULL", "startsFrom": "service", "effectOnExpiry": "appearance", "articles": [89, 602] },
       { "code": "APPEAL_TRANSMISSION", "amount": 15, "unit": "DAYS", "counting": "FULL", "startsFrom": "filing", "effectOnExpiry": "transmissionLate", "articles": [214, 602] },
       { "code": "JUDGMENT_SUBSTITUTE_SIGNATURE", "amount": 24, "unit": "HOURS", "counting": "PLAIN_HOURS", "startsFrom": "impediment", "effectOnExpiry": "signatureLate", "articles": [110] },
       { "code": "ENFORCEABILITY", "amount": 30, "unit": "YEARS", "counting": "FULL", "startsFrom": "judgment", "effectOnExpiry": "enforceabilityLost", "articles": [449, 602] },

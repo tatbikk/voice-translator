@@ -8,12 +8,15 @@ import { commercialRegister } from '@/server/registers/commercial';
 // The commercial register, looked up by full trade register number only (memo
 // row 22): the card is filled from the answer, which always carries its source,
 // «مصدر محاكى» in the demo. The event records that a lookup was made, never
-// the number.
+// the number. A GET with effects (it asks the register and spends the
+// session's budget): it passes the CSRF step, and the page sends its token
+// (decision 80).
 export const GET = defineEndpoint({
   id: 'registers.commercial.lookup',
   method: 'GET',
   path: '/api/v1/registers/commercial',
   access: { kind: 'action', action: 'registers.commercial.lookup' },
+  sideEffects: true,
   params: z.strictObject({ number: z.string().trim().min(3).max(40) }),
   rateLimit: (_client, session) => ({ key: `register:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.registerLookup.perSession }),
   handler: async ({ params, session }) => {

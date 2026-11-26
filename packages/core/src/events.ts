@@ -186,7 +186,11 @@ export const EVENT_TYPES = {
   'filing.document.updated': { outcome: 'DONE', details: detailsOf({ draftId: id, documentId: id, removed: z.boolean() }) },
   'filing.fixed-copy.prepared': { outcome: 'DONE', details: detailsOf({ draftId: id, documentId: id, sha256: hash, paragraphs: count }) },
   /** a request of the filing path refused for its content, not its access (the access refusals are access.denied) */
-  'filing.refused': { outcome: 'DENIED', details: detailsOf({ draftId: id.nullable(), reason: code }) },
+  'filing.refused': {
+    outcome: 'DENIED',
+    // documentId: the document asked for through the draft, when it is not one of the draft's (decision 77)
+    details: detailsOf({ draftId: id.nullable(), documentId: id.exactOptional(), reason: code }),
+  },
   'filing.submitted': { outcome: 'DONE', details: detailsOf({ draftId: id, caseFileId: id, channel }) },
   'filing.receipt.issued': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id }) },
   /** «شهادة توقيع» printed beside the signed application, linked to it (independent review IR-07, decision 72) */

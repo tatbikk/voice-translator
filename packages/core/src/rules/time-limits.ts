@@ -15,6 +15,9 @@
 //   platform resumed its service (art. 639).
 // - the result carries what it relied on that is not settled (review P1-A-09):
 //   the date stays the date computed, and is shown «قيمة مؤقتة غير مؤكدة».
+//   A limit opened by a deemed service after a refusal (art. 85) carries what
+//   that service relied on too: whether art. 602 extends its tenth day is open
+//   (س46), and the table marks the rule uncertain.
 import { addDays, addMonths, isHoliday, moroccoDay, moroccoLocal, startOfMoroccoDay, weekday, type HolidayCalendar } from './calendar';
 import type { Dated } from './in-force';
 
@@ -109,6 +112,8 @@ export interface TimeLimitInput {
   readonly outages?: readonly Outage[];
   /** the day the judge set, for a limit fixed by the judge */
   readonly fixedDate?: string;
+  /** what the start itself relied on that is not settled: a deemed service after a refusal (art. 85, س46) */
+  readonly startUncertainties?: readonly TimeLimitUncertainty[];
 }
 
 /**
@@ -138,7 +143,7 @@ function calendarReader(calendar: HolidayCalendar, settings: TimeLimitRuleSet['s
     },
     uncertainties(input, electronicCountingUsed) {
       const days = [...looked].sort();
-      const found: TimeLimitUncertainty[] = [];
+      const found: TimeLimitUncertainty[] = [...(input.startUncertainties ?? [])];
       if (input.rule.uncertain) found.push({ kind: 'RULE' });
       if (electronicCountingUsed && settings.electronicCounting.uncertain) found.push({ kind: 'ELECTRONIC_COUNTING' });
       const weekend = days.filter((d) => calendar.weekendDays.includes(weekday(d)) && !calendar.dates.includes(d));
@@ -240,10 +245,15 @@ export function computeTimeLimit(input: TimeLimitInput): TimeLimitResult {
   };
 }
 
-/** The day a refused summons counts as duly delivered: the tenth day after the refusal (art. 85). */
-export function deemedServiceDate(refusalAt: Date, rule: TimeLimitRule): { day: string; at: Date } {
+/**
+ * The day a refused summons counts as duly delivered: the tenth day after the
+ * refusal (art. 85), never extended (the table's reading, marked uncertain
+ * while س46 is open). What it relies on goes to the limit it opens
+ * (startUncertainties of computeTimeLimit).
+ */
+export function deemedServiceDate(refusalAt: Date, rule: TimeLimitRule): { day: string; at: Date; uncertainties: readonly TimeLimitUncertainty[] } {
   const day = addDays(moroccoDay(refusalAt), rule.amount);
-  return { day, at: startOfMoroccoDay(day) };
+  return { day, at: startOfMoroccoDay(day), uncertainties: rule.uncertain ? [{ kind: 'RULE' }] : [] };
 }
 
 /**

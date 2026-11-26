@@ -111,7 +111,7 @@ export function CardStep({ view, t, busy, update }: StepProps) {
   const lookup = async (index: number) => {
     const party = parties[index];
     if (!party?.idNumber) return;
-    const res = await apiGet<RegisterAnswer>(`/api/v1/registers/commercial?number=${encodeURIComponent(party.idNumber)}`);
+    const res = await apiGet<RegisterAnswer>(`/api/v1/registers/commercial?number=${encodeURIComponent(party.idNumber)}`, { csrf: true });
     // Every answer of the register carries its source, «مصدر محاكى» included when nothing is found (prompt, «السجلات»).
     if (res.ok) setSources((s) => ({ ...s, [party.key]: res.data.source.implementation === 'simulated' ? t('registers.simulatedSource') : t(res.data.source.nameKey) }));
     if (!res.ok || !res.data.entry) {

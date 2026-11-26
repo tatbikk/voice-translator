@@ -16,8 +16,8 @@ export const POST = defineEndpoint({
   resource: (p) => draftResource(p.draftId),
   rateLimit: (_client, session) => ({ key: `filing-writes:session:${session?.session.id ?? 'none'}`, rule: SECURITY_POLICY.filing.writesPerSession }),
   body: UpdateDocumentBody,
-  handler: ({ params: p, body, session }) =>
+  handler: ({ params: p, body, session, clientIdHash }) =>
     withDraft(p.draftId, session, async (draft, caller) => {
-      return answer(await updateDocument(draft, p.documentId, body, caller.session.actor));
+      return answer(await updateDocument(draft, p.documentId, body, caller.session.actor, { clientIdHash, sessionId: caller.session.session.id }));
     }),
 });

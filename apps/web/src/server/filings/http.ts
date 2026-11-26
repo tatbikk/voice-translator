@@ -3,7 +3,7 @@ import type { UserSubject } from '@mahkama/core';
 import type { SessionContext } from '../auth/sessions';
 import { fail, notFound, ok } from '../http/responses';
 import { draftView, loadDraft, type DraftWithParts } from './drafts';
-import type { Outcome } from './service';
+import type { Failure, Outcome } from './service';
 
 // What the filing routes share: the draft the endpoint authorized, read again
 // in full for its handler, and the answer of a service outcome.
@@ -29,8 +29,16 @@ export async function withDraft(
   return fn(draft, caller);
 }
 
+/** The answer to a refused operation, with its fields or the delay after which to try again. */
+export function refusal(failure: Failure): Response {
+  return fail(failure.status, failure.code, {
+    ...(failure.fields ? { fields: failure.fields } : {}),
+    ...(failure.retryAfterSeconds !== undefined ? { retryAfterSeconds: failure.retryAfterSeconds } : {}),
+  });
+}
+
 export function answer<T>(outcome: Outcome<T>, data?: (value: T) => unknown): Response {
-  if (!outcome.ok) return fail(outcome.status, outcome.code, outcome.fields ? { fields: outcome.fields } : {});
+  if (!outcome.ok) return refusal(outcome);
   return ok(data ? data(outcome.value) : (outcome.value ?? {}));
 }
 

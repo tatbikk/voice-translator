@@ -25,6 +25,7 @@ import { enqueue } from '../jobs/queue';
 import { asJson } from '../json';
 import { commercialRegister } from '../registers/commercial';
 import { caseTypeRules, districtRules } from '../rules/store';
+import { appendRefusalEvent, type BudgetOwner } from '../security/refusals';
 import { docxParagraphs, inspectUpload, isArchiveRefusal, pastedParagraphs, uploadTitle, type UploadType } from '../uploads/inspect';
 import {
   attestationsFor,
@@ -51,7 +52,13 @@ import { paragraphsDigest } from './generated';
 
 type Tx = Prisma.TransactionClient;
 
-export type Failure = { readonly ok: false; readonly status: number; readonly code: ErrorCode; readonly fields?: Record<string, string> };
+export type Failure = {
+  readonly ok: false;
+  readonly status: number;
+  readonly code: ErrorCode;
+  readonly fields?: Record<string, string>;
+  readonly retryAfterSeconds?: number;
+};
 export type Outcome<T = undefined> = { readonly ok: true; readonly value: T } | Failure;
 
 const done = <T>(value: T): Outcome<T> => ({ ok: true, value });
@@ -59,6 +66,21 @@ const done = <T>(value: T): Outcome<T> => ({ ok: true, value });
 async function refused(draftId: string | null, actor: EventActor, status: number, code: ErrorCode, fields?: Record<string, string>): Promise<Failure> {
   await appendStandaloneEvent({ action: 'filing.refused', details: { draftId, reason: code }, actor });
   return { ok: false, status, code, ...(fields ? { fields } : {}) };
+}
+
+/** Past the refusal budget the request is answered as the endpoint answers it (decision 3). */
+const THROTTLED_RETRY_AFTER_SECONDS = 60;
+
+/**
+ * A document asked for through a draft it is not in (decision 77): a guess at
+ * an identifier, refused 404 and recorded with the draft and the document, but
+ * through the session's refusal budget, as the endpoint records its refusals.
+ * Past the budget it is answered 429 and counted for the summary, not recorded
+ * one by one (decision 3): the download route has no rate limit of its own.
+ */
+async function documentNotInDraft(draftId: string, documentId: string, actor: EventActor, owner: BudgetOwner): Promise<Failure> {
+  const recorded = await appendRefusalEvent(owner, { action: 'filing.refused', details: { draftId, documentId, reason: 'NOT_FOUND' }, actor });
+  return recorded ? { ok: false, status: 404, code: 'NOT_FOUND' } : { ok: false, status: 429, code: 'TOO_MANY_REQUESTS', retryAfterSeconds: THROTTLED_RETRY_AFTER_SECONDS };
 }
 
 /** Locks the draft's row and checks that it is still open (a filed draft changes no more). */
@@ -470,10 +492,10 @@ export const UpdateDocumentBody = z
   .strict();
 export type UpdateDocumentInput = z.infer<typeof UpdateDocumentBody>;
 
-export async function updateDocument(draft: DraftWithParts, documentId: string, body: UpdateDocumentInput, actor: EventActor): Promise<Outcome> {
+export async function updateDocument(draft: DraftWithParts, documentId: string, body: UpdateDocumentInput, actor: EventActor, owner: BudgetOwner): Promise<Outcome> {
   const doc = draft.documents.find((d) => d.id === documentId);
   // A document of another draft is unknown here, and the request is a refusal like any other (independent review IR-17).
-  if (!doc) return refused(draft.id, actor, 404, 'NOT_FOUND');
+  if (!doc) return documentNotInDraft(draft.id, documentId, actor, owner);
   if (doc.generated) return refused(draft.id, actor, 422, 'INVALID_INPUT', { document: 'errors.field.invalid' });
   const now = clock.now();
   const applied = await eventTransaction(async (tx) => {
@@ -507,13 +529,11 @@ export async function draftDocumentFile(
   draft: DraftWithParts,
   documentId: string,
   actor: EventActor,
-): Promise<{ bytes: Uint8Array; mediaType: string; title: string | null } | 'NOT_FOUND' | 'INTEGRITY'> {
+  owner: BudgetOwner,
+): Promise<{ bytes: Uint8Array; mediaType: string; title: string | null } | Failure | 'NOT_FOUND' | 'INTEGRITY'> {
   const doc = draft.documents.find((d) => d.id === documentId) ?? (await getDb().filingDocument.findFirst({ where: { id: documentId, draftId: draft.id } }));
-  if (!doc) {
-    // A document of another draft is unknown here, and the request is a refusal like any other (independent review IR-17).
-    await refused(draft.id, actor, 404, 'NOT_FOUND');
-    return 'NOT_FOUND';
-  }
+  // A document of another draft is unknown here, and the request is a refusal like any other (independent review IR-17).
+  if (!doc) return documentNotInDraft(draft.id, documentId, actor, owner);
   const bytes = await documentStore().get(doc.storageKey);
   if (!bytes) return 'NOT_FOUND';
   // Each download is recorded, as on the file (decision 47, audit G100); and a changed copy too.

@@ -95,6 +95,13 @@ export interface EndpointDefinition<P, B> {
    * the limit of their place; the parameters carry the metadata (Phase 2 uploads).
    */
   readonly binary?: { readonly absoluteMaxBytes: number; readonly maxBytes: (params: P, resource: Resource | undefined) => number };
+  /**
+   * A GET with effects beyond the record of the read itself (it asks an
+   * outside register, spends a budget of the session): it passes the CSRF step
+   * as a state-changing request does, so that a navigation from another site
+   * cannot run it in the user's name (decision 80). A download is a plain read.
+   */
+  readonly sideEffects?: true;
 }
 
 export interface EndpointHandler {
@@ -104,6 +111,8 @@ export interface EndpointHandler {
   /** the definition itself, which the registry must match (review A-17) */
   readonly endpointPath: string;
   readonly endpointAccess: EndpointAccess;
+  /** a GET that passes the CSRF step (decision 80) */
+  readonly endpointSideEffects: boolean;
 }
 
 /** Path parameters are taken from the URL by position against the declared path. */
@@ -238,12 +247,15 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
       // The session is read now because the CSRF binding depends on it.
       if (access.kind !== 'public') session = await resolveSession(req);
 
-      // 4. CSRF for every state-changing request. Public endpoints change no state.
-      if (definition.method !== 'GET' && access.kind !== 'public') {
+      // 4. CSRF for every state-changing request, and every GET with effects (decision 80).
+      // Public endpoints change no state.
+      if ((definition.method !== 'GET' || definition.sideEffects === true) && access.kind !== 'public') {
         const origin = req.headers.get('origin');
         const fetchSite = req.headers.get('sec-fetch-site');
         const binding = session?.session.id ?? bindingIdFromRequest(req);
-        const sameOrigin = origin === env.appOrigin && (fetchSite === null || fetchSite === 'same-origin');
+        // A browser sends no Origin with a same-origin GET: the token and Sec-Fetch-Site decide it.
+        const originOk = origin === env.appOrigin || (definition.method === 'GET' && origin === null);
+        const sameOrigin = originOk && (fetchSite === null || fetchSite === 'same-origin');
         if (!sameOrigin || !csrfTokenValid(req.headers.get('x-csrf-token'), binding)) {
           return await refuse('CSRF', 403, 'CSRF_REJECTED');
         }
@@ -368,5 +380,6 @@ export function defineEndpoint<P = Record<string, never>, B = Record<string, nev
     endpointMethod: definition.method,
     endpointPath: definition.path,
     endpointAccess: definition.access,
+    endpointSideEffects: definition.sideEffects === true,
   });
 }
