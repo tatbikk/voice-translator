@@ -258,7 +258,7 @@ describe('the case card (art. 77)', () => {
       registeredOffice: office,
       branch: office,
     };
-    const common = { key: 'x', side: 'DEFENDANT', name: 'سين', quality: 'مدعى عليه', email: 'x@demo.example' };
+    const common = { key: 'x', side: 'DEFENDANT' as const, name: 'سين', quality: 'مدعى عليه', email: 'x@demo.example' };
     // A natural person: his identity number, capacity, domicile and residence; no legal form, representative, office or branch.
     expect(shownForKind({ ...everything, personKind: 'NATURAL', capacityStatus: 'FULL' })).toEqual({
       ...common,
