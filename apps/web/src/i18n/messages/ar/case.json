@@ -48,6 +48,8 @@
   "case.timeline.event.signature.circle.voided": "سقوط دائرة التوقيع لتغير الوثيقة",
   "case.timeline.event.signature.verified": "التحقق من التوقيع",
   "case.timeline.event.case.transition.recorded": "{action}",
+  "case.timeline.event.case.time-limit.opened": "فتح أجل",
+  "case.timeline.event.case.time-limit.closed": "إقفال أجل",
   "case.timeline.event.other": "إجراء مدون",
   "case.documents.columns.document": "الوثيقة",
   "case.documents.columns.nature": "النوعية",

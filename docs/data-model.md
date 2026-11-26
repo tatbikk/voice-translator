@@ -95,7 +95,7 @@
 
 | الجدول | الغاية | الأعمدة الأساسية |
 | --- | --- | --- |
-| `CaseFile` (أعمدة مضافة) | الملف كاملا | `kind` (`FIRST_INSTANCE`، `APPEAL`، `ENFORCEMENT`)، `caseType` (رمز نوع القضية)، `subject` (موضوعها)، `panelId`، `rapporteurUserId`، `procedure` (`WRITTEN` كتابية، `ORAL` شفوية)، `parentCaseFileId` (ملف الدرجة الأدنى أو ملف الموضوع للتنفيذ)، `registeredAt`، `registrationStampedAt`، `referredToProsecutionAt`، `readyAt`، `pronouncementDate` |
+| `CaseFile` (أعمدة مضافة) | الملف كاملا | `kind` (`FIRST_INSTANCE`، `APPEAL`، `ENFORCEMENT`)، `caseType` (رمز نوع القضية)، `subject` (موضوعها)، `panelId`، `rapporteurUserId`، `procedure` (`WRITTEN` كتابية، `ORAL` شفوية)، `parentCaseFileId` (ملف الدرجة الأدنى أو ملف الموضوع للتنفيذ)، `registeredAt`، `registrationStampedAt`، `referredToProsecutionAt`، `readyAt`، `pronouncementDate`، `facts` (الوقائع المخزنة: ما لا تشتقه صورة الملف من معطياته، يكتبها المطبق وحده؛ القرار 73) |
 | `CaseParty` | الطرف | `caseFileId`، `side` (`PLAINTIFF`، `DEFENDANT`، `GUARANTOR`، `APPELLANT`، `RESPONDENT`، `ENFORCEMENT_CREDITOR`، `ENFORCEMENT_DEBTOR`، `GARNISHEE`)، `personKind` (`NATURAL`، `LEGAL`، `PUBLIC`)، `displayName`، `legalForm`، `legalRepresentative`، `idNumber` (البطاقة الوطنية أو السجل التجاري، مفترض في العرض)، `litigantUserId`، `organizationId`، `eServiceAcceptedAt`، `position` (ترتيب العرض) |
 | `PartyAddress` | عناوين الطرف ومصدر كل عنوان | `partyId`، `kind` (`DOMICILE`، `REGISTERED_OFFICE`، `ELECTED`، `ELECTRONIC`، `PHONE`)، `value`، `source` (`DECLARED` مصرح به، `COMMERCIAL_REGISTER` السجل التجاري م 613، `NATIONAL_ID_DATABASE` قاعدة البطاقة الوطنية م 86، `PLATFORM` المنصة م 626 و627)، `withinCourtDistrict`، `validFrom`، `supersededAt` |
 | `Representation` | نيابة المحامي عن الطرف | `partyId`، `lawyerUserId`، `startedAt`، `endedAt`، `accountServiceConsent` (موافقة المادة 633 وتاريخها) |
@@ -113,7 +113,7 @@
 
 | الجدول | الغاية | الأعمدة الأساسية |
 | --- | --- | --- |
-| `TimeLimit` | الأجل | `caseFileId`، `ruleCode` (من جدول الآجال)، `ruleVersionId`، `partyId`، `startsAt` (الواقعة المنشئة)، `endsAt` (المحسوب)، `electronic`، `status` (`RUNNING`، `MET`، `ELAPSED`، `CLOSED`)، `effectOnExpiry`، `closedAt`، `computation` (تفصيل الاحتساب) |
+| `TimeLimit` | الأجل | `caseFileId`، `ruleCode` (من جدول الآجال)، `ruleVersionId`، `partyId`، `startsAt` (الواقعة المنشئة)، `endsAt` (المحسوب)، `electronic`، `status` (`RUNNING`، `MET`، `ELAPSED`، `CLOSED`)، `effectOnExpiry`، `closedAt`، `computation` (تفصيل الاحتساب: الإجراء الذي فتحه، والواقعة المنشئة، واليوم الذي حدده القاضي، والخطوات والمواد، وإصدارا جدولي الآجال والعطل الساريين يوم الواقعة المنشئة، وأفق جدول العطل، وما لم يحسم؛ القرار 73) |
 | `Envelope` | الطي والتبليغ | `caseFileId`، `partyId`، `purpose` (استدعاء، تبليغ حكم، تنفيذ…)، `channel` (`ELECTRONIC`، `BAILIFF`، `CLERK`، `ADMINISTRATIVE`، `REGISTERED_MAIL`، م 83)، `agentUserId`، `status` (`READY`، `DISPATCHED`، `IN_PROGRESS`، `SERVED`، `REFUSED`، `FAILED_UNKNOWN`، `FAILED_MOVED`)، `dispatchedAt`، `servedAt` (تاريخ التوصل الثابت)، `deemedServedAt` (اليوم العاشر بعد الرفض، م 85)، `documentId` |
 | `DeliveryCertificate` | شهادة التسليم ببيانات المادة 85 | `envelopeId`، `recipientName`، `recipientIdNumber`، `recipientCapacity` (من قائمة المادة 84)، `occurredAt` (وقت الإنجاز لا وقت الإرسال)، `signature` (`SIGNED`، `UNABLE`، `REFUSED`)، `outcome`، `recordedByUserId`، `source` (`FIELD_APP`، `PAPER`) |
 | `ReceiptNotice` | الإشعار بالتوصل في التبليغ الإلكتروني | `envelopeId`، `issuedAt` (م 629) |

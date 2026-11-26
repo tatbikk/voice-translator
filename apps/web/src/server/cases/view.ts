@@ -327,13 +327,16 @@ function isLawBasis(value: unknown): value is { kind: 'LAW'; articles: number[] 
   return typeof value === 'object' && value !== null && (value as { kind?: unknown }).kind === 'LAW' && Array.isArray((value as { articles?: unknown }).articles);
 }
 
-/** Access records: kept in the event log, never shown on the file's timeline. */
-const ACCESS_RECORDS: ReadonlySet<string> = new Set(['document.downloaded', 'signature.verified']);
+/**
+ * Kept in the event log, never shown on the file's timeline: the access records, and
+ * the facts an act establishes, which the act's own line already shows (decision 73).
+ */
+const OFF_TIMELINE: ReadonlySet<string> = new Set(['document.downloaded', 'signature.verified', 'case.facts.set']);
 /** Acts of the deliberation, secret until pronouncement (art. 108): the panel's alone. */
 const DELIBERATION_ACTS: ReadonlySet<string> = new Set(['case.deliberation.open', 'case.judgment.draft', 'case.judgment.sign', 'case.judgment.sign-substitute']);
 
 export function timelineVisible(action: string, details: unknown, visibleDocumentIds: ReadonlySet<string>, panelSide: boolean): boolean {
-  if (ACCESS_RECORDS.has(action)) return false;
+  if (OFF_TIMELINE.has(action)) return false;
   const d = (typeof details === 'object' && details !== null ? details : {}) as { documentId?: unknown; action?: unknown };
   if (typeof d.documentId === 'string' && !visibleDocumentIds.has(d.documentId)) return false;
   if (action === 'case.transition.recorded' && typeof d.action === 'string' && DELIBERATION_ACTS.has(d.action) && !panelSide) return false;

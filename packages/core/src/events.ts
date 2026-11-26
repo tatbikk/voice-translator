@@ -220,10 +220,35 @@ export const EVENT_TYPES = {
   'case.document.filed': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id, action: code }) },
   /** an executor found the file changed since its authorization (a race), or the input invalid */
   'case.action.refused': { outcome: 'DENIED', details: detailsOf({ caseFileId: id, action: code, reason: code }) },
-  /** a procedural act of the file (from Phase 2, by its executor; in the demo data, the seeded history) */
+  /** the declared next status of an act, applied by the applier (independent review IR-10); in the demo data, the seeded history */
   'case.transition.recorded': {
     outcome: 'DONE',
     details: detailsOf({ action: code, fromStatus: code, toStatus: code }),
+  },
+  /** the facts an act declares (transitions.ts «sets»), established by the applier (decision 73), joined by «:» */
+  'case.facts.set': {
+    outcome: 'DONE',
+    details: detailsOf({ caseFileId: id, action: code, facts: z.string().regex(/^[A-Z_]{2,40}(:[A-Z_]{2,40}){0,19}$/) }),
+  },
+  /** a time limit an act opens (transitions.ts «opens»), computed with the tables in force on the day of its trigger */
+  'case.time-limit.opened': {
+    outcome: 'DONE',
+    details: detailsOf({
+      caseFileId: id,
+      timeLimitId: id,
+      action: code,
+      ruleCode: code,
+      ruleVersion: code,
+      calendarVersion: code,
+      partyId: id.nullable(),
+      lastDay: z.iso.date(),
+      uncertain: z.boolean(),
+    }),
+  },
+  /** a running time limit an act closes (transitions.ts «closes») */
+  'case.time-limit.closed': {
+    outcome: 'DONE',
+    details: detailsOf({ caseFileId: id, timeLimitId: id, action: code, ruleCode: code }),
   },
   'events.chain.verified': {
     outcome: 'DONE',

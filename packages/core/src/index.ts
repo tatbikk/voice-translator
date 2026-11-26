@@ -16,6 +16,7 @@ export * from './procedure/states';
 export * from './procedure/snapshot';
 export * from './procedure/conditions';
 export * from './procedure/transitions';
+export * from './procedure/effects';
 export * from './rules/in-force';
 export * from './procedure/signature-circle';
 export * from './rules/calendar';

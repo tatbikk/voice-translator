@@ -48,6 +48,12 @@ function basisOf(code: string): LegalBasis {
   return resolveLegalBasis(rule);
 }
 
+/** The articles of that basis. */
+function articlesOfAction(code: string): readonly number[] {
+  const basis = basisOf(code);
+  return basis.kind === 'LAW' ? basis.articles : [];
+}
+
 /** The events an act writes: what it did, never an access record or a refusal. */
 const ACT_EVENT = /^(filing|payment|case|document|signature)\./;
 const actEvents = (events: readonly EventRow[]) => events.filter((e) => e.outcome === 'DONE' && ACT_EVENT.test(e.action));
@@ -228,11 +234,11 @@ describe('the acts of the registry office and of the prosecution carry the basis
     if (!snapshot) throw new Error('no snapshot');
     const view = await caseView(caseFileId, await subjectOf(registryUser), snapshot);
     const articlesOf = (action: string) => view?.timeline.find((e) => e.action === action)?.articles;
-    expect(articlesOf('case.registration.stamped')).toEqual((basisOf('case.registration.stamp') as { articles: number[] }).articles);
-    expect(articlesOf('case.registration.reclassified')).toEqual((basisOf('case.registration.reclassify') as { articles: number[] }).articles);
-    expect(articlesOf('case.note.added')).toEqual((basisOf('case.registration.note-to-judge') as { articles: number[] }).articles);
-    expect(articlesOf('case.registered')).toEqual((basisOf('filing.draft.submit') as { articles: number[] }).articles);
-    expect(articlesOf('filing.submitted')).toEqual((basisOf('filing.draft.submit') as { articles: number[] }).articles);
+    expect(articlesOf('case.registration.stamped')).toEqual(articlesOfAction('case.registration.stamp'));
+    expect(articlesOf('case.registration.reclassified')).toEqual(articlesOfAction('case.registration.reclassify'));
+    expect(articlesOf('case.note.added')).toEqual(articlesOfAction('case.registration.note-to-judge'));
+    expect(articlesOf('case.registered')).toEqual(articlesOfAction('filing.draft.submit'));
+    expect(articlesOf('filing.submitted')).toEqual(articlesOfAction('filing.draft.submit'));
     // No event of the filing, the registration or the registry's acts is left without its basis
     // (the documents the worker prints after them are not acts of these steps).
     const ofTheSteps = new Set([

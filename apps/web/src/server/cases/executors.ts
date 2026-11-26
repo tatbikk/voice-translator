@@ -9,11 +9,13 @@ import { getDb } from '../db';
 import { sha256Hex } from '../documents/service';
 import { documentStore } from '../documents/store';
 import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
+import { basisOf } from '../events/basis';
 import type { ErrorCode } from '../http/responses';
 import { createNotification } from '../notifications/service';
 import { caseTypeRules, referralRules, ruleSetId } from '../rules/store';
 import { inspectUpload, uploadTitle } from '../uploads/inspect';
 import { groundsText, referralArticles } from '../filings/registration';
+import { actExecutors, DeclaredEffectError, type ActContext, type ActExecutor, type ExecutorInput, type Invalid } from './effects';
 import { caseSnapshot } from './snapshot';
 
 /** A stored code, when the core knows it. */
@@ -24,8 +26,12 @@ const oneOf = <T extends string>(value: string | null, allowed: readonly T[]): T
 // route authorizes the act on a snapshot read before the transaction; the
 // executor locks the file, rebuilds the snapshot inside the transaction and
 // asks the core again, so two requests racing on the same file cannot both act
-// (Phase 1 memo, row 17). What an act sets, notifies and files is declared in
-// the core's table (P1-A-05); the executor only carries it out.
+// (Phase 1 memo, row 17). What an act notifies and files is declared in the
+// core's table (P1-A-05) and carried out here; its next status, the facts it
+// sets and the limits it closes and opens are applied after it by the applier
+// (effects.ts, independent review IR-10, decision 73), through which every
+// executor is registered. Every event an act writes carries its legal basis
+// from the core's table (IR-12, decision 74).
 
 type Tx = Prisma.TransactionClient;
 
@@ -33,40 +39,8 @@ export type ExecutionResult =
   | { readonly ok: true; readonly data: Record<string, unknown> }
   | { readonly ok: false; readonly status: number; readonly code: ErrorCode; readonly fields?: Record<string, string> };
 
-interface Prepared<T> {
-  readonly ok: true;
-  readonly value: T;
-}
-interface Invalid {
-  readonly ok: false;
-  readonly status: number;
-  readonly code: ErrorCode;
-  readonly reason: string;
-}
-
-interface RunContext<T> {
-  readonly tx: Tx;
-  readonly caseFileId: string;
-  readonly snapshot: CaseSnapshot;
-  readonly subject: UserSubject;
-  readonly actor: EventActor;
-  readonly now: Date;
-  readonly value: T;
-}
-
-export interface ExecutorInput {
-  readonly body: unknown;
-  readonly bytes: Uint8Array | null;
-  readonly query: Readonly<Record<string, string>>;
-}
-
-interface Executor<T> {
-  /** how the act receives its input: a JSON body, or the bytes of a document */
-  readonly input: 'json' | 'upload';
-  /** validation outside the transaction; an upload's bytes are stored here, under a generated key */
-  prepare(input: ExecutorInput, caseFileId: string, now: Date): Promise<Prepared<T> | Invalid>;
-  run(context: RunContext<T>): Promise<Record<string, unknown>>;
-}
+/** The legal basis of the act an executor carries out, on the day of the act. */
+const basisOfAct = (code: string, context: ActContext<unknown>) => basisOf(code, context.now, { kind: 'case', snapshot: context.snapshot });
 
 const invalid = (reason: string, status = 422, code: ErrorCode = 'INVALID_INPUT'): Invalid => ({ ok: false, status, code, reason });
 
@@ -97,7 +71,7 @@ async function recipientsOf(tx: Tx, snapshot: CaseSnapshot, targets: readonly No
 
 async function inform(
   tx: Tx,
-  context: RunContext<unknown>,
+  context: ActContext<unknown>,
   code: string,
   templateKey: string,
   params: Record<string, string | number> = {},
@@ -123,21 +97,22 @@ async function inform(
 // ---------------------------------------------------------------------------
 // Station 2: the registry office (three buttons, none to reject).
 
-const stamp: Executor<null> = {
+const stamp: ActExecutor<null> = {
   input: 'json',
   prepare(input) {
     return Promise.resolve(z.strictObject({}).safeParse(input.body ?? {}).success ? { ok: true, value: null } : invalid('BODY'));
   },
-  async run({ tx, caseFileId, actor, now }) {
-    await tx.caseFile.update({ where: { id: caseFileId }, data: { registrationStampedAt: now } });
-    await appendEvent(tx, { action: 'case.registration.stamped', details: { caseFileId }, caseFileId, actor });
-    return { stampedAt: now.toISOString() };
+  // The stamp's fact (REGISTRATION_STAMPED, its moment) is the applier's: the table declares it.
+  async run(context) {
+    const { tx, caseFileId, actor, now } = context;
+    await appendEvent(tx, { action: 'case.registration.stamped', details: { caseFileId }, caseFileId, actor, legalBasis: basisOfAct('case.registration.stamp', context) });
+    return { data: { stampedAt: now.toISOString() } };
   },
 };
 
 const ReclassifyBody = z.strictObject({ caseType: z.string().regex(/^\d{4}$/) });
 
-const reclassify: Executor<{ caseType: string; rule: CaseTypeRule; rules: ReferralRuleSet; referralRuleSetId: string }> = {
+const reclassify: ActExecutor<{ caseType: string; rule: CaseTypeRule; rules: ReferralRuleSet; referralRuleSetId: string }> = {
   input: 'json',
   async prepare(input, _caseFileId, now) {
     const parsed = ReclassifyBody.safeParse(input.body);
@@ -168,7 +143,13 @@ const reclassify: Executor<{ caseType: string; rule: CaseTypeRule; rules: Referr
     if (value.rule.specialty !== file.court.specialty) throw new InputRefused('CASE_TYPE_OF_ANOTHER_SPECIALTY');
     // The number and the national identifier stay; only the code changes (decision 53).
     await tx.caseFile.update({ where: { id: caseFileId }, data: { caseType: value.caseType, code: toCode, classificationCorrectedAt: now } });
-    await appendEvent(tx, { action: 'case.registration.reclassified', details: { caseFileId, fromCode: file.code, toCode }, caseFileId, actor });
+    await appendEvent(tx, {
+      action: 'case.registration.reclassified',
+      details: { caseFileId, fromCode: file.code, toCode },
+      caseFileId,
+      actor,
+      legalBasis: basisOfAct('case.registration.reclassify', context),
+    });
 
     // The referrals the new type makes due are added (review P2-S-05); one already made stays.
     const parties = file.parties.map((p) => ({
@@ -219,14 +200,14 @@ const reclassify: Executor<{ caseType: string; rule: CaseTypeRule; rules: Referr
         });
       }
     }
-    return { code: toCode, referrals: added.length };
+    return { data: { code: toCode, referrals: added.length } };
   },
 };
 
 export const NOTE_REASONS = ['FEE_SHORTFALL', 'CLASSIFICATION', 'PARTIES', 'OTHER'] as const;
 const NoteBody = z.strictObject({ reason: z.enum(NOTE_REASONS), text: z.string().trim().min(1).max(2000) });
 
-const noteToJudge: Executor<z.infer<typeof NoteBody>> = {
+const noteToJudge: ActExecutor<z.infer<typeof NoteBody>> = {
   input: 'json',
   prepare(input) {
     const parsed = NoteBody.safeParse(input.body);
@@ -241,9 +222,15 @@ const noteToJudge: Executor<z.infer<typeof NoteBody>> = {
       data: { id: noteId, caseFileId, authorUserId: subject.userId, authorRole: subject.role, reason: value.reason, text: value.text, addressedToUserId: addressee, createdAt: now },
     });
     // The event records that a note exists and why, never its text (memo row 25).
-    await appendEvent(tx, { action: 'case.note.added', details: { caseFileId, noteId, reason: value.reason }, caseFileId, actor });
+    await appendEvent(tx, {
+      action: 'case.note.added',
+      details: { caseFileId, noteId, reason: value.reason },
+      caseFileId,
+      actor,
+      legalBasis: basisOfAct('case.registration.note-to-judge', context),
+    });
     await inform(tx, context, 'case.registration.note-to-judge', 'notifications.case.note-to-judge');
-    return { noteId };
+    return { data: { noteId } };
   },
 };
 
@@ -264,7 +251,7 @@ const UploadQuery = z.strictObject({
   title: z.string().transform(stripInvisible).pipe(z.string().trim().max(SECURITY_POLICY.uploads.titleMaxChars)).optional(),
 });
 
-function filedDocument(code: string): Executor<StoredUpload> {
+function filedDocument(code: string): ActExecutor<StoredUpload> {
   return {
     input: 'upload',
     async prepare(input, caseFileId) {
@@ -312,32 +299,40 @@ function filedDocument(code: string): Executor<StoredUpload> {
           visibility: 'CASE',
         },
       });
+      const legalBasis = basisOfAct(code, context);
       await appendEvent(tx, {
         action: 'document.stored',
         details: { documentId: value.documentId, sha256: value.sha256, byteSize: value.byteSize, generated: false, docType },
         caseFileId,
         actor,
+        legalBasis,
       });
-      await appendEvent(tx, { action: 'case.document.filed', details: { caseFileId, documentId: value.documentId, action: code }, caseFileId, actor });
+      await appendEvent(tx, { action: 'case.document.filed', details: { caseFileId, documentId: value.documentId, action: code }, caseFileId, actor, legalBasis });
       await inform(tx, context, code, 'notifications.case.document-filed', { docTypeKey: `case.docType.${docType}` });
-      return { documentId: value.documentId };
+      return { data: { documentId: value.documentId } };
     },
   };
 }
 
 // ---------------------------------------------------------------------------
 
-const EXECUTORS: Readonly<Record<string, Executor<never>>> = {
-  'case.registration.stamp': stamp as Executor<never>,
-  'case.registration.reclassify': reclassify as Executor<never>,
-  'case.registration.note-to-judge': noteToJudge as Executor<never>,
-  'case.prosecution.conclusions': filedDocument('case.prosecution.conclusions') as Executor<never>,
-  'case.commissioner.opinion': filedDocument('case.commissioner.opinion') as Executor<never>,
-};
+// Registered through the applier, which applies each act's declaration after it.
+const EXECUTORS = actExecutors({
+  'case.registration.stamp': stamp as ActExecutor<never>,
+  'case.registration.reclassify': reclassify as ActExecutor<never>,
+  'case.registration.note-to-judge': noteToJudge as ActExecutor<never>,
+  'case.prosecution.conclusions': filedDocument('case.prosecution.conclusions') as ActExecutor<never>,
+  'case.commissioner.opinion': filedDocument('case.commissioner.opinion') as ActExecutor<never>,
+});
 
 /** The acts executed from the generic routes, by how they receive their input. */
 export function executorKind(code: string): 'json' | 'upload' | null {
-  return EXECUTORS[code]?.input ?? null;
+  return EXECUTORS.kind(code);
+}
+
+/** The acts that have an executor. */
+export function executableActs(): readonly string[] {
+  return EXECUTORS.codes();
 }
 
 /** A refusal raised by an executor once inside its transaction: nothing it wrote stays. */
@@ -354,14 +349,13 @@ export async function executeCaseAction(
   actor: EventActor,
   input: ExecutorInput,
 ): Promise<ExecutionResult> {
-  const executor = EXECUTORS[code] as Executor<unknown> | undefined;
-  if (!executor) return { ok: false, status: 409, code: 'ACTION_NOT_EXECUTABLE_HERE' };
+  if (EXECUTORS.kind(code) === null) return { ok: false, status: 409, code: 'ACTION_NOT_EXECUTABLE_HERE' };
   const refuse = async (reason: string, status: number, errorCode: ErrorCode): Promise<ExecutionResult> => {
     await appendStandaloneEvent({ action: 'case.action.refused', details: { caseFileId, action: code, reason }, caseFileId, actor });
     return { ok: false, status, code: errorCode };
   };
 
-  const prepared = await executor.prepare(input, caseFileId, clock.now());
+  const prepared = await EXECUTORS.prepare(code, input, caseFileId, clock.now());
   if (!prepared.ok) return refuse(prepared.reason, prepared.status, prepared.code);
 
   const env = getEnv();
@@ -372,10 +366,12 @@ export async function executeCaseAction(
     if (!snapshot) return { refused: 'NOT_FOUND' as const };
     const decision = authorize(subject, code, { kind: 'case', snapshot }, { mode: env.mode, demoToolsEnabled: env.demoToolsEnabled, now });
     if (!decision.allowed) return { refused: 'ACTION_NO_LONGER_AVAILABLE' as const };
-    return { data: await executor.run({ tx, caseFileId, snapshot, subject, actor, now, value: prepared.value }) };
-  }).catch((error: unknown) => {
+    return { data: await EXECUTORS.execute(code, { tx, caseFileId, snapshot, subject, actor, now, value: prepared.value }) };
+  }).catch(async (error: unknown) => {
     // A refusal raised inside the transaction rolls back whatever the act had written.
     if (error instanceof InputRefused) return { invalid: error.reason };
+    // A declared effect that did not hold: nothing of the act stays, and the failure is recorded.
+    if (error instanceof DeclaredEffectError) await appendStandaloneEvent({ action: 'case.action.refused', details: { caseFileId, action: code, reason: 'EFFECT_NOT_HELD' }, caseFileId, actor });
     throw error;
   });
   if ('refused' in outcome) {

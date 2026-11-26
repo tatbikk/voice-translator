@@ -19,6 +19,7 @@ import { getDb } from '../db';
 import { sha256Hex } from '../documents/service';
 import { documentStore } from '../documents/store';
 import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
+import { basisOf } from '../events/basis';
 import type { ErrorCode } from '../http/responses';
 import { enqueue } from '../jobs/queue';
 import { asJson } from '../json';
@@ -44,7 +45,9 @@ import { paragraphsDigest } from './generated';
 // field that names a court, a bailiff, a case type or a lawyer must name one
 // the platform knows for this draft, the claims are locked once paid, and a
 // file is known by its bytes. A refusal for its content is recorded in the
-// event log (filing.refused), without any of the card's content.
+// event log (filing.refused), without any of the card's content. Every event an
+// operation writes carries the basis of the action that authorized it (independent
+// review IR-12, decision 74).
 
 type Tx = Prisma.TransactionClient;
 
@@ -75,7 +78,7 @@ export async function createDraft(subject: UserSubject, channel: 'ELECTRONIC' | 
     const open = await tx.filingDraft.count({ where: { ownerUserId: subject.userId, status: 'DRAFT', updatedAt: { gte: since } } });
     if (open >= SECURITY_POLICY.filing.maxOpenDrafts) return false;
     await tx.filingDraft.create({ data: { id, ...newDraftData(subject, channel) } });
-    await appendEvent(tx, { action: 'filing.draft.created', details: { draftId: id, channel }, actor });
+    await appendEvent(tx, { action: 'filing.draft.created', details: { draftId: id, channel }, actor, legalBasis: basisOf(channel === 'PAPER' ? 'filing.paper' : 'filing.new', clock.now()) });
     return true;
   });
   if (!created) return refused(null, actor, 409, 'DRAFT_LIMIT');
@@ -291,7 +294,8 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
       if (depositorChange && hasDepositor(stored.paperDepositor)) return 'DEPOSITOR';
     }
     await tx.filingDraft.update({ where: { id: draft.id }, data });
-    await appendEvent(tx, { action: 'filing.draft.updated', details: { draftId: draft.id, fields: changed.length ? changed.join(':') : 'ATTESTATION' }, actor });
+    const legalBasis = basisOf('filing.draft.edit', now);
+    await appendEvent(tx, { action: 'filing.draft.updated', details: { draftId: draft.id, fields: changed.length ? changed.join(':') : 'ATTESTATION' }, actor, legalBasis });
     // A payment opened on other claims, another court or, at the counter, another depositor
     // covers nothing: it lapses now, before the page offers to complete it (audit G025;
     // the receipt of a counter payment names its depositor, fix review L4).
@@ -299,7 +303,7 @@ export async function updateDraft(draft: DraftWithParts, subject: UserSubject, b
       const pending = await tx.paymentIntent.findMany({ where: { draftId: draft.id, status: 'PENDING' }, select: { id: true } });
       for (const intent of pending) {
         await tx.paymentIntent.update({ where: { id: intent.id }, data: { status: 'EXPIRED', completedAt: now } });
-        await appendEvent(tx, { action: 'payment.expired', details: { intentId: intent.id }, actor });
+        await appendEvent(tx, { action: 'payment.expired', details: { intentId: intent.id }, actor, legalBasis });
       }
     }
     return true;
@@ -329,7 +333,12 @@ export async function pasteApplication(draft: DraftWithParts, text: string, acto
       data: { applicationMode: 'PASTE', applicationText: text, applicationParagraphs: asJson(paragraphs), fixedCopyStatus: 'PENDING', updatedAt: now },
     });
     await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest });
-    await appendEvent(tx, { action: 'filing.application.pasted', details: { draftId: draft.id, paragraphs: paragraphs.length, characters: text.length }, actor });
+    await appendEvent(tx, {
+      action: 'filing.application.pasted',
+      details: { draftId: draft.id, paragraphs: paragraphs.length, characters: text.length },
+      actor,
+      legalBasis: basisOf('filing.draft.edit', now),
+    });
     return true;
   });
   if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
@@ -440,6 +449,7 @@ export async function uploadDocument(
       action: 'filing.document.uploaded',
       details: { draftId: draft.id, documentId: id, kind, mediaType: inspected.mediaType, sha256: digest, byteSize: bytes.byteLength },
       actor,
+      legalBasis: basisOf('filing.draft.edit', now),
     });
     return true;
   });
@@ -484,7 +494,7 @@ export async function updateDocument(draft: DraftWithParts, documentId: string, 
         },
       });
     }
-    await appendEvent(tx, { action: 'filing.document.updated', details: { draftId: draft.id, documentId, removed: body.remove === true }, actor });
+    await appendEvent(tx, { action: 'filing.document.updated', details: { draftId: draft.id, documentId, removed: body.remove === true }, actor, legalBasis: basisOf('filing.draft.edit', now) });
     return true;
   });
   if (!applied) return refused(draft.id, actor, 409, 'ALREADY_FILED');
@@ -502,10 +512,11 @@ export async function draftDocumentFile(
   const bytes = await documentStore().get(doc.storageKey);
   if (!bytes) return 'NOT_FOUND';
   // Each download is recorded, as on the file (decision 47, audit G100); and a changed copy too.
+  const legalBasis = basisOf('filing.draft.read', clock.now());
   if (sha256Hex(bytes) !== doc.sha256) {
-    await appendStandaloneEvent({ action: 'document.integrity.failed', details: { documentId: doc.id, currentSha256: sha256Hex(bytes) }, actor });
+    await appendStandaloneEvent({ action: 'document.integrity.failed', details: { documentId: doc.id, currentSha256: sha256Hex(bytes) }, actor, legalBasis });
     return 'INTEGRITY';
   }
-  await appendStandaloneEvent({ action: 'document.downloaded', details: { documentId: doc.id }, actor });
+  await appendStandaloneEvent({ action: 'document.downloaded', details: { documentId: doc.id }, actor, legalBasis });
   return { bytes, mediaType: doc.mediaType, title: doc.title };
 }

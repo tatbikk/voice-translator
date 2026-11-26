@@ -4,6 +4,7 @@ import { SECURITY_POLICY, filingReady, type Resource, type UserSubject } from '@
 import { clock } from '../clock';
 import { getDb } from '../db';
 import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
+import { basisOf } from '../events/basis';
 import { asJson } from '../json';
 import { enqueue } from '../jobs/queue';
 import { ruleSetId } from '../rules/store';
@@ -14,7 +15,9 @@ import { paymentGateway, type GatewayOutcome } from './gateway';
 // amount from the claims, opens a payment on the gateway, and records its
 // outcome once. A successful payment produces the payment, its operation
 // reference, the treasury entry («قيد في محاسبة الصندوق») and the receipt. A
-// failure or a cancellation is recorded and changes nothing else.
+// failure or a cancellation is recorded and changes nothing else. Opening carries
+// the basis of «filing.draft.pay», the outcome that of «payment.simulate»
+// (independent review IR-12, decision 74).
 
 export type OpenResult =
   | { readonly ok: true; readonly intentId: string; readonly amountCents: number }
@@ -56,6 +59,7 @@ export async function openPayment(draft: DraftWithParts, subject: UserSubject, a
       action: 'payment.intent.opened',
       details: { intentId: id, draftId: draft.id, amountCents: fee.assessment.totalCents, method: draft.channel === 'PAPER' ? 'COUNTER' : 'ONLINE', ruleVersion: fee.version },
       actor,
+      legalBasis: basisOf('filing.draft.pay', now),
     });
   });
   return { ok: true, intentId: id, amountCents: fee.assessment.totalCents };
@@ -103,13 +107,14 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
       SELECT status::text AS status, "expiresAt" FROM "PaymentIntent" WHERE id = ${intentId}::uuid FOR UPDATE`;
     const row = locked[0];
     const now = clock.now();
+    const legalBasis = basisOf('payment.simulate', now);
     if (!row) return null;
     // Lapsed already (its time, its claims, its court or its depositor changed): said so, not «already recorded».
     if (row.status === 'EXPIRED') return 'LAPSED' as const;
     if (row.status !== 'PENDING') return null;
     if (row.expiresAt.getTime() <= now.getTime()) {
       await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
-      await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
+      await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor, legalBasis });
       return 'LAPSED' as const;
     }
     const intent = await tx.paymentIntent.findUniqueOrThrow({ where: { id: intentId }, select: { draftId: true, amountCents: true, method: true, breakdown: true, inputsDigest: true, ruleSetId: true } });
@@ -125,7 +130,7 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
     if (draft.status !== 'DRAFT' || paidBefore > 0 || stale || nobodyPays) {
       // The intent lapses: nothing is asked of the gateway, nothing is recorded as paid.
       await tx.paymentIntent.update({ where: { id: intentId }, data: { status: 'EXPIRED', completedAt: now } });
-      await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor });
+      await appendEvent(tx, { action: 'payment.expired', details: { intentId }, actor, legalBasis });
       return 'LAPSED' as const;
     }
     const result = await paymentGateway().settle({ intentId, amountCents: intent.amountCents, chosen, at: now });
@@ -164,10 +169,10 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
           assessedAt: now,
         },
       });
-      await appendEvent(tx, { action: 'payment.succeeded', details: { intentId, paymentId, amountCents: Number(intent.amountCents), operationRef: result.operationRef }, actor });
+      await appendEvent(tx, { action: 'payment.succeeded', details: { intentId, paymentId, amountCents: Number(intent.amountCents), operationRef: result.operationRef }, actor, legalBasis });
       await enqueue(tx, 'payment.receipt', { paymentId });
     } else {
-      await appendEvent(tx, { action: result.status === 'FAILED' ? 'payment.failed' : 'payment.cancelled', details: { intentId, paymentId }, actor });
+      await appendEvent(tx, { action: result.status === 'FAILED' ? 'payment.failed' : 'payment.cancelled', details: { intentId, paymentId }, actor, legalBasis });
     }
     return { status: result.status, paymentId, operationRef: result.operationRef, paidAt: now, amountCents: Number(intent.amountCents) };
   });

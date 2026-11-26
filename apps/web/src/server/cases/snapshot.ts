@@ -15,11 +15,35 @@ import { getDb } from '../db';
 
 // Builds the snapshot of a case file from the database, for one request: what
 // the core needs to decide the available actions (CaseSnapshot). Facts stored by
-// the transitions of later phases (CaseFile.facts, CaseParty.facts) are joined
-// with facts derived here from the data (a hearing set, a circle open…). The
-// platform time is given, never read here.
+// the applier of the acts' declarations (CaseFile.facts, decision 73) and by the
+// demo data (CaseParty.facts) are joined with facts derived here from the data
+// (a hearing set, a circle open…). The platform time is given, never read here.
 
-const CASE_FACT_SET: ReadonlySet<string> = new Set(CASE_FACTS);
+/**
+ * The facts of a file read from its data, never from a stored code (decision 73):
+ * the moment of the stamp and of the referrals, an electronic document, the
+ * hearing, the day of pronouncement, the judgment and its signature circle. A
+ * code of one of them found in CaseFile.facts is ignored, so that a stored fact
+ * never contradicts the data. Every other fact of the file is stored.
+ */
+export const DERIVED_CASE_FACTS: ReadonlySet<CaseFact> = new Set<CaseFact>([
+  'REGISTRATION_STAMPED',
+  'REFERRED_TO_PROSECUTION',
+  'REFERRED_TO_COMMISSIONER',
+  'ELECTRONIC_DOCUMENT',
+  'HEARING_SET',
+  'HEARING_HELD',
+  'HEARING_UPCOMING',
+  'HEARING_IN_SESSION',
+  'PRONOUNCEMENT_DAY',
+  'JUDGMENT_PRONOUNCED',
+  'DECISION_FINAL',
+  'PROVISIONAL_ENFORCEMENT',
+  'SIGNATURES_COMPLETE',
+  'SIGNATURE_CIRCLE_OPEN',
+]);
+
+const CASE_FACT_SET: ReadonlySet<string> = new Set(CASE_FACTS.filter((f) => !DERIVED_CASE_FACTS.has(f)));
 const PARTY_FACT_SET: ReadonlySet<string> = new Set(PARTY_FACTS);
 const DEADLINE_SET: ReadonlySet<string> = new Set(DEADLINE_CODES);
 

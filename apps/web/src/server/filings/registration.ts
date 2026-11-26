@@ -20,6 +20,7 @@ import { getDb } from '../db';
 import { sha256Hex } from '../documents/service';
 import { documentStore } from '../documents/store';
 import { appendEvent, appendStandaloneEvent, eventTransaction, type EventActor } from '../events/append';
+import { basisOf } from '../events/basis';
 import type { ErrorCode } from '../http/responses';
 import { enqueue } from '../jobs/queue';
 import { createNotification } from '../notifications/service';
@@ -164,6 +165,9 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
   if (!caseType) return refused(draftId, actor, 409, 'DRAFT_INCOMPLETE');
   if (card.parties.length === 0) return refused(draftId, actor, 409, 'DRAFT_INCOMPLETE');
   const referralRuleSetId = await ruleSetId('REFERRALS', rules.version);
+  // Every event of the filing and the registration carries the basis of the filing (IR-12, decision 74),
+  // save the review of referrals, which carries the articles its rule set applies.
+  const legalBasis = basisOf('filing.draft.submit', now);
   const env = getEnv();
   const year = Number(moroccoDay(now).slice(0, 4));
 
@@ -312,7 +316,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         },
       });
       await tx.filingDocument.update({ where: { id: doc.id }, data: { documentId } });
-      await appendEvent(tx, { action: 'document.stored', details: { documentId, sha256: doc.sha256, byteSize: doc.byteSize, generated: doc.generated, docType }, caseFileId, actor });
+      await appendEvent(tx, { action: 'document.stored', details: { documentId, sha256: doc.sha256, byteSize: doc.byteSize, generated: doc.generated, docType }, caseFileId, actor, legalBasis });
       if (doc.kind === 'APPLICATION_COPY') {
         applicationDocumentId = documentId;
         applicationSha = doc.sha256;
@@ -335,6 +339,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         purpose: 'APPLICATION_FILING',
         signer: { userId: subject.userId, roleAssignmentId: subject.roleAssignmentId, role: subject.role },
         actor,
+        legalBasis,
       });
       await enqueue(tx, 'filing.signature-certificate', { documentId: applicationDocumentId });
     }
@@ -352,12 +357,13 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
     }
 
     await tx.filingDraft.update({ where: { id: draftId }, data: { status: 'FILED', filedAt: now, caseFileId, updatedAt: now } });
-    await appendEvent(tx, { action: 'filing.submitted', details: { draftId, caseFileId, channel: fresh.channel }, caseFileId, actor });
+    await appendEvent(tx, { action: 'filing.submitted', details: { draftId, caseFileId, channel: fresh.channel }, caseFileId, actor, legalBasis });
     await appendEvent(tx, {
       action: 'case.registered',
       details: { caseFileId, draftId, number, code, year, channel: fresh.channel, districtsVersion: districts.version },
       caseFileId,
       actor,
+      legalBasis,
     });
     await appendEvent(tx, {
       action: 'case.referrals.reviewed',

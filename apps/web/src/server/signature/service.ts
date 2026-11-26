@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
-import { SECURITY_POLICY, openCircle, signCircle, type RoleCode, type SignatureCircleState } from '@mahkama/core';
+import { SECURITY_POLICY, openCircle, signCircle, type LegalBasis, type RoleCode, type SignatureCircleState } from '@mahkama/core';
 import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getDb } from '../db';
@@ -231,8 +231,18 @@ export async function checkSigningSecret(userId: string, secret: string): Promis
  */
 export async function signAloneInTransaction(
   tx: Prisma.TransactionClient,
-  input: { documentId: string; documentSha256: string; caseFileId: string; purpose: string; signer: SignerRef & { role: RoleCode }; actor: EventActor | null },
+  input: {
+    documentId: string;
+    documentSha256: string;
+    caseFileId: string;
+    purpose: string;
+    signer: SignerRef & { role: RoleCode };
+    actor: EventActor | null;
+    /** the basis of the act the signature belongs to (independent review IR-12) */
+    legalBasis?: LegalBasis | null;
+  },
 ): Promise<{ circleId: string }> {
+  const legalBasis = input.legalBasis ?? null;
   const circleId = randomUUID();
   const signers: StoredSigner[] = [{ userId: input.signer.userId, roleAssignmentId: input.signer.roleAssignmentId, role: input.signer.role }];
   openCircle({ documentSha256: input.documentSha256, signers: signers.map((s) => ({ userId: s.userId, role: s.role })) });
@@ -245,6 +255,7 @@ export async function signAloneInTransaction(
     details: { circleId, documentId: input.documentId, documentSha256: input.documentSha256, signers: 1, purpose: input.purpose },
     caseFileId: input.caseFileId,
     actor: input.actor,
+    legalBasis,
   });
   const record = await signatureProvider().sign({ documentSha256: input.documentSha256, signerUserId: input.signer.userId, signerRole: input.signer.role, circleId, position: 0, at: now });
   await tx.signature.create({
@@ -266,8 +277,9 @@ export async function signAloneInTransaction(
     details: { circleId, documentId: input.documentId, position: 0, documentSha256: record.documentSha256, provider: record.simulated ? 'SIMULATED' : 'QUALIFIED' },
     caseFileId: input.caseFileId,
     actor: input.actor,
+    legalBasis,
   });
-  await appendEvent(tx, { action: 'signature.circle.completed', details: { circleId, documentId: input.documentId }, caseFileId: input.caseFileId, actor: input.actor });
+  await appendEvent(tx, { action: 'signature.circle.completed', details: { circleId, documentId: input.documentId }, caseFileId: input.caseFileId, actor: input.actor, legalBasis });
   return { circleId };
 }
 
