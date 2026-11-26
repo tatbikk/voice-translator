@@ -105,6 +105,22 @@ describe('seed (memo row 21)', () => {
     expect((await events('demo.data.seeded')).length).toBe(1);
   }, 300_000);
 
+  it('gives every demo party its quality, and every address of a place its locality and whether it lies within the court’s district, read from the districts table (independent review IR-08)', async () => {
+    const places = await sql<{ quality: string | null; locality: string | null; within: boolean | null }>(
+      `SELECT p.quality, a.locality, a."withinCourtDistrict" AS within
+         FROM "PartyAddress" a JOIN "CaseParty" p ON p.id = a."partyId"
+        WHERE a.kind IN ('DOMICILE', 'RESIDENCE', 'REGISTERED_OFFICE', 'BRANCH')`,
+    );
+    expect(places.length).toBeGreaterThan(0);
+    expect(places.filter((p) => p.quality === null)).toEqual([]);
+    expect(places.filter((p) => p.locality === null)).toEqual([]);
+    // Rabat is a locality of the table outside the district of the appeal court: the appellant of
+    // file 312 is not within it, which the seed no longer assumes; every other demo address is.
+    expect(places.filter((p) => p.locality === 'rabat').map((p) => p.within)).toEqual([false]);
+    expect(places.filter((p) => p.locality !== 'rabat').map((p) => p.within)).not.toContain(false);
+    expect(places.filter((p) => p.locality !== 'rabat').map((p) => p.within)).not.toContain(null);
+  });
+
   it('row 21: running the seed again changes nothing', async () => {
     const before = {
       users: await users(),
