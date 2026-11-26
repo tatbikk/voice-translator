@@ -7,11 +7,13 @@ import {
   ROLES,
   authorize,
   availableActions,
+  knowsCase,
   resolveLegalBasis,
   type AuthorizationContext,
   type Resource,
   type RoleCode,
   type Subject,
+  type UserSubject,
 } from '../src/index';
 
 const NOW = new Date('2027-03-15T09:30:00Z');
@@ -274,6 +276,24 @@ describe('permanent invariants (kept in every phase)', () => {
         const resource = counselledCase;
         expect(authorize(userSubject(role), action, resource, demo).allowed).toBe(false);
       }
+    }
+  });
+
+  it('the system administrator and the rules validator meet a file that does not exist, even as its expert or its summons holder (independent review IR-44)', () => {
+    // A relation the file's snapshot grants by user alone, whatever the role: the guard of these two roles
+    // must answer before it, as for a file they do not know, never «not permitted».
+    const related: Resource = {
+      kind: 'case',
+      snapshot: { ...counselledCase.snapshot, expertUserId: USER_ID, summonsCodeHolderUserIds: [USER_ID] },
+    } as Resource;
+    if (related.kind !== 'case') throw new Error('not a case');
+    for (const role of ['SYSTEM_ADMIN', 'RULES_LEGAL_VALIDATOR'] as const) {
+      const subject = userSubject(role) as UserSubject;
+      expect(knowsCase(subject, related.snapshot), role).toBe(false);
+      for (const action of caseActions) {
+        expect(authorize(subject, action, related, demo), `${role} ${action}`).toEqual({ allowed: false, reason: 'NOT_FOUND' });
+      }
+      expect(availableActions(subject, related, demo), role).toEqual([]);
     }
   });
 
