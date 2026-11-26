@@ -19,9 +19,11 @@ import { enqueue } from '@/server/jobs/queue';
 import { login } from '../helpers/auth';
 import { capturingEvents, count, events, one, sql } from '../helpers/db';
 import { createUser, theCourt, type TestUser } from '../helpers/factories';
-import { fileCase, giveSigningSecret, payDraft, prepareDraft, runJobs, submit, type FiledCase } from '../helpers/filings';
+import { MODEL_CASE } from '../acceptance/model-case-filing.fixture';
+import { createPaperDraft, fileCase, giveSigningSecret, openPayment, payDraft, prepareDraft, runJobs, settle, submit, updateDraft, upload, type FiledCase } from '../helpers/filings';
 import { describeResponse, type Client } from '../helpers/http';
 import { containsRightToLeft, pdfPages, readsRightToLeft } from '../helpers/pdf-text';
+import { pdfBytes } from '../helpers/samples';
 import { useFreshDatabase } from '../helpers/reset';
 import { loadRuleTables, makeModelCourt } from '../helpers/rules';
 
@@ -192,6 +194,32 @@ describe('«شهادة توقيع» of the electronic application (independent r
     await expect(sql(`UPDATE "Document" SET "attestsDocumentId" = $2 WHERE id = $1`, [certificate!.id, exhibit.id])).rejects.toThrow();
     await expect(sql(`UPDATE "Document" SET "attestsDocumentId" = NULL WHERE id = $1`, [certificate!.id])).rejects.toThrow();
   });
+
+  // Review of IR-07: a paper application carries no electronic signature (decision 59), so nothing attests one.
+  it('is neither queued nor printed for a paper filing', async () => {
+    const clerk = await login(registry);
+    const draftId = await createPaperDraft(clerk);
+    const saved = await updateDraft(clerk, draftId, {
+      caseType: '8201',
+      card: MODEL_CASE,
+      paperDepositor: { name: 'السيد نون', idNumber: 'DEMO-CIN-0003', quality: 'ممثل الشركة المدعية' },
+      attest: ['PLAINTIFFS', 'DEFENDANTS', 'SUMMARY', 'CLAIMS'],
+    });
+    expect(saved.status, describeResponse(saved)).toBe(200);
+    const scan = await upload(clerk, draftId, { kind: 'APPLICATION', name: 'scan.pdf', bytes: pdfBytes('paper-certificate'), pages: 3, location: 'خزانة التقييد، الرف 4' });
+    expect(scan.status, describeResponse(scan)).toBe(200);
+    const { intentId } = await openPayment(clerk, draftId);
+    expect((await settle(clerk, intentId, 'SUCCEEDED')).status).toBe(200);
+    await runJobs();
+    const res = await submit(clerk, draftId, {});
+    expect(res.status, describeResponse(res)).toBe(200);
+    const caseFileId = res.data!.caseFileId;
+    const application = await applicationOf(caseFileId);
+    expect(await count(`SELECT count(*) FROM "Job" WHERE type = 'filing.signature-certificate' AND payload->>'documentId' = $1`, [application.id])).toBe(0);
+    await runJobs();
+    expect(await certificatesOf(caseFileId)).toHaveLength(0);
+    expect(await count(`SELECT count(*) FROM "Document" WHERE "attestsDocumentId" = $1`, [application.id])).toBe(0);
+  }, 120_000);
 
   it('follows the retry rules of the generated documents: a failed print is tried again, and only the last failure is recorded', async () => {
     // A filing whose jobs have not run yet: its certificate is still to print.

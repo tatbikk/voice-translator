@@ -68,13 +68,21 @@ async function subjectOf(user: TestUser): Promise<UserSubject> {
   };
 }
 
-async function listedFor(user: TestUser): Promise<{ id: string; docType: string }[]> {
+async function viewFor(user: TestUser) {
   const snapshot = await caseSnapshot(filed.caseFileId, new Date());
   if (!snapshot) throw new Error('no snapshot');
   const view = await caseView(filed.caseFileId, await subjectOf(user), snapshot);
   if (!view) throw new Error('no view');
-  return view.documents.map((d) => ({ id: d.id, docType: d.docType }));
+  return view;
 }
+
+async function listedFor(user: TestUser): Promise<{ id: string; docType: string }[]> {
+  return (await viewFor(user)).documents.map((d) => ({ id: d.id, docType: d.docType }));
+}
+
+/** The seq of the events of the file that name the document, as the timeline lists them. */
+const eventsNaming = (documentId: string) =>
+  sql<{ seq: string; action: string }>(`SELECT seq::text AS seq, action FROM "Event" WHERE "caseFileId" = $1 AND details->>'documentId' = $2 ORDER BY seq`, [filed.caseFileId, documentId]);
 
 const fileOf = (documentId: string) => `/api/v1/cases/${filed.caseFileId}/documents/${documentId}/file`;
 
@@ -175,6 +183,36 @@ describe('the application uploaded as a Word document (independent review IR-06,
     expect(listed.map((d) => d.id)).not.toContain(original.id);
     expect(listed.map((d) => d.id)).toContain(copy.id);
     expect((await defence.get(fileOf(copy.id))).status).toBe(200);
+  });
+
+  // Review of IR-06: the listing and the timeline share one set of visible documents; these
+  // cases hold the claim of decision 71 for the timeline and for the certificate of decision 72.
+  it('keeps its events off the timeline of the prosecution and of the defence counsel, not off its depositor\'s', async () => {
+    const original = await documentOf('APPLICATION_SOURCE');
+    const naming = await eventsNaming(original.id);
+    const stored = naming.filter((e) => e.action === 'document.stored').map((e) => e.seq);
+    expect(stored, 'the original was stored with its event').toHaveLength(1);
+    expect((await viewFor(cast.lawyer)).timeline.map((e) => e.seq)).toEqual(expect.arrayContaining(stored));
+    for (const name of ['prosecutor', 'defenceLawyer'] as const) {
+      const shown = new Set((await viewFor(cast[name])).timeline.map((e) => e.seq));
+      expect(shown.size, name).toBeGreaterThan(0);
+      expect(naming.filter((e) => shown.has(e.seq)), name).toEqual([]);
+    }
+  });
+
+  it('has no «شهادة توقيع» of its own: the one certificate attests the fixed copy, and the prosecution finds it listed', async () => {
+    const original = await documentOf('APPLICATION_SOURCE');
+    const copy = await documentOf('APPLICATION');
+    const certificates = await sql<{ id: string; attestsDocumentId: string | null; visibility: string }>(
+      `SELECT id, "attestsDocumentId", visibility::text AS visibility FROM "Document" WHERE "caseFileId" = $1 AND "docType" = 'SIGNATURE_CERTIFICATE'`,
+      [filed.caseFileId],
+    );
+    expect(certificates.map((c) => [c.attestsDocumentId, c.visibility])).toEqual([[copy.id, 'CASE']]);
+    expect(await sql(`SELECT id FROM "Document" WHERE "attestsDocumentId" = $1`, [original.id])).toEqual([]);
+    const listed = (await listedFor(cast.prosecutor)).map((d) => d.id);
+    expect(listed).toContain(certificates[0]!.id);
+    // Listed right after the application it attests.
+    expect(listed.indexOf(certificates[0]!.id)).toBe(listed.indexOf(copy.id) + 1);
   });
 
   it('keeps from the file, on a database filed before, an original that was deposited for everyone', async () => {
