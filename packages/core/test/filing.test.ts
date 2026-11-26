@@ -16,6 +16,7 @@ import {
   preSignatureChecks,
   referralsFor,
   ruleInForce,
+  shownForKind,
   withPersonKind,
   type AuthorizationContext,
   type CaseSnapshot,
@@ -236,6 +237,69 @@ describe('the case card (art. 77)', () => {
     for (const kind of ['NATURAL', 'LEGAL', 'PUBLIC'] as const) {
       for (const party of [natural, company, state]) expect(FilingCardSchema.safeParse({ parties: [withPersonKind(party, kind)], summary: '', claims: [] }).success, kind).toBe(true);
     }
+  });
+
+  // Review of the IR-08 fix: the form dropped what a kind switch hides, the server did not. Whatever the
+  // card stored or another client sent, the party is read with what the card shows for its kind only.
+  it('reads a party with what the card shows for its kind of person, whatever it carries (review of IR-08)', () => {
+    const office = { value: 'الدار البيضاء، شارع النموذج، رقم 1', locality: 'casablanca', source: 'DECLARED' as const };
+    const domicile = { value: 'الدار البيضاء، حي المثال، رقم 5', locality: 'casablanca', source: 'DECLARED' as const };
+    const everything = {
+      key: 'x',
+      side: 'DEFENDANT' as const,
+      name: 'سين',
+      quality: 'مدعى عليه',
+      email: 'x@demo.example',
+      idNumber: 'DEMO-ID-1',
+      legalForm: 'شركة مساهمة',
+      legalRepresentative: 'السيد نون',
+      domicile,
+      residence: domicile,
+      registeredOffice: office,
+      branch: office,
+    };
+    const common = { key: 'x', side: 'DEFENDANT', name: 'سين', quality: 'مدعى عليه', email: 'x@demo.example' };
+    // A natural person: his identity number, capacity, domicile and residence; no legal form, representative, office or branch.
+    expect(shownForKind({ ...everything, personKind: 'NATURAL', capacityStatus: 'FULL' })).toEqual({
+      ...common,
+      personKind: 'NATURAL',
+      idNumber: 'DEMO-ID-1',
+      capacityStatus: 'FULL',
+      domicile,
+      residence: domicile,
+    });
+    // A company: its register number, legal form, representative, office and branch; no domicile or residence.
+    expect(shownForKind({ ...everything, personKind: 'LEGAL' })).toEqual({
+      ...common,
+      personKind: 'LEGAL',
+      idNumber: 'DEMO-ID-1',
+      legalForm: 'شركة مساهمة',
+      legalRepresentative: 'السيد نون',
+      registeredOffice: office,
+      branch: office,
+    });
+    // A public-law person: its category, representative, office and branch; no number, legal form, domicile or residence.
+    expect(shownForKind({ ...everything, personKind: 'PUBLIC', publicEntityKind: 'STATE' })).toEqual({
+      ...common,
+      personKind: 'PUBLIC',
+      publicEntityKind: 'STATE',
+      legalRepresentative: 'السيد نون',
+      registeredOffice: office,
+      branch: office,
+    });
+    // A party that carries only what its kind shows is left as it is.
+    const model = MODEL.parties[0]!;
+    expect(shownForKind(model)).toEqual(model);
+
+    // A kind switch keeps none of it either.
+    const company = { ...common, personKind: 'LEGAL' as const, legalForm: 'شركة مساهمة', legalRepresentative: 'السيد نون', idNumber: 'RC-1', registeredOffice: office };
+    expect(withPersonKind(company, 'NATURAL')).toEqual({ ...common, personKind: 'NATURAL', idNumber: 'RC-1' });
+    expect(withPersonKind(company, 'PUBLIC')).toEqual({ ...common, personKind: 'PUBLIC', legalRepresentative: 'السيد نون', registeredOffice: office });
+
+    // The checks read the address the card shows: a company's domicile is none of its addresses.
+    const companyAtHome = { ...common, side: 'DEFENDANT' as const, personKind: 'LEGAL' as const, legalForm: 'شركة مساهمة', legalRepresentative: 'السيد نون', domicile };
+    const warned = checksOf({ card: { ...MODEL, parties: [...MODEL.parties.filter((p) => p.side === 'PLAINTIFF'), companyAtHome] } });
+    expect(warned).toContainEqual(expect.objectContaining({ code: 'PARTY_ADDRESS_MISSING', partyKey: 'x' }));
   });
 
   it('names the four sections the depositor attests «مطابق للمقال»', () => {

@@ -23,13 +23,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { caseView } from '@/server/cases/view';
+import { attestationsFor } from '@/server/filings/drafts';
 import { ruleSourceFiles } from '@/server/rules/store';
-import { MODEL_CASE, withParties, type CardParty } from '../acceptance/model-case-filing.fixture';
+import { CARD_SECTIONS, MODEL_CASE, withParties, type CardParty } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
 import { migrateDeploy } from '../helpers/cli';
 import { capturingEvents, events, one, sql } from '../helpers/db';
 import { createUser, theCourt, type TestUser } from '../helpers/factories';
-import { createDraft, fileCase, getDraft, giveSigningSecret, updateDraft, type FiledCase } from '../helpers/filings';
+import { createDraft, fileCase, getDraft, giveSigningSecret, payDraft, prepareDraft, runJobs, submit, updateDraft, type FiledCase } from '../helpers/filings';
 import { describeResponse, type Client } from '../helpers/http';
 import { useFreshDatabase } from '../helpers/reset';
 import { loadRuleTables, makeModelCourt } from '../helpers/rules';
@@ -84,6 +85,46 @@ const LOCALITY_UNKNOWN: CardParty = {
   domicile: { value: 'حي المثال، رقم 12', source: 'DECLARED' },
 };
 
+/**
+ * Parties that carry what the card no longer shows for their kind of person (review of the IR-08 fix):
+ * a natural person with an office, a legal form and a representative, as a company switched to a
+ * natural person on a form before the fix leaves him; a company with a domicile; a public-law person
+ * with an identity number.
+ */
+const PERSON_WITH_OFFICE: CardParty = {
+  key: 'mim',
+  side: 'GUARANTOR',
+  personKind: 'NATURAL',
+  name: 'السيد ميم',
+  quality: 'كفيل',
+  domicile: { value: 'الرباط، حي المثال، رقم 6', locality: 'rabat', source: 'DECLARED' },
+  registeredOffice: { value: 'الدار البيضاء، شارع النموذج، رقم 7', locality: 'casablanca', source: 'DECLARED' },
+  legalForm: 'شركة مساهمة',
+  legalRepresentative: 'السيد نون',
+};
+const COMPANY_WITH_DOMICILE: CardParty = {
+  key: 'lam',
+  side: 'DEFENDANT',
+  personKind: 'LEGAL',
+  name: 'شركة لام',
+  quality: 'مدعى عليها',
+  legalForm: 'شركة مساهمة',
+  legalRepresentative: 'السيد هاء',
+  registeredOffice: { value: 'الرباط، شارع المثال، رقم 2', locality: 'rabat', source: 'DECLARED' },
+  domicile: { value: 'الدار البيضاء، حي المثال، رقم 3', locality: 'casablanca', source: 'DECLARED' },
+};
+const PUBLIC_WITH_NUMBER: CardParty = {
+  key: 'waw',
+  side: 'GUARANTOR',
+  personKind: 'PUBLIC',
+  publicEntityKind: 'OTHER_PUBLIC',
+  name: 'الهيئة النموذجية واو',
+  quality: 'كفيلة',
+  idNumber: 'DEMO-PUB-0001',
+  registeredOffice: { value: 'الرباط، شارع المثال، رقم 11', locality: 'rabat', source: 'DECLARED' },
+};
+const OTHER_KIND = [PERSON_WITH_OFFICE, COMPANY_WITH_DOMICILE, PUBLIC_WITH_NUMBER];
+
 interface AddressRow {
   readonly name: string;
   readonly quality: string | null;
@@ -131,6 +172,7 @@ async function viewAs(user: TestUser, caseFileId: string) {
 const DISTRICTS_VERSION = ruleSourceFiles().find((r) => r.kind === 'DISTRICTS' && r.validTo === null)?.version;
 
 let lawyer: Client;
+let secret: string;
 let lawyerUser: TestUser;
 let registry: TestUser;
 let litigant: TestUser;
@@ -144,7 +186,7 @@ beforeAll(async () => {
   lawyerUser = await createUser({ roles: ['LAWYER'], label: 'addresses-lawyer' });
   registry = await createUser({ roles: ['CLERK_REGISTRATION'], label: 'addresses-registry' });
   litigant = await createUser({ roles: ['LITIGANT'], label: 'addresses-litigant' });
-  const secret = await giveSigningSecret(lawyerUser.id);
+  secret = await giveSigningSecret(lawyerUser.id);
   lawyer = await login(lawyerUser);
   model = await fileCase(lawyer, secret, { exhibits: 1 });
   mixed = await fileCase(lawyer, secret, { exhibits: 1, card: withParties(MODEL_CASE, [RESIDENT_IN_RABAT, DOMICILED_ABROAD, LOCALITY_UNKNOWN, OFFICE_TYPED_AGAIN]) });
@@ -306,4 +348,51 @@ describe('whether an address lies within the district is known only with its pla
     const constraints = await sql<{ conname: string }>(`SELECT conname FROM pg_constraint WHERE conrelid = '"PartyAddress"'::regclass AND conname = $1`, [CHECK]);
     expect(constraints).toHaveLength(1);
   }, 120_000);
+});
+
+describe('what the card no longer shows for the kind of a party (review of IR-08)', () => {
+  const partiesOf = (caseFileId: string) =>
+    sql<{ name: string; idNumber: string | null; legalForm: string | null; legalRepresentative: string | null }>(
+      `SELECT "displayName" AS name, "idNumber", "legalForm", "legalRepresentative" FROM "CaseParty" WHERE "caseFileId" = $1 ORDER BY position`,
+      [caseFileId],
+    );
+
+  it('is dropped when the card is saved, and the section it was in is not attested in that request', async () => {
+    const draftId = await createDraft(lawyer);
+    const saved = await updateDraft(lawyer, draftId, { card: withParties(MODEL_CASE, OTHER_KIND), attest: [...CARD_SECTIONS] });
+    expect(saved.status, describeResponse(saved)).toBe(200);
+    const { draft } = await getDraft(lawyer, draftId);
+    const byKey = (key: string) => draft.card.parties.find((p) => p.key === key);
+    expect(byKey(PERSON_WITH_OFFICE.key)).toEqual({ key: 'mim', side: 'GUARANTOR', personKind: 'NATURAL', name: 'السيد ميم', quality: 'كفيل', domicile: PERSON_WITH_OFFICE.domicile });
+    expect(byKey(COMPANY_WITH_DOMICILE.key)?.domicile).toBeUndefined();
+    expect(byKey(COMPANY_WITH_DOMICILE.key)?.registeredOffice).toEqual(COMPANY_WITH_DOMICILE.registeredOffice);
+    expect(byKey(PUBLIC_WITH_NUMBER.key)?.idNumber).toBeUndefined();
+    // The depositor attests what he sees: the section the server rewrote waits for his attestation again.
+    expect(draft.attestations).toContain('PLAINTIFFS');
+    expect(draft.attestations).not.toContain('DEFENDANTS');
+  });
+
+  it('is never registered from a draft that kept it, with its place, and decides no district (a draft saved before the fix, or another client)', async () => {
+    const draftId = await prepareDraft(lawyer, { exhibits: 1 });
+    // The card as stored before the fix: the parties with what the card no longer shows, attested as they are.
+    const card = withParties(MODEL_CASE, OTHER_KIND);
+    await sql(`UPDATE "FilingDraft" SET card = $2::jsonb, attestations = $3::jsonb WHERE id = $1`, [draftId, JSON.stringify(card), JSON.stringify(attestationsFor(card, {}, CARD_SECTIONS))]);
+    expect((await getDraft(lawyer, draftId)).draft.card.parties.map((p) => p.key)).toEqual(card.parties.map((p) => p.key));
+    await payDraft(lawyer, draftId);
+    const filed = await submit(lawyer, draftId, { secret });
+    expect(filed.status, describeResponse(filed)).toBe(200);
+    await runJobs();
+    const caseFileId = filed.data!.caseFileId;
+
+    const rows = await addressesOf(caseFileId);
+    const of = (name: string) => rows.filter((r) => r.name === name).map((r) => [r.kind, r.locality, r.within]);
+    // Rabat lies outside the district of the model court, Casablanca within it: only the address the card shows decides.
+    expect(of(PERSON_WITH_OFFICE.name)).toEqual([['DOMICILE', 'rabat', false]]);
+    expect(of(COMPANY_WITH_DOMICILE.name)).toEqual([['REGISTERED_OFFICE', 'rabat', false]]);
+    expect(of(PUBLIC_WITH_NUMBER.name)).toEqual([['REGISTERED_OFFICE', 'rabat', false]]);
+    const parties = await partiesOf(caseFileId);
+    expect(parties.find((p) => p.name === PERSON_WITH_OFFICE.name)).toEqual({ name: 'السيد ميم', idNumber: null, legalForm: null, legalRepresentative: null });
+    expect(parties.find((p) => p.name === COMPANY_WITH_DOMICILE.name)).toEqual({ name: 'شركة لام', idNumber: null, legalForm: 'شركة مساهمة', legalRepresentative: 'السيد هاء' });
+    expect(parties.find((p) => p.name === PUBLIC_WITH_NUMBER.name)?.idNumber).toBeNull();
+  });
 });
