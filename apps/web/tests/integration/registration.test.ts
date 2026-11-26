@@ -300,6 +300,31 @@ describe('the lawyer who files electronically is counsel of the plaintiffs (inde
     const opened = await lawyer.get(`/api/v1/cases/${filed.caseFileId}/available-actions`);
     expect(opened.status, describeResponse(opened)).toBe(200);
   });
+
+  it('attributes the application and the claims to the first plaintiff he acts for, not to a first plaintiff he unticked (review of IR-02)', async () => {
+    const lawyer = await as('lawyer');
+    // Two plaintiffs: the first of the card unticked, the second ticked.
+    const card = withCounselBox(withParties(MODEL_CASE, [SECOND_PLAINTIFF]), (party) =>
+      party.side === 'PLAINTIFF' ? party.key === SECOND_PLAINTIFF.key : party.representedByFiler,
+    );
+    expect(card.parties.filter((p) => p.side === 'PLAINTIFF').map((p) => [p.key, p.representedByFiler])).toEqual([
+      ['alif', false],
+      [SECOND_PLAINTIFF.key, true],
+    ]);
+    const filed = await fileCase(lawyer, secret, { card, exhibits: 1 });
+    expect(await counselOf(filed.caseFileId)).toEqual([{ displayName: SECOND_PLAINTIFF.name, side: 'PLAINTIFF', lawyerUserId: cast.lawyer.id }]);
+    const represented = await one<{ id: string }>(`SELECT id FROM "CaseParty" WHERE "caseFileId" = $1 AND "displayName" = $2`, [filed.caseFileId, SECOND_PLAINTIFF.name]);
+
+    const deposited = await sql<{ docType: string; depositedByPartyId: string | null }>(
+      `SELECT "docType"::text AS "docType", "depositedByPartyId" FROM "Document" WHERE "caseFileId" = $1 AND "docType" IN ('APPLICATION', 'EXHIBIT')`,
+      [filed.caseFileId],
+    );
+    expect(deposited.length).toBeGreaterThan(1);
+    expect(deposited.map((d) => [d.docType, d.depositedByPartyId])).toEqual(deposited.map((d) => [d.docType, represented.id]));
+    const claims = await sql<{ partyId: string | null }>(`SELECT "partyId" FROM "Claim" WHERE "caseFileId" = $1`, [filed.caseFileId]);
+    expect(claims.length).toBe(MODEL_CASE.claims.length);
+    expect(claims.map((c) => c.partyId)).toEqual(claims.map(() => represented.id));
+  });
 });
 
 // ---------------------------------------------------------------------------
