@@ -4,7 +4,7 @@
 
 وتحيل معرفات `P2-..` على `docs/security/phase-2-review.md` وتقاريره الثلاثة، و`P2-C-..` على قسم «تدقيق القبول» فيه، وهي تجمع مواضع التدقيق (`G…`). وتحيل معرفات `P1-..` على `docs/security/phase-1-review.md`. وتحيل المعرفات الأخرى على تقارير المرحلة 0: `S-..` على `docs/security/phase-0-review-security.md`، و`A-..` على `docs/security/phase-0-review-architecture.md`، و`I-..` على `docs/phases/phase-0-identity-review.md`، و`F-..` على ملاحظات المنفذ نفسه.
 
-آخر تحديث: 26 نونبر 2026، بعد المراجعة المستقلة للمرحلتين 1 و2 (`docs/security/phase-1-2-independent-review.md`، معرفات `IR-..`).
+آخر تحديث: 26 نونبر 2026، بعد المراجعة المستقلة للمرحلتين 1 و2 (`docs/security/phase-1-2-independent-review.md`، معرفات `IR-..`)، ثم بعد مراجعة إصلاحاتها (يشار إليها بـ«مراجعة IR-..» أو «مراجعة الإصلاحات»).
 
 ## الملاحظات المفتوحة
 
