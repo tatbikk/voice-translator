@@ -744,7 +744,7 @@ model Document {
   pageCount             Int?
   /// the document a «شهادة توقيع» attests (decision 72); never changes once set
   attestsDocumentId     String?            @db.Uuid
-  attests               Document?          @relation("DocumentAttestation", fields: [attestsDocumentId], references: [id])
+  attests               Document?          @relation("DocumentAttestation", fields: [attestsDocumentId], references: [id], onDelete: Restrict)
 
   circles      SignatureCircle[]
   paragraphs   DocumentParagraph[]
@@ -952,7 +952,8 @@ model Payment {
   payerUserId       String?       @db.Uuid
   payerPartyId      String?       @db.Uuid
   status            PaymentStatus
-  operationRef      String
+  /// a payment is completed once: unique, as migration 20261126090000 creates it
+  operationRef      String        @unique
   receiptDocumentId String?       @db.Uuid
   /// the time of the operation, successful or not (art. 628)
   paidAt            DateTime      @db.Timestamptz(3)

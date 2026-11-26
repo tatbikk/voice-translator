@@ -105,7 +105,7 @@
 
 | الجدول | الغاية | الأعمدة الأساسية |
 | --- | --- | --- |
-| `Document` | الوثيقة المخزنة | `caseFileId`، `storageKey` (اسم مولد في الحاوية)، `sha256`، `byteSize`، `mediaType`، `docType` (مقال، مذكرة، مستند، أمر، حكم، محضر، وصل، شهادة تسليم، تقرير خبرة…)، `declaredNature` (`ORIGINAL`، `CERTIFIED_COPY`، `PHOTOCOPY`، م 631)، `channel` (`ELECTRONIC`، `PAPER`)، `paperOriginalLocation`، `depositedByUserId`، `depositedByPartyId`، `depositedAt`، `generated` (ولدته المنصة)، `withdrawnAt` (سحب بعد الجاهزية، م 106)، `visibility` (`CASE` لكل ذي علاقة، `PANEL` لأعضاء الهيئة قبل النطق، `JUDGE` للقاضي وحده) |
+| `Document` | الوثيقة المخزنة | `caseFileId`، `storageKey` (اسم مولد في الحاوية)، `sha256`، `byteSize`، `mediaType`، `docType` (مقال، مذكرة، مستند، أمر، حكم، محضر، وصل، شهادة تسليم، تقرير خبرة…)، `declaredNature` (`ORIGINAL`، `CERTIFIED_COPY`، `PHOTOCOPY`، م 631)، `channel` (`ELECTRONIC`، `PAPER`)، `paperOriginalLocation`، `depositedByUserId`، `depositedByPartyId`، `depositedAt`، `generated` (ولدته المنصة)، `withdrawnAt` (سحب بعد الجاهزية، م 106)، `visibility` (`CASE` لكل ذي علاقة، `PANEL` لأعضاء الهيئة قبل النطق، `JUDGE` للقاضي وحده، `DEPOSITOR_AND_COURT` لمودعها ولقضاة محكمة الملف وموظفيها، القرار 71) |
 
 لا تحذف وثيقة أبدا، والمسحوبة تبقى ظاهرة في خانتها. والنص المستخرج وفقراته المرقمة تضاف مع الإيداع في المرحلة 2.
 
@@ -128,7 +128,7 @@
 | الجدول | الغاية | الأعمدة الأساسية |
 | --- | --- | --- |
 | `FeeAssessment` | الرسم المحتسب وتفصيله | `caseFileId`، `claimIds`، `ruleVersionId`، `totalCents`، `breakdown` (أسطر الاحتساب وسند كل سطر)، `assessedAt` |
-| `Payment` | الأداء | `caseFileId`، `purpose` (`COURT_FEE`، `INVESTIGATION_DEPOSIT`، `COPY_FEE`، `ENFORCEMENT`)، `amountCents`، `payerUserId`، `payerPartyId`، `status` (`SUCCEEDED`، `FAILED`، `CANCELLED`)، `operationRef`، `receiptDocumentId`، `paidAt` (م 628) |
+| `Payment` | الأداء | `caseFileId`، `purpose` (`COURT_FEE`، `INVESTIGATION_DEPOSIT`، `COPY_FEE`، `ENFORCEMENT`)، `amountCents`، `payerUserId`، `payerPartyId`، `status` (`SUCCEEDED`، `FAILED`، `CANCELLED`)، `operationRef` (فريد: يتم الأداء مرة واحدة)، `receiptDocumentId`، `paidAt` (م 628) |
 | `TreasuryEntry` | قيود صندوق المحكمة | `caseFileId`، `paymentId`، `direction` (`IN`، `OUT`)، `amountCents`، `purpose`، `beneficiary`، `authorizedByDecisionId` (إذن القاضي، م 120)، `at` |
 
 ### التنفيذ
@@ -202,6 +202,7 @@
 | `PartyAddress` (قيمتان مضافتان) | العنوان | `kind`: `RESIDENCE` محل الإقامة، و`BRANCH` مقر الفرع (م 77) |
 | `CaseParty` (عمود مضاف بعد المراجعة المستقلة، IR-08) | الطرف | `quality` (صفة الطرف، م 77، منقولة من «بطاقة الدعوى» عند التقييد) |
 | `PartyAddress` (عمودان مضافان بعد المراجعة المستقلة، IR-08) | العنوان | `locality` (رمز المدينة في جدول الدوائر)، `country` (بلد العنوان الواقع خارج تراب المملكة، م 89)، ولا يجتمعان؛ و`withinCourtDistrict` يحسب عند التقييد من جدول الدوائر الساري لمحكمة الملف: فراغ حين لا تعرف المدينة، و«لا» خارج تراب المملكة (م 88 و89، القرار 69)؛ ولا يكون «نعم» ولا «لا» لعنوان بلا مدينة ولا بلد (قيد `PartyAddress_district_needs_place_check`، هجرة `20261126140000_party_address_district_needs_place`) |
+| `Document` (ما أضيف بعد المراجعة المستقلة، IR-06 وIR-07) | الوثيقة | `visibility`: `DEPOSITOR_AND_COURT`، يراها مودعها (`depositedByUserId`، الشخص لا طرفه) وقضاة محكمة الملف وموظفوها، وتقرره دالة الصلاحيات في النواة (`documentVisible`، القرار 71)؛ `docType`: `APPLICATION_SOURCE` المقال المحمل بصيغة Word كما أودع، بوضع `DEPOSITOR_AND_COURT`، و`SIGNATURE_CERTIFICATE` «شهادة توقيع» مولدة بعد توقيع المقال الإلكتروني عند التقييد (القرار 72)؛ `attestsDocumentId` الوثيقة التي تشهد الشهادة بتوقيعها، مفتاح أجنبي إلى `Document` بـ`ON DELETE RESTRICT`، لا يتغير بعد كتابته (قادح `document_attestation_guard`) |
 
 ### الجداول المرجعية الجديدة في `RuleSet`
 
