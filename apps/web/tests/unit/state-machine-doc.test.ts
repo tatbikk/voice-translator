@@ -31,6 +31,13 @@ const RELATIONS: Readonly<Record<string, string>> = {
   AGENT: 'العون المكلف',
 };
 
+/** Who an act informs (NotifyTarget). */
+const NOTIFIED: Readonly<Record<string, string>> = {
+  RAPPORTEUR: 'المقرر',
+  RAPPORTEUR_OR_PRESIDENT: 'المقرر، أو رئيس المحكمة قبل تعيينه',
+  COUNSEL: 'محامو الأطراف',
+};
+
 const label = (key: string) => ar[key] ?? key;
 const cell = (text: string) => text.replaceAll('|', '\\|');
 
@@ -41,6 +48,24 @@ function holders(action: ProcedureAction): string {
       const relations = h.relations.map((r) => RELATIONS[r] ?? r).join('، ');
       return relations ? `${roles} (${relations})` : roles;
     })
+    .join('؛ ');
+}
+
+/**
+ * What the act does besides its next status (independent review IR-10): the facts
+ * it establishes, the limits it opens and closes (applied by the applier,
+ * decision 73), the document it adds to the file and who it informs.
+ */
+function effects(action: ProcedureAction): string {
+  const limits = (codes: readonly string[]) => codes.map((c) => label(`case.deadlines.rule.${c}`)).join('، ');
+  return [
+    action.sets.length ? `يثبت ${action.sets.map((f) => `\`${f}\``).join('، ')}` : '',
+    action.opens.length ? `يفتح ${limits(action.opens)}` : '',
+    action.closes.length ? `يقفل ${limits(action.closes)}` : '',
+    action.files ? `يضم ${label(`case.docType.${action.files}`)}` : '',
+    action.notifies.length ? `يخبر ${action.notifies.map((n) => NOTIFIED[n] ?? n).join('، ')}` : '',
+  ]
+    .filter((part) => part !== '')
     .join('؛ ');
 }
 
@@ -55,6 +80,7 @@ function render(): string {
       a.signature ? 'نعم' : '',
       a.awaited ? 'نعم' : '',
       a.nextStatus ? label(`states.${a.nextStatus}`) : '',
+      effects(a),
       a.articles.length ? `م ${a.articles.join(' و')}` : '',
     ]
       .map(cell)
@@ -63,8 +89,8 @@ function render(): string {
   return [
     BEGIN,
     '',
-    '| الزر | الرمز | المحطة | الحالات | من يملكه | التوقيع | ينتظر | الحالة الموالية | السند |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| الزر | الرمز | المحطة | الحالات | من يملكه | التوقيع | ينتظر | الحالة الموالية | الآثار | السند |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...rows.map((r) => `| ${r} |`),
     '',
     END,
