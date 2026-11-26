@@ -9,7 +9,7 @@ import { JOB_HANDLERS } from '@/server/jobs/handlers';
 import { runDueJobs } from '@/server/jobs/queue';
 import { CARD_SECTIONS, COMMERCIAL_PAYMENT, MODEL_CASE, MODEL_CASE_APPLICATION_TEXT, MODEL_CASE_EXHIBITS, type Card } from '../acceptance/model-case-filing.fixture';
 import { describeResponse, type ApiResponse, type Client } from './http';
-import { pdfBytes } from './samples';
+import { docxBytes, pdfBytes } from './samples';
 import { trackSensitive } from './sensitive';
 
 export interface DraftDocumentView {
@@ -165,8 +165,8 @@ export interface PrepareOptions {
   readonly card?: Card;
   readonly caseType?: string;
   readonly defendantLocality?: string;
-  /** paste the application (default), or upload it as a PDF */
-  readonly application?: 'paste' | 'pdf';
+  /** paste the application (default), or upload it as a PDF, or as a Word document the worker prints a fixed copy of */
+  readonly application?: 'paste' | 'pdf' | 'docx';
   readonly exhibits?: number;
   readonly bailiffUserId?: string;
 }
@@ -185,6 +185,9 @@ export async function prepareDraft(client: Client, options: PrepareOptions = {})
 
   if ((options.application ?? 'paste') === 'paste') {
     expectOk(await pasteApplication(client, draftId, MODEL_CASE_APPLICATION_TEXT), 'paste application');
+    await runJobs();
+  } else if (options.application === 'docx') {
+    expectOk(await upload(client, draftId, { kind: 'APPLICATION', name: 'maqal.docx', bytes: docxBytes(MODEL_CASE_APPLICATION_TEXT.split('\n')) }), 'upload application');
     await runJobs();
   } else {
     expectOk(await upload(client, draftId, { kind: 'APPLICATION', name: 'maqal.pdf', bytes: pdfBytes('application') }), 'upload application');

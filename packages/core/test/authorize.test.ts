@@ -77,7 +77,7 @@ const passingResource: Partial<Record<string, Resource>> = {
   },
   'case.view': counselledCase,
   'case.actions.list': counselledCase,
-  'case.document.read': { ...counselledCase, kind: 'case-document', visibility: 'CASE', documentId: OTHER_ID },
+  'case.document.read': { ...counselledCase, kind: 'case-document', visibility: 'CASE', documentId: OTHER_ID, depositorUserId: null },
   'demo.account.switch': { kind: 'demo-account', userId: OTHER_ID, isDemo: true },
   // Phase 2: a draft of the subject's own, not yet paid (filing it needs a paid one), and its payment.
   'filing.draft.read': { kind: 'filing-draft', ownerUserId: USER_ID, channel: 'ELECTRONIC', courtId: null, status: 'DRAFT', paid: false },

@@ -72,13 +72,13 @@ describe('the panel relation (review P1-S-12)', () => {
 
   for (const role of ROLE_CODES.filter((r) => !PANEL_ROLES.includes(r))) {
     it(`${role} carrying the panel does not see the panel's judgment draft`, () => {
-      expect(documentVisible(subject(role), snapshot, 'PANEL', DRAFT)).toBe(false);
+      expect(documentVisible(subject(role), snapshot, 'PANEL', DRAFT, null)).toBe(false);
     });
   }
 
   it('shows the draft to the president and the members of the panel', () => {
-    expect(documentVisible(subject('PANEL_PRESIDENT'), snapshot, 'PANEL', DRAFT)).toBe(true);
-    expect(documentVisible(subject('PANEL_MEMBER'), snapshot, 'PANEL', DRAFT)).toBe(true);
+    expect(documentVisible(subject('PANEL_PRESIDENT'), snapshot, 'PANEL', DRAFT, null)).toBe(true);
+    expect(documentVisible(subject('PANEL_MEMBER'), snapshot, 'PANEL', DRAFT, null)).toBe(true);
   });
 
   it('grants a clerk carrying the panel none of the panel actions of the deliberation', () => {
