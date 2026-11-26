@@ -30,7 +30,7 @@ function migrationsWith(name: string): string {
 /** The 14-digit date of a migration name, one second earlier (a real date, so a real name). */
 function secondBefore(stamp: string): string {
   const [y, mo, d, h, mi, s] = [0, 4, 6, 8, 10, 12].map((i, k) => Number(stamp.slice(i, k === 0 ? 4 : i + 2)));
-  const t = new Date(Date.UTC(y!, mo! - 1, d!, h!, mi!, s! - 1));
+  const t = new Date(Date.UTC(y!, mo! - 1, d, h, mi, s! - 1));
   const two = (n: number) => String(n).padStart(2, '0');
   return `${t.getUTCFullYear()}${two(t.getUTCMonth() + 1)}${two(t.getUTCDate())}${two(t.getUTCHours())}${two(t.getUTCMinutes())}${two(t.getUTCSeconds())}`;
 }
