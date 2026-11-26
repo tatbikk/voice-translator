@@ -2,12 +2,24 @@
   {
     "version": "2026-08-23.1",
     "validFrom": "2026-08-23",
-    "validTo": null,
+    "validTo": "2026-11-26",
     "source": "دوائر نفوذ مفترضة لمحكمتي بيئة العرض، لاقتراح المحكمة من موطن المدعى عليه (المادة 66 من القانون رقم 58.25) أو من مقر الشركة المضمن في السجل التجاري (المادة 613). وتحددها في التشغيل الفعلي نصوص التنظيم القضائي",
     "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna", "rabat"],
     "districts": [
       { "courtCode": "demo-fi-commercial", "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna"] },
       { "courtCode": "demo-ap-commercial", "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna"] }
     ]
+  },
+  {
+    "version": "2026-11-26.1",
+    "validFrom": "2026-11-26",
+    "validTo": null,
+    "source": "دوائر نفوذ مفترضة لمحكمتي بيئة العرض، لاقتراح المحكمة من موطن المدعى عليه (المادة 66 من القانون رقم 58.25) أو من مقر الشركة المضمن في السجل التجاري (المادة 613)، ولمعرفة هل عنوان الطرف داخل دائرة نفوذ المحكمة، وعليه يتوقف أجل الحضور (المادتان 88 و89). وتحددها في التشغيل الفعلي نصوص التنظيم القضائي، وهي ليست في المستودع، فالدوائر هنا قيمة مؤقتة غير مؤكدة (السؤال المفتوح س42، القرار 69)",
+    "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna", "rabat"],
+    "districts": [
+      { "courtCode": "demo-fi-commercial", "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna"] },
+      { "courtCode": "demo-ap-commercial", "localities": ["casablanca", "mohammedia", "berrechid", "nouaceur", "mediouna"] }
+    ],
+    "uncertain": true
   }
 ]

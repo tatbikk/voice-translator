@@ -8,6 +8,7 @@ import {
   FilingCardSchema,
   SECURITY_POLICY,
   canonicalJson,
+  type CardAddress,
   type CardSection,
   type FilingCard,
   type UserSubject,
@@ -141,12 +142,21 @@ function unknownLocalities(card: FilingCard, localities: readonly string[]): Rec
 }
 const sameText = (a: string, b: string) => stripInvisible(a).replace(/\s+/g, ' ').trim() === stripInvisible(b).replace(/\s+/g, ' ').trim();
 
+/** An address with neither locality nor country: whether it lies within the court's district is unknown. */
+const placeless = (address: CardAddress): CardAddress => {
+  const { locality: _locality, country: _country, ...rest } = address;
+  return rest;
+};
+
 /**
  * The source «السجل التجاري» is the server's to give, never the browser's
  * (review P2-A-08): an address keeps it only when the register answers, for the
  * company's number and name, that very address as its registered office or its
  * branch; the locality is then the register's too (fix review L2). Any other
- * address claimed from the register is kept as declared.
+ * address claimed from the register is kept as declared, and keeps no place: the
+ * register's locality does not stay with an office the register does not give as
+ * it is, typed again or of another company (review of IR-08). Its place unknown,
+ * so is whether it lies within the court's district (decision 69).
  */
 async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
   const parties = await Promise.all(
@@ -161,13 +171,12 @@ async function withRegisterSources(card: FilingCard): Promise<FilingCard> {
         const address = party[field];
         if (!address) continue;
         const given = field === 'registeredOffice' ? entry?.registeredOffice : field === 'branch' ? entry?.branch : null;
-        if (!sameCompany || !given || !sameText(given, address.value)) next[field] = { ...address, source: 'DECLARED' };
+        if (!sameCompany || !given || !sameText(given, address.value)) next[field] = { ...placeless(address), source: 'DECLARED' };
         else {
           // The register's own locality for the address it gives (it gives one for the registered
           // office only), never a locality or a country typed beside it.
-          const { locality: _typed, country: _abroad, ...rest } = address;
           const locality = field === 'registeredOffice' && entry.locality && LOCALITY_CODE.test(entry.locality) ? entry.locality : null;
-          next[field] = { ...rest, ...(locality ? { locality } : {}) };
+          next[field] = { ...placeless(address), ...(locality ? { locality } : {}) };
         }
       }
       return next;

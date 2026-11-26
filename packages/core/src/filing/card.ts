@@ -45,8 +45,12 @@ const AddressSchema = z
     value: text(300),
     /** a locality of the districts table (rules/districts.json), by its code */
     locality: optional(z.string().regex(/^[a-z][a-z0-9-]{1,40}$/)),
-    /** the country of an address outside the Kingdom (art. 89), as declared; never with a locality */
-    country: optional(text(100)),
+    /**
+     * the country of an address outside the Kingdom (art. 89), as declared; never with a locality,
+     * never blank: «خارج تراب المملكة» chosen names its country, or the address would lie nowhere
+     * (review of IR-08)
+     */
+    country: text(100).optional(),
     source: z.enum(['DECLARED', 'COMMERCIAL_REGISTER']),
   })
   .strict();
@@ -156,6 +160,29 @@ export const EMPTY_CARD: FilingCard = { parties: [], summary: '', claims: [] };
  */
 export function filerCounselByDefault(channel: 'ELECTRONIC' | 'PAPER', side: CardParty['side']): boolean {
   return channel === 'ELECTRONIC' && side === 'PLAINTIFF';
+}
+
+/**
+ * The party of the card form whose kind of person changes: what the card no longer shows for the new
+ * kind does not stay hidden with it (fix review M2; review of IR-08). Capacity is a natural person's,
+ * the public kind a public-law person's; a natural person has a domicile or a residence, a company
+ * and a public-law person a registered office and a branch. A hidden address would be registered with
+ * its place, and decide the time to appear (arts. 88 and 89).
+ */
+export function withPersonKind(party: CardParty, personKind: CardParty['personKind']): CardParty {
+  if (party.personKind === personKind) return party;
+  const { capacityStatus, publicEntityKind, domicile, residence, registeredOffice, branch, ...rest } = party;
+  const natural = personKind === 'NATURAL';
+  return {
+    ...rest,
+    personKind,
+    ...(natural && capacityStatus ? { capacityStatus } : {}),
+    ...(personKind === 'PUBLIC' && publicEntityKind ? { publicEntityKind } : {}),
+    ...(natural && domicile ? { domicile } : {}),
+    ...(natural && residence ? { residence } : {}),
+    ...(!natural && registeredOffice ? { registeredOffice } : {}),
+    ...(!natural && branch ? { branch } : {}),
+  };
 }
 
 /** The part of the card a section attests: its digest is kept with the attestation. */

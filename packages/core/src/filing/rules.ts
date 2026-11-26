@@ -78,6 +78,13 @@ export const DistrictRuleSetSchema = z
     /** every locality the interface offers, in display order */
     localities: z.array(locality).min(1),
     districts: z.array(z.object({ courtCode: z.string().min(1), localities: z.array(locality).min(1) }).strict()).min(1),
+    /**
+     * The districts are assumed, not read from the texts of judicial organisation (open question
+     * 42): whether an address lies within one, and the time to appear computed from it (arts. 88
+     * and 89), carry «قيمة مؤقتة غير مؤكدة». Since version 2026-11-26.1 (review of IR-08); the
+     * first version, which lacks it, is as uncertain.
+     */
+    uncertain: z.boolean().optional(),
   })
   .strict();
 export type DistrictRuleSet = z.infer<typeof DistrictRuleSetSchema> & Dated;

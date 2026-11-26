@@ -641,7 +641,8 @@ model PartyAddress {
   locality            String?
   /// IR-08: the country of an address outside the Kingdom (art. 89), as declared; never with a locality
   country             String?
-  /// from the districts table in force at registration, for the file's court: null when the locality is unknown
+  /// from the districts table in force at registration, for the file's court: null when the locality is unknown;
+  /// never set without a locality or a country (check PartyAddress_district_needs_place_check)
   withinCourtDistrict Boolean?
   validFrom           DateTime      @db.Timestamptz(3)
   supersededAt        DateTime?     @db.Timestamptz(3)

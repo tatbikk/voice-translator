@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { filerCounselByDefault, type CardSection, type FilingCard } from '@mahkama/core';
+import { filerCounselByDefault, withPersonKind, type CardSection, type FilingCard } from '@mahkama/core';
 import { apiGet } from '@/components/client/api';
 import { Button } from '@/components/ui/Button';
 import { CONTROL, Check, Choice, Field, type StepProps } from './parts';
@@ -13,7 +13,8 @@ import { CONTROL, Check, Choice, Field, type StepProps } from './parts';
 // channel a party that becomes a plaintiff starts with «ينوب المحامي المودع عن
 // هذا الطرف» ticked (decision 67): the lawyer unticks the plaintiff, among
 // several, who keeps another counsel. A natural person's address is his
-// «الموطن» or his «محل الإقامة», with its locality (decision 69).
+// «الموطن» or his «محل الإقامة», with its locality (decision 69); a company's
+// office keeps the register's locality only while it is the register's.
 
 type Party = FilingCard['parties'][number];
 type Claim = FilingCard['claims'][number];
@@ -176,13 +177,13 @@ export function CardStep({ view, t, busy, update }: StepProps) {
                 value={party.personKind}
                 onChange={(e) => {
                   const personKind = e.target.value as Party['personKind'];
-                  // Capacity is a natural person's: it does not stay hidden on a company (fix review M2).
-                  // Capacity is a natural person's, the public kind a public-law person's: neither stays hidden.
-                  setParty(index, {
-                    personKind,
-                    ...(personKind === 'NATURAL' ? {} : { capacityStatus: undefined }),
-                    ...(personKind === 'PUBLIC' ? {} : { publicEntityKind: undefined }),
-                  });
+                  // What the card no longer shows for the new kind does not stay hidden with it: capacity, the
+                  // public kind, and the addresses of another kind, which would be registered with their place
+                  // and decide the time to appear (fix review M2; review of IR-08).
+                  unattest(sectionOf(party.side));
+                  setParties((list) => list.map((p, i) => (i === index ? withPersonKind(p, personKind) : p)));
+                  // A natural person again starts with «الموطن» chosen, his addresses gone.
+                  if (personKind !== 'NATURAL') setResidents((set) => (set.has(party.key) ? new Set([...set].filter((k) => k !== party.key)) : set));
                 }}
               >
                 {PERSON_KINDS.map((k) => (
@@ -285,7 +286,7 @@ export function CardStep({ view, t, busy, update }: StepProps) {
                   id={`${party.key}-office`}
                   className={CONTROL}
                   value={party.registeredOffice?.value ?? ''}
-                  onChange={(e) => { setParty(index, { registeredOffice: declared(party.registeredOffice, e.target.value) }); }}
+                  onChange={(e) => { setParty(index, { registeredOffice: typedOffice(e.target.value) }); }}
                 />
               </Field>
               {fromRegister(party.registeredOffice)}
@@ -295,7 +296,7 @@ export function CardStep({ view, t, busy, update }: StepProps) {
                   id={`${party.key}-branch`}
                   className={CONTROL}
                   value={party.branch?.value ?? ''}
-                  onChange={(e) => { setParty(index, { branch: e.target.value.trim() === '' ? undefined : declared(party.branch, e.target.value) }); }}
+                  onChange={(e) => { setParty(index, { branch: e.target.value.trim() === '' ? undefined : typedOffice(e.target.value) }); }}
                 />
               </Field>
               {fromRegister(party.branch)}
@@ -460,10 +461,17 @@ const PLACE_KINDS: Readonly<Record<PlaceField, 'DOMICILE' | 'RESIDENCE'>> = { do
 /** The choice «خارج تراب المملكة» of the list of localities: never a locality code, which starts with a letter. */
 const ABROAD = '@abroad';
 
-/** An address as typed: declared by the lawyer, whatever it was taken from. */
+/** A natural person's address as typed: declared by the lawyer, with the place the form shows beside it. */
 function declared(address: Party['domicile'], value: string): Address {
   return { ...(address ?? { source: 'DECLARED' as const }), value, source: 'DECLARED' };
 }
+
+/**
+ * An office or a branch as typed: declared, with no place. The form offers no locality for it, and the
+ * register's locality does not stay hidden with an office the lawyer typed again, nor decide whether it
+ * lies within the court's district (decision 69; review of IR-08).
+ */
+const typedOffice = (value: string): Address => ({ value, source: 'DECLARED' });
 
 /** The address in the place chosen: a locality of the list, outside the Kingdom (its country typed next), or none. */
 function placed(address: Party['domicile'], place: string): Address {
@@ -521,8 +529,9 @@ function NaturalPersonAddress({
           </select>
         </Field>
         {place === ABROAD ? (
-          <Field id={`${party.key}-country`} label={t('filing.card.country')}>
-            <input id={`${party.key}-country`} className={CONTROL} value={address?.country ?? ''} onChange={(e) => { onAddress(field, { ...declared(address, address?.value ?? ''), country: e.target.value }); }} />
+          // Required: an address outside the Kingdom names its country, or the card is refused (review of IR-08).
+          <Field id={`${party.key}-country`} label={t('filing.card.requiredField', { label: t('filing.card.country') })}>
+            <input id={`${party.key}-country`} className={CONTROL} required value={address?.country ?? ''} onChange={(e) => { onAddress(field, { ...declared(address, address?.value ?? ''), country: e.target.value }); }} />
           </Field>
         ) : null}
       </div>

@@ -207,7 +207,8 @@ export async function caseView(caseFileId: string, subject: UserSubject, snapsho
       side: p.side,
       personKind: p.personKind,
       displayName: p.displayName,
-      quality: p.quality,
+      // The quality under the rules of the contacts, as the identity number (review of IR-08, decision 69).
+      quality: seesContacts || ownParty(p) ? p.quality : null,
       legalForm: p.legalForm,
       legalRepresentative: p.legalRepresentative,
       idNumber: seesContacts || ownParty(p) ? p.idNumber : null,

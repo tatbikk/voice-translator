@@ -67,7 +67,10 @@ export interface DistrictInput {
  * Whether an address of a party lies within the district of the court (independent
  * review IR-08), on which the time to appear depends: five days within the district,
  * fifteen elsewhere in the Kingdom (art. 88), three months for a party with neither
- * domicile nor residence in the Kingdom (art. 89). An address outside the Kingdom lies
+ * domicile nor residence in the Kingdom (art. 89), save the ordinary times when the
+ * summons is handed to him in Morocco (art. 89, para. 2), which Phase 3 reads from the
+ * service, not from the address. The districts of the table are assumed (open question
+ * 42): its answer is marked uncertain where it is used. An address outside the Kingdom lies
  * within no district of it. Otherwise the districts table answers for a locality it
  * lists and a court it gives a district; for any other, the answer is unknown (null),
  * never a guess. The time itself is computed in Phase 3.
