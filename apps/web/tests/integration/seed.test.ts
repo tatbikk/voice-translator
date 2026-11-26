@@ -163,8 +163,8 @@ describe('seed (memo row 21)', () => {
   // table holds a code; a database seeded before the fix gets the codes at the
   // next run of the seed (the release step of the demo), in place, not reset.
   const caseTypes = () =>
-    sql<{ id: string; kind: string; caseType: string | null; specialty: string }>(
-      `SELECT f.id, f.kind::text AS kind, f."caseType", c.specialty::text AS specialty
+    sql<{ id: string; kind: string; caseType: string | null; code: number; number: number; specialty: string }>(
+      `SELECT f.id, f.kind::text AS kind, f."caseType", f.code, f.number, c.specialty::text AS specialty
          FROM "CaseFile" f JOIN "Court" c ON c.id = f."courtId" WHERE f."isDemo" ORDER BY f.id`,
     );
 
@@ -178,6 +178,8 @@ describe('seed (memo row 21)', () => {
       const type = table.content.types.find((t) => t.code === row.caseType);
       expect(type, `${row.id}: ${String(row.caseType)}`).toBeDefined();
       expect(type?.specialty, row.id).toBe(row.specialty);
+      // The code inside the number follows the type, as at registration (decision 53; review of IR-40).
+      expect(row.code, `${String(row.number)}: the code of its number`).toBe(Number(row.caseType));
     }
   }, 120_000);
 
@@ -186,23 +188,37 @@ describe('seed (memo row 21)', () => {
     // The names the seed wrote before the fix (apps/web/src/cli/seed-data/cases.ts at 33ad8db).
     const legacy = (r: { kind: string; caseType: string | null }) =>
       r.kind === 'APPEAL' ? 'APPEAL_COMMERCIAL' : r.caseType === '8202' ? 'COMMERCIAL_DAMAGES' : 'COMMERCIAL_PAYMENT';
+    // And the code inside their number (apps/web/src/cli/seed-data/accounts.ts at 33ad8db): 8201 for
+    // every file of the first instance, 8228 for the appeal, whatever the type (review of IR-40).
+    const legacyCode = (r: { kind: string }) => (r.kind === 'APPEAL' ? 8228 : 8201);
     const old = fixed.filter((r) => r.caseType !== null);
-    for (const r of old) await sql(`UPDATE "CaseFile" SET "caseType" = $2 WHERE id = $1`, [r.id, legacy(r)]);
+    for (const r of old) await sql(`UPDATE "CaseFile" SET "caseType" = $2, code = $3 WHERE id = $1`, [r.id, legacy(r), legacyCode(r)]);
     const before = (await events('demo.case.type.recoded')).length;
 
     const result = await seed();
     expect(result.status, result.output.slice(-2000)).toBe(0);
-    expect(await caseTypes(), 'every file has its code back').toEqual(fixed);
+    expect(await caseTypes(), 'every file has its type and the code of its number back, and no twin').toEqual(fixed);
     const recoded = (await events('demo.case.type.recoded')).slice(before);
     expect(recoded.map((e) => e.details).sort((a, b) => (String(a.caseFileId) < String(b.caseFileId) ? -1 : 1))).toEqual(
-      old.map((r) => ({ caseFileId: r.id, fromType: legacy(r), toType: r.caseType })),
+      old.map((r) => ({ caseFileId: r.id, fromType: legacy(r), toType: r.caseType, fromCode: legacyCode(r), toCode: r.code })),
     );
 
     const again = await seed();
     expect(again.status, again.output.slice(-2000)).toBe(0);
     expect((await events('demo.case.type.recoded')).length, 'nothing left to recode').toBe(before + old.length);
     expect(await caseTypes()).toEqual(fixed);
-  }, 600_000);
+
+    // A database seeded after the type was recoded but before its number's code was: the code alone, in place.
+    const damages = old.find((r) => r.caseType === '8202');
+    expect(damages, 'the file of the damages claim').toBeDefined();
+    await sql(`UPDATE "CaseFile" SET code = 8201 WHERE id = $1`, [damages!.id]);
+    const third = await seed();
+    expect(third.status, third.output.slice(-2000)).toBe(0);
+    expect(await caseTypes()).toEqual(fixed);
+    expect((await events('demo.case.type.recoded')).slice(before + old.length).map((e) => e.details)).toEqual([
+      { caseFileId: damages!.id, fromType: '8202', toType: '8202', fromCode: 8201, toCode: 8202 },
+    ]);
+  }, 900_000);
 
   it('row 21: --reset without the name of the database, or with another name, is refused', async () => {
     const before = await users();
