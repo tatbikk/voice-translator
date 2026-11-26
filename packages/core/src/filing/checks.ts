@@ -164,9 +164,11 @@ export function preSignatureChecks(input: CheckInput): FilingCheck[] {
   }
   // The one statement of a party that blocks (decision 66): which public-law person it is. Art. 20
   // communicates the case whatever the answer; the warning of art. 605 below cannot be given without it.
+  // The block is the platform's, not the law's: art. 20 neither asks for the category nor bars the
+  // payment, so the check cites no article (its message names art. 605).
   for (const party of card.parties) {
     if (party.personKind === 'PUBLIC' && party.publicEntityKind === undefined) {
-      out.push(check('PUBLIC_ENTITY_KIND_MISSING', 'BLOCKING', 20, { partyKey: party.key }));
+      out.push(check('PUBLIC_ENTITY_KIND_MISSING', 'BLOCKING', null, { partyKey: party.key }));
     }
   }
   for (const section of CARD_SECTIONS) {
