@@ -1,0 +1,52 @@
+{
+  "migrations": [
+    {
+      "name": "20261124121755_foundation",
+      "sha256": "c1c7baaf070d149ca47b4d4f3f468fee9f8c55af5abfe9bc58f7e572c5ca9016"
+    },
+    {
+      "name": "20261124141500_user_created_in_session",
+      "sha256": "c6a09edd239cfe0476ea34de84394bf3fda6352279406ee75bbf26e54fffbc35"
+    },
+    {
+      "name": "20261125090000_phase_1_case_file",
+      "sha256": "5f65f7fc6420b9f229de6a2efd07535ad6a203cc751f01d34625d0a65172032c"
+    },
+    {
+      "name": "20261125120000_signature_circle_guard",
+      "sha256": "3d03bb942a631efd8c17f5ad9324058b743c80d1e67e080bae4459dc66dbc6ca"
+    },
+    {
+      "name": "20261125150000_rules_constraints",
+      "sha256": "6d9d8c3a86e9dba2c49e1570af320bacb356b2661d035f0e2246bdc6c46e63e9"
+    },
+    {
+      "name": "20261126090000_phase_2_filing",
+      "sha256": "e7cb6389d65369885e9ce6e36c87558ade7048797b7787f8fe5df09acff929cb"
+    },
+    {
+      "name": "20261126130000_party_place_and_quality",
+      "sha256": "f6ebaf67765e07d00e0aab77f841982af9facca0da89a3c930aa709acfeb4b2d"
+    },
+    {
+      "name": "20261126140000_party_address_district_needs_place",
+      "sha256": "98b6098ff9306c6ff0b658852428adeb5ed0b9c94aa6751bc45923e211ba30d9"
+    },
+    {
+      "name": "20261126150000_document_depositor_and_court",
+      "sha256": "6ee7d68f50f32c77450e33a2a476674c92595ba9e038746c41e20f3a29677e95"
+    },
+    {
+      "name": "20261126150100_application_source_depositor_and_court",
+      "sha256": "1318086bb24482340c27f8603375d669f77a61e23d0d906182f4d6fe2a3298f3"
+    },
+    {
+      "name": "20261126150200_signature_certificate",
+      "sha256": "98bb59bc1c1607f1bb4fbb08854bf286fc2101e45f2f6630ec13e2c7b2fa6ec7"
+    },
+    {
+      "name": "20261126160000_list_scope_facts",
+      "sha256": "73fbca0b4462dc6888007c0373aaf644b4b74bcf3f97fc852a64758a560e0721"
+    }
+  ]
+}
