@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ROLE_CODES, ROLES } from '@mahkama/core';
+import { CHECK_CODES, ROLE_CODES, ROLES } from '@mahkama/core';
 import { AR_FILES, MESSAGES } from '@/i18n/messages';
 import { PAGES } from '@/server/http/page-registry';
 
@@ -78,6 +78,14 @@ describe('message files', () => {
       expect(ROLES[code].code).toBe(code);
     }
     expect(ar['roles.COURT_PRESIDENT_APPEAL']).toBeTruthy();
+  });
+
+  it('word every check before signature, the missing category of a public-law person included (independent review IR-01)', () => {
+    for (const code of CHECK_CODES) expect(ar[`filing.check.${code}`], code).toBeTruthy();
+    expect(CHECK_CODES.map(String)).toContain('PUBLIC_ENTITY_KIND_MISSING');
+    // The card shows the category as a required field, and says why.
+    expect(ar['filing.card.requiredField']).toContain('{label}');
+    expect(ar['filing.card.publicEntityKindHint']).toBeTruthy();
   });
 });
 

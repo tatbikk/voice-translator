@@ -153,6 +153,37 @@ export const PUBLIC_ESTABLISHMENT: CardParty = {
   email: 'contentieux@office-demo.example',
 };
 
+/**
+ * The same public-law defendant with its category left on the form's empty choice: the card is
+ * saved, the payment and the filing are refused until the category is given (decision 66;
+ * independent review IR-01).
+ */
+export const PUBLIC_PERSON_WITHOUT_KIND: CardParty = {
+  key: 'office',
+  side: 'DEFENDANT',
+  personKind: 'PUBLIC',
+  name: 'المكتب النموذجي للتجهيز',
+  quality: 'مدعى عليه',
+  legalRepresentative: 'مديره العام',
+  registeredOffice: { value: 'الدار البيضاء، شارع المثال، رقم 100', locality: 'casablanca', source: 'DECLARED' },
+  email: 'contentieux@office-demo.example',
+};
+
+/**
+ * The State judicial agent as the only public party of a file: the case is communicated to the
+ * prosecution all the same (art. 20, first case; independent review IR-01). Fictitious address.
+ */
+export const STATE_JUDICIAL_AGENT: CardParty = {
+  key: 'agent',
+  side: 'DEFENDANT',
+  personKind: 'PUBLIC',
+  publicEntityKind: 'STATE_JUDICIAL_AGENT',
+  name: 'الوكيل القضائي للمملكة',
+  quality: 'مدعى عليه',
+  registeredOffice: { value: 'الرباط، شارع المثال، رقم 200', source: 'DECLARED' },
+  email: 'contentieux@agent-demo.example',
+};
+
 export function withParties(card: Card, extra: readonly CardParty[]): Card {
   return { ...card, parties: [...card.parties, ...extra] };
 }

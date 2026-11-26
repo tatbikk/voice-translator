@@ -7,8 +7,10 @@ import {
   ACTIONS,
   CARD_SECTIONS,
   FilingCardSchema,
+  PUBLIC_ENTITY_KINDS,
   authorize,
   availableActions,
+  filingReady,
   preSignatureChecks,
   referralsFor,
   ruleInForce,
@@ -26,7 +28,8 @@ import { readRules } from './rules/md-tables';
 
 const NOW = new Date('2026-11-25T20:40:00Z');
 const context: AuthorizationContext = { mode: 'demo', demoToolsEnabled: true, now: NOW };
-const ON = '2026-11-25';
+// The rule tables in force today; the referral table communicates every public-law person since this day (decision 66).
+const ON = '2026-11-26';
 const referrals = ruleInForce(readRules<ReferralRuleSet[]>('referrals.json'), ON)!;
 const jurisdiction = ruleInForce(readRules<JurisdictionRuleSet[]>('jurisdiction.json'), ON)!;
 const caseTypes = ruleInForce(readRules<CaseTypeRuleSet[]>('case-types.json'), ON)!;
@@ -233,6 +236,47 @@ describe('the check before signature: it warns, it does not refuse (study, «م�
     expect(nature).toContainEqual(expect.objectContaining({ code: 'EXHIBIT_NATURE_MISSING', level: 'BLOCKING', article: 631 }));
     const unattested = checksOf({ attested: ['PLAINTIFFS', 'CLAIMS'] });
     expect(unattested.filter((c) => c.code === 'SECTION_NOT_ATTESTED').map((c) => c.section).sort()).toEqual(['DEFENDANTS', 'SUMMARY']);
+  });
+
+  // Independent review IR-01 (decision 66): the category of a public-law person is what the warning
+  // of art. 605 and the ground of the communication of art. 20 are read from, and the parties of a
+  // registered file are not amended. Left empty, it blocks the payment and the filing; the card is still saved.
+  it('blocks while a public-law person has no category, names the party, and lets every category through', () => {
+    const plaintiff = MODEL.parties.find((p) => p.side === 'PLAINTIFF')!;
+    const office = { key: 'office', side: 'DEFENDANT' as const, personKind: 'PUBLIC' as const, name: 'المكتب النموذجي للتجهيز', quality: 'مدعى عليه' };
+    const against = (party: FilingCard['parties'][number]): FilingCard => ({ ...MODEL, parties: [plaintiff, party], claims: [{ key: 'debt', nature: 'DEBT', amountCents: 12_000_000 }] });
+    const codes = (checks: ReturnType<typeof checksOf>) => checks.map((c): string => c.code);
+
+    expect(FilingCardSchema.safeParse(against(office)).success, 'the card is saved without the category').toBe(true);
+    const missing = checksOf({ card: against(office) });
+    expect(missing.filter((c) => c.level === 'BLOCKING')).toEqual([
+      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: 20, partyKey: 'office', uncertain: false }),
+    ]);
+    expect(filingReady(missing)).toBe(false);
+    // Nothing can recall art. 605 while the category is unknown: this is why the check blocks instead of warning.
+    expect(codes(missing)).not.toContain('STATE_JUDICIAL_AGENT_MISSING');
+    expect(codes(missing)).not.toContain('LOCAL_AUTHORITIES_AGENT_MISSING');
+
+    // The same on the plaintiff's side, and on paper.
+    const asPlaintiff = checksOf({ card: { ...MODEL, parties: [{ ...office, side: 'PLAINTIFF' }, ...MODEL.parties.filter((p) => p.side !== 'PLAINTIFF')] } });
+    expect(asPlaintiff).toContainEqual(expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', partyKey: 'office' }));
+    const onPaper = checksOf({ channel: 'PAPER', filer: null, documents: [], paperDepositor: { name: 'السيد عين' }, card: against(office) });
+    expect(codes(onPaper.filter((c) => c.level === 'BLOCKING'))).toEqual(['PUBLIC_ENTITY_KIND_MISSING']);
+
+    // Every category the form offers lifts it.
+    for (const publicEntityKind of PUBLIC_ENTITY_KINDS) {
+      const stated = checksOf({ card: against({ ...office, publicEntityKind }) });
+      expect(stated.filter((c) => c.level === 'BLOCKING'), publicEntityKind).toEqual([]);
+    }
+    // And the warning of art. 605 is then given by the category.
+    expect(checksOf({ card: against({ ...office, publicEntityKind: 'PUBLIC_ESTABLISHMENT' }) })).toContainEqual(
+      expect.objectContaining({ code: 'STATE_JUDICIAL_AGENT_MISSING', level: 'WARNING', article: 605 }),
+    );
+    expect(checksOf({ card: against({ ...office, publicEntityKind: 'LOCAL_AUTHORITY' }) })).toContainEqual(
+      expect.objectContaining({ code: 'LOCAL_AUTHORITIES_AGENT_MISSING', level: 'WARNING', article: 605 }),
+    );
+    // It is asked of a public-law person only.
+    expect(codes(checksOf())).not.toContain('PUBLIC_ENTITY_KIND_MISSING');
   });
 
   it('asks the paper filing for the page count and the place of every paper original', () => {

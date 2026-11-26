@@ -8,7 +8,16 @@
 // filed draft (26). Every refusal must leave a record in the event log.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { SECURITY_POLICY } from '@mahkama/core';
-import { CARD_SECTIONS, COMMERCIAL_PAYMENT, MODEL_CASE, MODEL_CASE_FEE_CENTS, PUBLIC_ESTABLISHMENT, withParties } from '../acceptance/model-case-filing.fixture';
+import {
+  CARD_SECTIONS,
+  COMMERCIAL_PAYMENT,
+  MODEL_CASE,
+  MODEL_CASE_FEE_CENTS,
+  PUBLIC_DEFENDANT_CASE,
+  PUBLIC_ESTABLISHMENT,
+  PUBLIC_PERSON_WITHOUT_KIND,
+  withParties,
+} from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
 import { capturingEvents, count, one, runtime, sql, type EventRow } from '../helpers/db';
 import { createCourt, createUser, theCourt, type TestUser } from '../helpers/factories';
@@ -530,6 +539,47 @@ describe('signing and filing (memo rows 6, 19, 20, 21, 26)', () => {
     const after = await getDraft(lawyer, other);
     expect(after.draft.attestations).not.toContain('SUMMARY');
     expect(after.checks.some((c) => c.level === 'BLOCKING' && c.code === 'SECTION_NOT_ATTESTED' && c.section === 'SUMMARY')).toBe(true);
+  });
+
+  it('refuses to pay or to file while a public-law party has no category, lists the check that blocks, and files once it is given (independent review IR-01)', async () => {
+    const lawyer = await as('lawyer');
+    const uncategorised = withParties(PUBLIC_DEFENDANT_CASE, [PUBLIC_PERSON_WITHOUT_KIND]);
+    const categorised = withParties(PUBLIC_DEFENDANT_CASE, [PUBLIC_ESTABLISHMENT]);
+    const refusalOf = (events: readonly EventRow[], draftId: string) =>
+      events.filter((e) => e.action === 'filing.refused' && e.details.draftId === draftId).map((e) => e.details.reason);
+
+    // The card is saved and attested as it is; what it lacks is listed among what blocks the filing.
+    const unpaid = await prepareDraft(lawyer, { card: uncategorised, exhibits: 1 });
+    const view = await getDraft(lawyer, unpaid);
+    expect(view.draft.attestations).toContain('DEFENDANTS');
+    expect(view.checks.filter((c) => c.level === 'BLOCKING')).toEqual([
+      expect.objectContaining({ code: 'PUBLIC_ENTITY_KIND_MISSING', level: 'BLOCKING', article: 20, partyKey: PUBLIC_PERSON_WITHOUT_KIND.key }),
+    ]);
+    // The fee is not paid for it.
+    const payment = await expectRefused(() => lawyer.post(`/api/v1/filings/${unpaid}/payment`, {}), 409, 'DRAFT_INCOMPLETE');
+    expect(refusalOf(payment, unpaid)).toEqual(['DRAFT_INCOMPLETE']);
+    expect(await count(`SELECT count(*) FROM "PaymentIntent" WHERE "draftId" = $1`, [unpaid])).toBe(0);
+
+    // Nor is it filed: a draft paid with the category, from which the category is then removed.
+    const draftId = await prepareDraft(lawyer, { card: categorised, exhibits: 1 });
+    await payDraft(lawyer, draftId);
+    const removed = await updateDraft(lawyer, draftId, { card: uncategorised, attest: [...CARD_SECTIONS] });
+    expect(removed.status, describeResponse(removed)).toBe(200);
+    expect(removed.data!.payment.status, 'the fee paid still covers the claims').toBe('SUCCEEDED');
+    expect(removed.data!.checks.filter((c) => c.level === 'BLOCKING').map((c) => c.code)).toEqual(['PUBLIC_ENTITY_KIND_MISSING']);
+    const before = { files: await caseFiles(), referrals: await count('SELECT count(*) FROM "CaseReferral"') };
+    const filing = await expectRefused(() => submit(lawyer, draftId, { secret }), 409, 'DRAFT_INCOMPLETE');
+    expect(refusalOf(filing, draftId)).toEqual(['DRAFT_INCOMPLETE']);
+    expect(await caseFiles()).toBe(before.files);
+    expect((await getDraft(lawyer, draftId)).draft.status).toBe('DRAFT');
+
+    // The category given, the same draft is filed, and the file is communicated to the prosecution (art. 20).
+    const restored = await updateDraft(lawyer, draftId, { card: categorised, attest: [...CARD_SECTIONS] });
+    expect(restored.status, describeResponse(restored)).toBe(200);
+    const filed = await submit(lawyer, draftId, { secret });
+    expect(filed.status, describeResponse(filed)).toBe(200);
+    expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1 AND target = 'PROSECUTION' AND article = 20 AND item = 1`, [filed.data!.caseFileId])).toBe(1);
+    expect(await count('SELECT count(*) FROM "CaseReferral"')).toBe(before.referrals + 1);
   });
 
   it('warns without refusing about the missing e-mail of the defendant company (art. 77)', async () => {

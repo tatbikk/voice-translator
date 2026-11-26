@@ -98,27 +98,31 @@ describe('loading the rule tables (review P1-S-10, P1-A-07)', () => {
 });
 
 describe('a version loaded open-ended is closed when its successor comes (review P1-A-18)', () => {
-  it('upgrades the holiday table loaded by Phase 1: closes it, loads the version with a horizon, records both', async () => {
-    const closed = files.find((f) => f.kind === 'HOLIDAYS' && f.validTo !== null);
-    const successor = files.find((f) => f.kind === 'HOLIDAYS' && f.validTo === null);
-    if (!closed || !successor) throw new Error('rules/holidays.json holds a closed version and its successor');
+  /**
+   * The release on a database that holds the first version of a table as it was loaded,
+   * open-ended and without its successor: the version is closed, the successor loaded, both recorded.
+   */
+  async function upgrade(kind: 'HOLIDAYS' | 'REFERRALS'): Promise<{ closed: (typeof files)[number]; successor: (typeof files)[number] }> {
+    const closed = files.find((f) => f.kind === kind && f.validTo !== null);
+    const successor = files.find((f) => f.kind === kind && f.validTo === null);
+    if (!closed || !successor) throw new Error(`the ${kind} table holds a closed version and its successor`);
     expect(successor.validFrom).toBe(closed.validTo);
-    expect((successor.content as { coversUntil?: string }).coversUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
-    // The database as Phase 1 left it: the first version open-ended, no successor.
+    // The database as the earlier release left it: the first version open-ended, no successor.
     const asLoaded = { ...(closed.content as Record<string, unknown>), validTo: null };
-    await sql(`DELETE FROM "RuleSet" WHERE kind = 'HOLIDAYS'`);
+    await sql(`DELETE FROM "RuleSet" WHERE kind = $1`, [kind]);
     await sql(
       `INSERT INTO "RuleSet" (id, kind, version, "validFrom", "validTo", "contentSha256", content, "loadedAt")
-       VALUES (gen_random_uuid(), 'HOLIDAYS', $1, $2, NULL, $3, $4::jsonb, now())`,
-      [closed.version, closed.validFrom, ruleContentSha256(asLoaded), JSON.stringify(asLoaded)],
+       VALUES (gen_random_uuid(), $1, $2, $3, NULL, $4, $5::jsonb, now())`,
+      [kind, closed.version, closed.validFrom, ruleContentSha256(asLoaded), JSON.stringify(asLoaded)],
     );
     const seq = Number((await sql<{ seq: string }>(`SELECT coalesce(max(seq), 0)::text AS seq FROM "Event"`))[0]?.seq ?? 0);
 
     const result = loadRules();
     expect(result.status, result.output.slice(-2000)).toBe(0);
     const rows = await sql<{ version: string; validTo: string | null; contentSha256: string; contentValidTo: string | null }>(
-      `SELECT version, "validTo", "contentSha256", content->>'validTo' AS "contentValidTo" FROM "RuleSet" WHERE kind = 'HOLIDAYS' ORDER BY "validFrom"`,
+      `SELECT version, "validTo", "contentSha256", content->>'validTo' AS "contentValidTo" FROM "RuleSet" WHERE kind = $1 ORDER BY "validFrom"`,
+      [kind],
     );
     expect(rows).toEqual([
       { version: closed.version, validTo: closed.validTo, contentSha256: closed.contentSha256, contentValidTo: closed.validTo },
@@ -128,13 +132,30 @@ describe('a version loaded open-ended is closed when its successor comes (review
     expect(appended.map((e) => [e.action, e.details])).toEqual([
       [
         'rules.closed',
-        { kind: 'HOLIDAYS', version: closed.version, validTo: closed.validTo, previousSha256: ruleContentSha256(asLoaded), contentSha256: closed.contentSha256 },
+        { kind, version: closed.version, validTo: closed.validTo, previousSha256: ruleContentSha256(asLoaded), contentSha256: closed.contentSha256 },
       ],
-      ['rules.loaded', { kind: 'HOLIDAYS', version: successor.version, contentSha256: successor.contentSha256 }],
+      ['rules.loaded', { kind, version: successor.version, contentSha256: successor.contentSha256 }],
     ]);
     // And nothing more on the next release.
     expect(loadRules().status).toBe(0);
     expect((await events()).filter((e) => e.seq > seq)).toHaveLength(2);
+    return { closed, successor };
+  }
+
+  it('upgrades the holiday table loaded by Phase 1: closes it, loads the version with a horizon, records both', async () => {
+    const { successor } = await upgrade('HOLIDAYS');
+    expect((successor.content as { coversUntil?: string }).coversUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  }, 120_000);
+
+  it('upgrades the referral table loaded by Phase 2: closes it, loads the version that communicates every public-law person, records both (independent review IR-01)', async () => {
+    const { closed, successor } = await upgrade('REFERRALS');
+    const communication = (table: { content: unknown }) =>
+      (table.content as { prosecution: { communication: { anyPublicLawPerson?: number; publicEntityKinds: Record<string, number> } } }).prosecution.communication;
+    // The version loaded by Phase 2 is kept as it was applied; its successor names any public-law person.
+    expect(communication(closed).anyPublicLawPerson).toBeUndefined();
+    expect(Object.keys(communication(closed).publicEntityKinds).sort()).toEqual(['LOCAL_AUTHORITY', 'OTHER_PUBLIC', 'PUBLIC_ESTABLISHMENT', 'STATE']);
+    expect(communication(successor).anyPublicLawPerson).toBe(1);
+    expect(communication(successor).publicEntityKinds).toMatchObject({ STATE_JUDICIAL_AGENT: 1, LOCAL_AUTHORITIES_AGENT: 1 });
   }, 120_000);
 });
 

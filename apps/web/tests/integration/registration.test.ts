@@ -13,12 +13,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { SECURITY_POLICY, type UserSubject } from '@mahkama/core';
 import { caseSnapshot } from '@/server/cases/snapshot';
 import { caseView } from '@/server/cases/view';
+import { ruleSourceFiles } from '@/server/rules/store';
 import {
   COMMERCIAL_PAYMENT,
   MODEL_CASE,
   MODEL_CASE_FEE_CENTS,
   PUBLIC_DEFENDANT_CASE,
   PUBLIC_ESTABLISHMENT,
+  STATE_JUDICIAL_AGENT,
   withParties,
 } from '../acceptance/model-case-filing.fixture';
 import { login } from '../helpers/auth';
@@ -270,6 +272,38 @@ describe('automatic referrals (art. 18, 20 and 101)', () => {
     await expectDenied(async () => (await as('otherCourtProsecutor')).get(`/api/v1/cases/${publicCase.caseFileId}/available-actions`), 404);
   });
 
+  it('refers the file whose only public party is the State judicial agent, tells the prosecution of the court and opens the file to it (independent review IR-01)', async () => {
+    const informedBefore = await count(`SELECT count(*) FROM "Notification" WHERE "userId" = $1 AND "templateKey" = 'notifications.case.referred'`, [cast.prosecutor.id]);
+    const filed = await fileCase(await as('lawyer'), secret, { card: withParties(PUBLIC_DEFENDANT_CASE, [STATE_JUDICIAL_AGENT]) });
+    // One public-law person in the file, and it is the judicial agent.
+    const publicParties = await sql<{ publicEntityKind: string | null }>(`SELECT "publicEntityKind" FROM "CaseParty" WHERE "caseFileId" = $1 AND "personKind" = 'PUBLIC'`, [filed.caseFileId]);
+    expect(publicParties).toEqual([{ publicEntityKind: 'STATE_JUDICIAL_AGENT' }]);
+
+    const referrals = await sql<{ target: string; ground: string; article: number; item: number | null; reasonCode: string; version: string }>(
+      `SELECT r.target::text, r.ground::text, r.article, r.item, r."reasonCode", s.version
+         FROM "CaseReferral" r JOIN "RuleSet" s ON s.id = r."ruleSetId" WHERE r."caseFileId" = $1`,
+      [filed.caseFileId],
+    );
+    const inForce = ruleSourceFiles().find((f) => f.kind === 'REFERRALS' && f.validTo === null);
+    expect(referrals).toEqual([{ target: 'PROSECUTION', ground: 'COMMUNICATION', article: 20, item: 1, reasonCode: 'PUBLIC_PARTY', version: inForce?.version }]);
+    const file = await one<{ referredToProsecutionAt: Date | null; registeredAt: Date }>('SELECT "referredToProsecutionAt", "registeredAt" FROM "CaseFile" WHERE id = $1', [filed.caseFileId]);
+    expect(file.referredToProsecutionAt, 'communicated as soon as registered (art. 20)').toEqual(file.registeredAt);
+    const reviewed = (await events('case.referrals.reviewed')).find((e) => e.details.caseFileId === filed.caseFileId);
+    expect(reviewed?.details).toMatchObject({ referrals: 1, grounds: 'PROSECUTION/COMMUNICATION/20/1', ruleVersion: inForce?.version });
+
+    // The prosecution of the court is told, and opens the file; the prosecution of another court does not.
+    const informed = await sql<{ kind: string; targetPath: string }>(
+      `SELECT kind::text, "targetPath" FROM "Notification" WHERE "userId" = $1 AND "caseFileId" = $2 AND "templateKey" = 'notifications.case.referred'`,
+      [cast.prosecutor.id, filed.caseFileId],
+    );
+    expect(informed).toEqual([{ kind: 'INFORMATION', targetPath: `/cases/${filed.caseFileId}` }]);
+    expect(await count(`SELECT count(*) FROM "Notification" WHERE "userId" = $1 AND "templateKey" = 'notifications.case.referred'`, [cast.prosecutor.id])).toBe(informedBefore + 1);
+    expect(await count(`SELECT count(*) FROM "Notification" WHERE "userId" = $1 AND "caseFileId" = $2`, [cast.otherCourtProsecutor.id, filed.caseFileId])).toBe(0);
+    expect(await availableCodes(await as('prosecutor'), filed.caseFileId)).toEqual(['case.prosecution.conclusions', 'case.prosecution.view']);
+    expect(await viewAs(cast.prosecutor, filed.caseFileId)).not.toBeNull();
+    await expectDenied(async () => (await as('otherCourtProsecutor')).get(`/api/v1/cases/${filed.caseFileId}/available-actions`), 404);
+  });
+
   it('lets the prosecution file written conclusions as a PDF, and refuses them on a file not referred to it', async () => {
     const prosecutor = await as('prosecutor');
     const res = await prosecutor.post(`/api/v1/cases/${publicCase.caseFileId}/uploads/case.prosecution.conclusions`, undefined, {
@@ -397,6 +431,26 @@ describe('the registry office: three buttons, and none to reject the application
     const file = await one<{ referredToProsecutionAt: Date | null }>('SELECT "referredToProsecutionAt" FROM "CaseFile" WHERE id = $1', [caseFileId]);
     expect(file.referredToProsecutionAt).not.toBeNull();
     expect(await count(`SELECT count(*) FROM "Notification" WHERE "userId" = $1 AND "templateKey" = 'notifications.case.referred-reclassified'`, [prosecutor.id])).toBe(1);
+  });
+
+  it('communicates, when its classification is corrected, a file registered with a public-law party left without category (independent review IR-01)', async () => {
+    const filed = await fileCase(await as('lawyer'), secret, { exhibits: 1 });
+    expect(await count(`SELECT count(*) FROM "CaseReferral" WHERE "caseFileId" = $1`, [filed.caseFileId])).toBe(0);
+    // As a file was registered before the category became mandatory: a public-law defendant, its category empty.
+    await sql(`UPDATE "CaseParty" SET "personKind" = 'PUBLIC', "publicEntityKind" = NULL WHERE "caseFileId" = $1 AND side = 'DEFENDANT'`, [filed.caseFileId]);
+    const res = await act(await as('registry'), filed.caseFileId, 'case.registration.reclassify', { caseType: '8203' });
+    expect(res.status, describeResponse(res)).toBe(200);
+    const referral = await one<{ target: string; ground: string; article: number; item: number | null }>(
+      'SELECT target::text, ground::text, article, item FROM "CaseReferral" WHERE "caseFileId" = $1',
+      [filed.caseFileId],
+    );
+    expect(referral).toEqual({ target: 'PROSECUTION', ground: 'COMMUNICATION', article: 20, item: 1 });
+    const file = await one<{ referredToProsecutionAt: Date | null }>('SELECT "referredToProsecutionAt" FROM "CaseFile" WHERE id = $1', [filed.caseFileId]);
+    expect(file.referredToProsecutionAt).not.toBeNull();
+    expect(
+      await count(`SELECT count(*) FROM "Notification" WHERE "userId" = $1 AND "caseFileId" = $2 AND "templateKey" = 'notifications.case.referred-reclassified'`, [cast.prosecutor.id, filed.caseFileId]),
+    ).toBe(1);
+    expect(await availableCodes(await as('prosecutor'), filed.caseFileId)).toEqual(['case.prosecution.conclusions', 'case.prosecution.view']);
   });
 
   it('stamps once: two stamps at once leave one stamp, and the buttons that precede it disappear', async () => {

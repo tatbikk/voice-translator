@@ -3,6 +3,7 @@
 // overlap. And review P1-A-18: a loaded version is never rewritten; the one
 // change accepted is the end date of a version loaded open-ended.
 import { describe, expect, it } from 'vitest';
+import { PUBLIC_ENTITY_KINDS } from '@mahkama/core';
 import { ruleContentSha256, ruleSourceFiles, type RuleKind } from '@/server/rules/store';
 import { RULE_FILE_SCHEMAS, ruleFileProblems, storedVersionChange, type RuleFile } from '@/server/rules/validation';
 
@@ -38,6 +39,18 @@ describe('the rule files of the repository', () => {
     expect(content.coversUntil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(content.holidays.some((h) => h.date > (content.coversUntil ?? '')), 'no holiday listed past the horizon').toBe(false);
   });
+
+  it('communicate to the prosecution every public-law person, whatever its category, in the referral table in force (independent review IR-01)', () => {
+    const current = files.filter((f) => f.kind === 'REFERRALS' && f.validTo === null);
+    expect(current).toHaveLength(1);
+    const { communication } = (current[0]?.content as { prosecution: { communication: { article: number; anyPublicLawPerson?: number; publicEntityKinds: Record<string, number> } } }).prosecution;
+    expect(communication.article).toBe(20);
+    expect(communication.anyPublicLawPerson, 'art. 20, item 1, names any other public-law person').toBe(1);
+    for (const kind of PUBLIC_ENTITY_KINDS) expect(communication.publicEntityKinds[kind], kind).toBe(1);
+    // The version loaded before is closed the day its successor takes effect, never rewritten.
+    const closed = files.filter((f) => f.kind === 'REFERRALS' && f.validTo !== null);
+    expect(closed.map((f) => f.validTo)).toEqual([current[0]?.validFrom]);
+  });
 });
 
 describe('an invalid rule file is refused before loading (review P1-S-10)', () => {
@@ -55,6 +68,7 @@ describe('an invalid rule file is refused before loading (review P1-S-10)', () =
     ['a horizon before the start', 'HOLIDAYS', (c) => (c.coversUntil = '2020-01-01')],
     ['a last fee band with an upper bound', 'FEES', (c) => ((c.schedule as { bands: { upToCents: number | null }[] }).bands.at(-1)!.upToCents = 1)],
     ['a negative rate', 'INTEREST', (c) => ((c.rate as { value: number }).value = -1)],
+    ['an item art. 20 does not have', 'REFERRALS', (c) => ((c.prosecution as { communication: { anyPublicLawPerson?: number } }).communication.anyPublicLawPerson = 6)],
   ];
   for (const [what, kind, change] of cases) {
     it(`${kind} with ${what}`, () => {
