@@ -332,10 +332,13 @@
 
 ### 6. IR-12: السند القانوني في كل حدث
 
-- **ما أصلح:** صار كل حدث يكتبه إجراء من إجراءات الملف، أو عملية من عمليات مشروع الإيداع، أو التقييد وتوقيع المقال، أو الأداء، يحمل سند الإجراء الذي خوله كما يحله جدول الإجراءات في النواة، ويعرض الخط الزمني مواده تحت «السند». وما يطبعه الـworker يحمل سند الإجراء الذي طلب المهمة، ينقل معها في الطابور؛ ويعيد الـworker عند بدئه إلى الانتظار المهام التي أعلن عامل سابق موتها لأنه لم يقرأها. و«ملاحظة إلى القاضي» تستند إلى المادة 628، ومعها 619 حين يكون سببها نقص الرسم وحده.
+- **ما أصلح:** صار كل حدث يكتبه إجراء من إجراءات الملف، أو عملية من عمليات مشروع الإيداع، أو التقييد وتوقيع المقال، أو الأداء، يحمل سند الإجراء الذي خوله كما يحله جدول الإجراءات في النواة، ويعرض الخط الزمني مواده تحت «السند». وما يطبعه الـworker يحمل سند الإجراء الذي طلب المهمة، ينقل معها في الطابور؛ ويعيد الـworker عند بدئه، ثم كل دقيقة ما دام يعمل، إلى الانتظار المهام التي أعلن عامل سابق موتها لأنه لم يقرأها. و«ملاحظة إلى القاضي» تستند إلى المادة 628، ومعها 619 حين يكون سببها نقص الرسم وحده.
 - **الالتزامات:** الأربعة الأولى من البند 3 (`7791dd6` و`fa42150` و`8844ab3` و`2b9bbb9`)، ثم:
   - `581bda3 Tests: the worker puts back at its start the jobs an earlier worker declared dead unread (review of IR-12)`
   - `cf9e455 The worker puts back at its start the jobs an earlier worker declared dead unread (review of IR-12)`
+  - `c9385f2 Tests: the release obeys the guard's answer, the worker puts back unread dead jobs on a tick, the guard test reads the last applied migration (review of the fixes)`
+  - `fbc6be6 The worker puts back, every minute while it runs, the jobs an earlier worker declared dead unread (review of the fixes, IR-12)`
+  - `453500a Tests: lint of the migration guard test (no change in what it checks)`
 - **الاختبارات:** `apps/web/tests/integration/act-legal-basis.test.ts`، `packages/core/test/note-basis.test.ts`، `apps/web/tests/integration/job-queue.test.ts`.
 - **القرارات والأسئلة المفتوحة:** القرار 74؛ والسؤال س43.
 - **البقية:** صف «IR-12 (بقية)» (الأحداث المكتوبة قبل الإصلاح لا تعدل).
@@ -398,11 +401,12 @@
   - `9a10995 The release refuses a pending migration dated before the last one applied, and reports an applied migration that changed (review of IR-43, P2-A-12); decision 83`
   - `e105966 Tests: the code inside a demo file's number follows its case type, in place on a database seeded before (review of IR-40)`
   - `f01594c The code inside a demo file's number is its case type's, recoded in place with the type (review of IR-40)`
+  - `c9385f2` (المذكور في البند 6): يشترط اختبار البنية أن يقف أمر النشر وأمر تهيئة العرض إن رفض الحارس، ويقرأ اختبار الحارس آخر هجرة مطبقة من القاعدة بدل كتابة اسمها.
 - **الاختبارات:** `apps/web/tests/unit/rule-files.test.ts`، `apps/web/tests/integration/seed.test.ts`، `apps/web/tests/architecture/migrations.test.ts`، `apps/web/tests/unit/migration-guard.test.ts`، `apps/web/tests/integration/migration-guard.test.ts`.
 - **القرارات والأسئلة المفتوحة:** القرارات 81 و82 و83. ولا سؤال مفتوح.
 - **البقية:** صف «IR-43 (بقية)». ولا صف لـIR-40: ما بقي منه يجري عند النشر الموالي لبيئة العرض (أدناه).
 
-وفي الفرع غير ذلك: `5ef7eb9 Add the independent review report of phases 1 and 2`، و`71339b1 Tests: the reading-ease spec waits for the cookie the save request sets (no change in what it checks)`، و`1f574f1 Docs: the findings say they were last updated after the review of the fixes`، ثم التزام هذا القسم وما أدرج معه في `docs/security/findings.md` و`docs/open-questions.md`.
+وفي الفرع غير ذلك: `5ef7eb9 Add the independent review report of phases 1 and 2`، و`71339b1 Tests: the reading-ease spec waits for the cookie the save request sets (no change in what it checks)`، و`1f574f1 Docs: the findings say they were last updated after the review of the fixes`، ثم التزام هذا القسم وما أدرج معه في `docs/security/findings.md` و`docs/open-questions.md`، ثم التزام أخير بعد مراجعة ما كتبته الجولة يصحح صياغة القرارين 74 و81 وسطر IR-43 في السجل، ويضيف إلى هذا القسم التزامي المراجعة الأخيرة.
 
 ### قرارات المالك
 
