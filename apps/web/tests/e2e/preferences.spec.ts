@@ -71,7 +71,8 @@ test.describe('language and reading ease', () => {
       })
       .not.toEqual([]);
     const changed = await htmlAttributes(page);
-    expect((await context.cookies()).some((c) => c.name === '__Host-mr-reading')).toBe(true);
+    // The page applies the choice before the request that saves it returns: wait for the cookie.
+    await expect.poll(async () => (await context.cookies()).some((c) => c.name === '__Host-mr-reading')).toBe(true);
     await page.reload();
     expect(await htmlAttributes(page)).toEqual(changed);
   });
