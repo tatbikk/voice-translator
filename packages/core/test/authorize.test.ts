@@ -285,8 +285,7 @@ describe('permanent invariants (kept in every phase)', () => {
     const related: Resource = {
       kind: 'case',
       snapshot: { ...counselledCase.snapshot, expertUserId: USER_ID, summonsCodeHolderUserIds: [USER_ID] },
-    } as Resource;
-    if (related.kind !== 'case') throw new Error('not a case');
+    };
     for (const role of ['SYSTEM_ADMIN', 'RULES_LEGAL_VALIDATOR'] as const) {
       const subject = userSubject(role) as UserSubject;
       expect(knowsCase(subject, related.snapshot), role).toBe(false);

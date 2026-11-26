@@ -61,7 +61,8 @@ export async function renderPage(
     const tree = await component({ params: Promise.resolve(params), searchParams: Promise.resolve(searchParams) });
     return { kind: 'rendered', tree };
   } catch (error) {
-    const digest = String((error as { digest?: unknown }).digest ?? '');
+    const raw = (error as { digest?: unknown }).digest;
+    const digest = typeof raw === 'string' ? raw : '';
     if (digest.endsWith(';404')) return { kind: 'not-found' };
     if (digest.startsWith('NEXT_REDIRECT')) return { kind: 'redirect', location: digest.split(';')[2] ?? '' };
     throw error;

@@ -38,8 +38,9 @@ function ruleAt(code: string, date: string) {
 
 /** The articles of a «السند» cell: «م 204 و602 و603» is [204, 602, 603]. */
 function articlesOf(cell: string): number[] {
-  if (!/^م \d+( و\d+)*$/.test(cell)) throw new Error(`«السند» not read: «${cell}»`);
-  return [...cell.matchAll(/\d+/g)].map((m) => Number(m[0]));
+  const parts = cell.startsWith('م ') ? cell.slice(2).split(' و') : [];
+  if (parts.length === 0 || !parts.every((p) => /^\d+$/.test(p))) throw new Error(`«السند» not read: «${cell}»`);
+  return parts.map(Number);
 }
 
 /**

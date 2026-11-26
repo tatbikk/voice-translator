@@ -95,9 +95,9 @@ const pdfBody = (note: string): RequestOptions => ({
 
 const PROBES: Readonly<Record<string, Probe>> = {
   // Phase 0
-  'access.submit': async () => {
+  'access.submit': () => {
     const c = new Client();
-    return { witness: 'passes', send: (o) => c.post('/api/v1/access', { code: accessCode() }, o) };
+    return Promise.resolve({ witness: 'passes', send: (o) => c.post('/api/v1/access', { code: accessCode() }, o) });
   },
   'auth.login': async () => {
     const user = await createUser({ roles: ['LAWYER'] });
