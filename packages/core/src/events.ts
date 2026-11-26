@@ -3,6 +3,7 @@
 // identifiers, hashes, counts, enumerated codes, booleans and timestamps. No free
 // text, no e-mail, no name, no phone number, no code, no token.
 import { z } from 'zod';
+import { NOTE_REASONS } from './procedure/notes';
 
 export type EventOutcome = 'DONE' | 'DENIED' | 'FAILED';
 
@@ -18,6 +19,8 @@ const code = z.string().regex(/^[A-Za-z0-9_.:\-/[\]]{1,96}$/);
 const groundsList = z.string().regex(/^[A-Za-z0-9_.:\-/]{1,400}$/);
 const iso = z.iso.datetime({ offset: false, precision: 3 });
 const roleCode = z.string().regex(/^[A-Z_]{2,40}$/);
+/** Fact codes of the core (CaseFact), joined by «:». */
+const factCodes = z.string().regex(/^[A-Z_]{2,40}(:[A-Z_]{2,40}){0,19}$/);
 
 const detailsOf = <T extends z.ZodRawShape>(shape: T) => z.strictObject(shape);
 
@@ -215,7 +218,7 @@ export const EVENT_TYPES = {
   'case.registration.reclassified': { outcome: 'DONE', details: detailsOf({ caseFileId: id, fromCode: count, toCode: count }) },
   'case.note.added': {
     outcome: 'DONE',
-    details: detailsOf({ caseFileId: id, noteId: id, reason: z.enum(['FEE_SHORTFALL', 'CLASSIFICATION', 'PARTIES', 'OTHER']) }),
+    details: detailsOf({ caseFileId: id, noteId: id, reason: z.enum(NOTE_REASONS) }),
   },
   'case.document.filed': { outcome: 'DONE', details: detailsOf({ caseFileId: id, documentId: id, action: code }) },
   /** an executor found the file changed since its authorization (a race), or the input invalid */
@@ -228,9 +231,17 @@ export const EVENT_TYPES = {
   /** the facts an act declares (transitions.ts «sets»), established by the applier (decision 73), joined by «:» */
   'case.facts.set': {
     outcome: 'DONE',
-    details: detailsOf({ caseFileId: id, action: code, facts: z.string().regex(/^[A-Z_]{2,40}(:[A-Z_]{2,40}){0,19}$/) }),
+    details: detailsOf({ caseFileId: id, action: code, facts: factCodes }),
   },
-  /** a time limit an act opens (transitions.ts «opens»), computed with the tables in force on the day of its trigger */
+  /** the stored facts an act ends (transitions.ts «clears», review of the fix), retracted by the applier, joined by «:» */
+  'case.facts.cleared': {
+    outcome: 'DONE',
+    details: detailsOf({ caseFileId: id, action: code, facts: factCodes }),
+  },
+  /**
+   * a time limit an act opens (transitions.ts «opens»), computed with the time-limit table in force on the
+   * day of its trigger and the calendar in force on the day of the computation (decision 73)
+   */
   'case.time-limit.opened': {
     outcome: 'DONE',
     details: detailsOf({
@@ -245,7 +256,12 @@ export const EVENT_TYPES = {
       uncertain: z.boolean(),
     }),
   },
-  /** a running time limit an act closes (transitions.ts «closes») */
+  /** a running time limit an act meets: the act it awaited, done within it (transitions.ts «meets») */
+  'case.time-limit.met': {
+    outcome: 'DONE',
+    details: detailsOf({ caseFileId: id, timeLimitId: id, action: code, ruleCode: code }),
+  },
+  /** a running time limit an act ends without meeting it (transitions.ts «closes») */
   'case.time-limit.closed': {
     outcome: 'DONE',
     details: detailsOf({ caseFileId: id, timeLimitId: id, action: code, ruleCode: code }),

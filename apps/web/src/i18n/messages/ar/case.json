@@ -49,6 +49,7 @@
   "case.timeline.event.signature.verified": "التحقق من التوقيع",
   "case.timeline.event.case.transition.recorded": "{action}",
   "case.timeline.event.case.time-limit.opened": "فتح أجل",
+  "case.timeline.event.case.time-limit.met": "تم الإجراء داخل أجله",
   "case.timeline.event.case.time-limit.closed": "إقفال أجل",
   "case.timeline.event.other": "إجراء مدون",
   "case.documents.columns.document": "الوثيقة",

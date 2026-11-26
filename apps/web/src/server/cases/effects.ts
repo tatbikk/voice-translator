@@ -4,6 +4,7 @@ import {
   ACTIONS,
   computeTimeLimit,
   effectViolations,
+  moroccoDay,
   type CaseFact,
   type CaseSnapshot,
   type CaseStatus,
@@ -22,9 +23,9 @@ import { caseSnapshot, DERIVED_CASE_FACTS } from './snapshot';
 
 // The one place that applies what the core's declarative table
 // (packages/core/src/procedure/transitions.ts) says an act does (independent
-// review IR-10, decision 73): its next status, the facts it sets, the time
-// limits it closes and opens. It runs inside the act's transaction, after the
-// act's own executor, then rebuilds the snapshot and asks the core whether
+// review IR-10, decision 73): its next status, the facts it sets and clears,
+// the time limits it meets, closes and opens. It runs inside the act's
+// transaction, after the act's own executor, then rebuilds the snapshot and asks the core whether
 // every declared effect holds; if one does not, the transaction fails and
 // nothing of the act stays. Every effect is recorded in the event log with the
 // act's legal basis (IR-12). The executors of the acts are registered through
@@ -36,11 +37,14 @@ type Tx = Prisma.TransactionClient;
 export interface LimitStatement {
   /** the party the limit runs against; the file when null or not given */
   readonly partyId?: string | null;
-  /** the event it runs from (a service, an order…); the act itself when not given */
+  /**
+   * the event it runs from (a service, an order…); the act itself when not given. Not later
+   * than the act, nor earlier than the file's registration (review of the IR-10 fix).
+   */
   readonly trigger?: Date;
   /** whether that event was done electronically (art. 602, last paragraph; art. 639) */
   readonly electronic: boolean;
-  /** the day the judge set, for a limit the judge fixes (arts. 6, 77, 124) */
+  /** the day the judge set, for a limit the judge fixes (arts. 6, 77, 124); not before the trigger's day */
   readonly fixedDate?: string;
 }
 
@@ -108,11 +112,22 @@ export async function applyDeclaredEffects(tx: Tx, input: ApplyInput): Promise<A
   await tx.$queryRaw`SELECT id FROM "CaseFile" WHERE id = ${caseFileId}::uuid FOR UPDATE`;
   const file = await tx.caseFile.findUniqueOrThrow({
     where: { id: caseFileId },
-    select: { status: true, facts: true, registrationStampedAt: true, referredToProsecutionAt: true, referredToCommissionerAt: true },
+    select: {
+      status: true,
+      facts: true,
+      createdAt: true,
+      registeredAt: true,
+      registrationStampedAt: true,
+      referredToProsecutionAt: true,
+      referredToCommissionerAt: true,
+    },
   });
 
-  // 1. The facts and the status. A stored fact is added once; a moment keeps the first one.
-  const stored = action.sets.filter((f) => !DERIVED_CASE_FACTS.has(f) && !file.facts.includes(f));
+  // 1. The facts and the status. A stored fact is added once and retracted only by a declaration
+  // (clears); a moment keeps the first one. A derived fact is the executor's data: only verified.
+  const added = action.sets.filter((f) => !DERIVED_CASE_FACTS.has(f) && !file.facts.includes(f));
+  const retracted = action.clears.filter((f) => !DERIVED_CASE_FACTS.has(f));
+  const facts = [...file.facts.filter((f) => !(retracted as readonly string[]).includes(f)), ...added];
   const moments: Partial<Record<MomentColumn, Date>> = {};
   for (const fact of action.sets) {
     const column = momentColumn(fact);
@@ -120,42 +135,59 @@ export async function applyDeclaredEffects(tx: Tx, input: ApplyInput): Promise<A
   }
   const data: Prisma.CaseFileUpdateInput = {
     ...moments,
-    ...(stored.length > 0 ? { facts: { set: [...file.facts, ...stored] } } : {}),
+    ...(added.length > 0 || facts.length !== file.facts.length ? { facts: { set: facts } } : {}),
     ...(action.nextStatus ? { status: action.nextStatus } : {}),
   };
   if (Object.keys(data).length > 0) await tx.caseFile.update({ where: { id: caseFileId }, data });
   if (action.sets.length > 0) {
     await appendEvent(tx, { action: 'case.facts.set', details: { caseFileId, action: code, facts: action.sets.join(':') }, caseFileId, actor, legalBasis });
   }
+  if (action.clears.length > 0) {
+    await appendEvent(tx, { action: 'case.facts.cleared', details: { caseFileId, action: code, facts: action.clears.join(':') }, caseFileId, actor, legalBasis });
+  }
 
-  // 2. The limits it closes: those still running; one elapsed stays elapsed.
+  // 2. The limits it meets (the act they awaited, done within them: MET) and those it ends
+  // without meeting them (CLOSED): those still running; one elapsed stays elapsed.
   const closed: string[] = [];
-  for (const limit of action.closes) {
+  const ending = [
+    ...action.meets.map((limit) => ({ limit, status: 'MET' as const, event: 'case.time-limit.met' as const })),
+    ...action.closes.map((limit) => ({ limit, status: 'CLOSED' as const, event: 'case.time-limit.closed' as const })),
+  ];
+  for (const { limit, status, event } of ending) {
     const running = await tx.timeLimit.findMany({
       where: { caseFileId, ruleCode: limit, status: 'RUNNING', endsAt: { gt: now } },
       orderBy: { startsAt: 'asc' },
       select: { id: true },
     });
     for (const row of running) {
-      await tx.timeLimit.update({ where: { id: row.id }, data: { status: 'CLOSED', closedAt: now } });
-      await appendEvent(tx, { action: 'case.time-limit.closed', details: { caseFileId, timeLimitId: row.id, action: code, ruleCode: limit }, caseFileId, actor, legalBasis });
+      await tx.timeLimit.update({ where: { id: row.id }, data: { status, closedAt: now } });
+      await appendEvent(tx, { action: event, details: { caseFileId, timeLimitId: row.id, action: code, ruleCode: limit }, caseFileId, actor, legalBasis });
       closed.push(row.id);
     }
   }
 
-  // 3. The limits it opens, each computed by the core's engine with the time-limit table and
-  // the calendar in force on the day of its trigger, and kept with what the computation relied on.
+  // 3. The limits it opens, each computed by the core's engine with the time-limit table in force
+  // on the day of its trigger and the calendar of holidays in force on the day of the computation
+  // (art. 603: the days the texts in force declare holidays; the latest calendar is the most
+  // complete, decision 73), and kept with what the computation relied on.
+  const registered = file.registeredAt ?? file.createdAt;
+  let calendar: Awaited<ReturnType<typeof holidayCalendar>> | null = null;
   const opened: { id: string; code: DeadlineCode; partyId: string | null }[] = [];
   for (const limit of action.opens) {
     for (const statement of statements[limit] ?? []) {
       const partyId = statement.partyId ?? null;
       if (partyId !== null && !parties.has(partyId)) throw new DeclaredEffectError(code, `NOT_A_PARTY:${limit}`);
       const trigger = statement.trigger ?? now;
+      // An event that has not happened, or that happened before the file was in the register,
+      // would choose an arbitrary table and open a limit elapsed at once.
+      if (trigger.getTime() > now.getTime()) throw new DeclaredEffectError(code, `TRIGGER_AFTER_ACT:${limit}`);
+      if (trigger.getTime() < registered.getTime()) throw new DeclaredEffectError(code, `TRIGGER_BEFORE_FILE:${limit}`);
+      if (statement.fixedDate !== undefined && statement.fixedDate < moroccoDay(trigger)) throw new DeclaredEffectError(code, `FIXED_DATE_BEFORE_TRIGGER:${limit}`);
       const rules = await timeLimitRules(trigger);
       const rule = rules.rules.find((r) => r.code === limit);
       if (!rule) throw new DeclaredEffectError(code, `NO_RULE:${limit}`);
       if ((rule.fixedByJudge === true) !== (statement.fixedDate !== undefined)) throw new DeclaredEffectError(code, `FIXED_DATE:${limit}`);
-      const calendar = await holidayCalendar(trigger);
+      calendar ??= await holidayCalendar(now);
       const result = computeTimeLimit({
         rule,
         settings: rules.settings,

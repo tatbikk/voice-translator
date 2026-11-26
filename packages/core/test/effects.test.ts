@@ -113,7 +113,7 @@ describe('the effects an act declares, checked on the snapshot after it (indepen
 
   it('declares no act that sets and clears the same fact, or meets and closes the same limit', () => {
     for (const rule of Object.values(ACTIONS)) {
-      const action = rule.procedure;
+      const action = rule?.procedure;
       if (!action) continue;
       expect(action.sets.filter((f) => action.clears.includes(f)), action.code).toEqual([]);
       expect(action.meets.filter((c) => action.closes.includes(c)), action.code).toEqual([]);

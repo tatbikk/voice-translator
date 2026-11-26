@@ -1,6 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { formatMoroccoDate, formatMoroccoTime } from '@mahkama/core';
+import { formatMoroccoDate, formatMoroccoTime, type LegalBasis } from '@mahkama/core';
 import { translator } from '@/i18n/translate';
 import { clock } from '../clock';
 import { getDb } from '../db';
@@ -17,6 +17,8 @@ import { draftStorageKey, sha256 } from './drafts';
 // of a payment (art. 628: «بوصل يتضمن تاريخ وساعة الإجراء القضائي»),
 // «وصل الإيداع», and «شهادة توقيع» of the electronic application once signed
 // (decision 72). Every page carries the demo line while the signature is simulated.
+// What a job prints is recorded with the basis of the act that queued it (review
+// of the IR-12 fix, decision 74); a job queued before carries none.
 
 const t = translator('ar');
 
@@ -100,7 +102,7 @@ async function printOrRecord(template: TemplateName, generate: GenerateInput, ca
 // ---------------------------------------------------------------------------
 
 /** The fixed copy of the application, for the paragraphs whose digest the job carries. */
-export async function prepareFixedCopy(draftId: string, textDigest: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
+export async function prepareFixedCopy(draftId: string, textDigest: string, context: PrintContext = { lastAttempt: true }, legalBasis: LegalBasis | null = null): Promise<void> {
   const draft = await getDb().filingDraft.findUnique({ where: { id: draftId }, select: { id: true, status: true, courtId: true, applicationParagraphs: true, fixedCopyStatus: true } });
   if (!draft || draft.status !== 'DRAFT') return;
   const paragraphs = Array.isArray(draft.applicationParagraphs) ? draft.applicationParagraphs.filter((p): p is string => typeof p === 'string') : [];
@@ -149,14 +151,14 @@ export async function prepareFixedCopy(draftId: string, textDigest: string, cont
       },
     });
     await tx.filingDraft.update({ where: { id: draftId }, data: { fixedCopyStatus: 'READY', updatedAt: now } });
-    await appendEvent(tx, { action: 'filing.fixed-copy.prepared', details: { draftId, documentId: id, sha256: digest, paragraphs: paragraphs.length } });
+    await appendEvent(tx, { action: 'filing.fixed-copy.prepared', details: { draftId, documentId: id, sha256: digest, paragraphs: paragraphs.length }, legalBasis });
   });
 }
 
 // ---------------------------------------------------------------------------
 
 /** «وصل الأداء» of a successful payment, kept with the draft and joining the file on registration. */
-export async function issuePaymentReceipt(paymentId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
+export async function issuePaymentReceipt(paymentId: string, context: PrintContext = { lastAttempt: true }, legalBasis: LegalBasis | null = null): Promise<void> {
   const payment = await getDb().payment.findUnique({
     where: { id: paymentId },
     select: {
@@ -249,7 +251,7 @@ export async function issuePaymentReceipt(paymentId: string, context: PrintConte
       // The payment points at the receipt once, at the file's document (trigger money_record_guard).
       await tx.payment.update({ where: { id: paymentId }, data: { receiptDocumentId: documentId } });
     }
-    await appendEvent(tx, { action: 'payment.receipt.issued', details: { draftId, paymentId, documentId: id }, caseFileId: draft?.caseFileId ?? null });
+    await appendEvent(tx, { action: 'payment.receipt.issued', details: { draftId, paymentId, documentId: id }, caseFileId: draft?.caseFileId ?? null, legalBasis });
   });
 }
 
@@ -269,7 +271,7 @@ function natureText(d: { declaredNature: string | null; generated: boolean }, pa
 }
 
 /** «وصل الإيداع» (study, «المرحلة الأولى»; art. 77 and 628). */
-export async function issueFilingReceipt(caseFileId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
+export async function issueFilingReceipt(caseFileId: string, context: PrintContext = { lastAttempt: true }, legalBasis: LegalBasis | null = null): Promise<void> {
   const db = getDb();
   const file = await db.caseFile.findUnique({
     where: { id: caseFileId },
@@ -355,8 +357,8 @@ export async function issueFilingReceipt(caseFileId: string, context: PrintConte
         visibility: 'CASE',
       },
     });
-    await appendEvent(tx, { action: 'document.stored', details: { documentId: id, sha256: digest, byteSize: bytes.byteLength, generated: true, docType: 'FILING_RECEIPT' }, caseFileId });
-    await appendEvent(tx, { action: 'filing.receipt.issued', details: { caseFileId, documentId: id }, caseFileId });
+    await appendEvent(tx, { action: 'document.stored', details: { documentId: id, sha256: digest, byteSize: bytes.byteLength, generated: true, docType: 'FILING_RECEIPT' }, caseFileId, legalBasis });
+    await appendEvent(tx, { action: 'filing.receipt.issued', details: { caseFileId, documentId: id }, caseFileId, legalBasis });
   });
 }
 
@@ -370,7 +372,7 @@ export async function issueFilingReceipt(caseFileId: string, context: PrintConte
  * own, printed beside it. It joins the file linked to the document it attests, at that document's
  * visibility, once: a second run finds it and prints nothing.
  */
-export async function issueSignatureCertificate(documentId: string, context: PrintContext = { lastAttempt: true }): Promise<void> {
+export async function issueSignatureCertificate(documentId: string, context: PrintContext = { lastAttempt: true }, legalBasis: LegalBasis | null = null): Promise<void> {
   const db = getDb();
   const doc = await db.document.findUnique({
     where: { id: documentId },
@@ -460,7 +462,12 @@ export async function issueSignatureCertificate(documentId: string, context: Pri
         attestsDocumentId: doc.id,
       },
     });
-    await appendEvent(tx, { action: 'document.stored', details: { documentId: id, sha256: digest, byteSize: bytes.byteLength, generated: true, docType: 'SIGNATURE_CERTIFICATE' }, caseFileId: doc.caseFileId });
-    await appendEvent(tx, { action: 'signature.certificate.issued', details: { caseFileId: doc.caseFileId, documentId: id, attestsDocumentId: doc.id, circleId: circle.id }, caseFileId: doc.caseFileId });
+    await appendEvent(tx, { action: 'document.stored', details: { documentId: id, sha256: digest, byteSize: bytes.byteLength, generated: true, docType: 'SIGNATURE_CERTIFICATE' }, caseFileId: doc.caseFileId, legalBasis });
+    await appendEvent(tx, {
+      action: 'signature.certificate.issued',
+      details: { caseFileId: doc.caseFileId, documentId: id, attestsDocumentId: doc.id, circleId: circle.id },
+      caseFileId: doc.caseFileId,
+      legalBasis,
+    });
   });
 }

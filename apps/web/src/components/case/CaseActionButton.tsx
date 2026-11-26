@@ -1,6 +1,6 @@
 'use client';
 
-import { SECURITY_POLICY } from '@mahkama/core';
+import { NOTE_REASONS, SECURITY_POLICY, type NoteReason } from '@mahkama/core';
 import { useState } from 'react';
 import { apiPost, apiPostBytes, navigate } from '@/components/client/api';
 import { errorText, tr, type Dict } from '@/components/client/messages';
@@ -29,7 +29,6 @@ export interface ActButtonProps {
   readonly after?: string;
 }
 
-const NOTE_REASONS = ['FEE_SHORTFALL', 'CLASSIFICATION', 'PARTIES', 'OTHER'] as const;
 const CONTROL = 'block w-full min-h-11 rounded border border-line-strong bg-paper px-3 py-2 text-base';
 
 export function CaseActionButton({ caseFileId, code, kind, label, lines, dict, caseTypes = [], currentCaseType = null, after }: ActButtonProps) {
@@ -38,7 +37,7 @@ export function CaseActionButton({ caseFileId, code, kind, label, lines, dict, c
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [caseType, setCaseType] = useState('');
-  const [reason, setReason] = useState<(typeof NOTE_REASONS)[number]>('OTHER');
+  const [reason, setReason] = useState<NoteReason>('OTHER');
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const id = `${code}-${caseFileId}`.replace(/[^a-z0-9-]/gi, '-');
@@ -103,7 +102,7 @@ export function CaseActionButton({ caseFileId, code, kind, label, lines, dict, c
               <label htmlFor={`${id}-reason`} className="mb-1.5 block font-medium">
                 {t('registry.note.reason')}
               </label>
-              <select id={`${id}-reason`} className={CONTROL} value={reason} onChange={(e) => { setReason(e.target.value as (typeof NOTE_REASONS)[number]); }}>
+              <select id={`${id}-reason`} className={CONTROL} value={reason} onChange={(e) => { setReason(e.target.value as NoteReason); }}>
                 {NOTE_REASONS.map((r) => (
                   <option key={r} value={r}>
                     {t(`registry.note.reasons.${r}`)}

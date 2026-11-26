@@ -1,9 +1,10 @@
 // The declarative table of the procedure (prompt, «النواة: آلة الحالات ومحركات
 // الحساب»). One entry per button of the study, by station. Each entry states
 // the five elements of a transition: who holds it (role and relation with the
-// file), its conditions, its effects (next state, time limits opened), its level
-// and its legal basis; then whether it requires a signature before its effect,
-// and whether it awaits its holder («ينتظر إجراء مني»). The labels and the
+// file), its conditions, its effects (next state, facts set and ended, time
+// limits opened, met and closed), its level and its legal basis; then whether
+// it requires a signature before its effect, and whether it awaits its holder
+// («ينتظر إجراء مني»). The labels and the
 // three lines of each confirmation window are i18n keys actions.<code>.*.
 // docs/state-machine.md is generated from this file (npm run docs:state-machine)
 // and a test checks that the committed file matches.
@@ -47,7 +48,14 @@ export interface ProcedureAction {
   readonly opens: readonly DeadlineCode[];
   /** effects (review P1-A-05): the facts the act establishes */
   readonly sets: readonly CaseFact[];
-  /** the time limits the act closes */
+  /**
+   * the facts the act ends (review of the IR-10 fix, decision 73): a stored fact
+   * stops being true only so; a derived one by the data the act's executor changes
+   */
+  readonly clears: readonly CaseFact[];
+  /** the time limits the act meets: the act they awaited, done within them (MET) */
+  readonly meets: readonly DeadlineCode[];
+  /** the time limits the act ends without meeting them (CLOSED) */
   readonly closes: readonly DeadlineCode[];
   /** who is informed of it */
   readonly notifies: readonly NotifyTarget[];
@@ -89,8 +97,10 @@ at(2, 'case.registration.reclassify', {
   statuses: ['REGISTERED'], holders: [staff('CLERK_REGISTRATION')], when: [{ notFact: 'REGISTRATION_STAMPED' }], articles: [628],
   notifies: ['RAPPORTEUR', 'COUNSEL'],
 });
+// The note rests on the registry's control of the registered file, as the two other buttons
+// of the office; on art. 619 too when its reason is a fee shortfall (notes.ts; open question 43).
 at(2, 'case.registration.note-to-judge', {
-  statuses: between('REGISTERED', 'READY'), holders: [staff('CLERK_REGISTRATION')], articles: [619],
+  statuses: between('REGISTERED', 'READY'), holders: [staff('CLERK_REGISTRATION')], articles: [628],
   notifies: ['RAPPORTEUR_OR_PRESIDENT'],
 });
 at(2, 'case.prosecution.view', {
@@ -586,6 +596,8 @@ export const PROCEDURE_ACTIONS: readonly ProcedureAction[] = table.map(([code, s
   nextStatus: d.nextStatus ?? null,
   opens: d.opens ?? [],
   sets: d.sets ?? [],
+  clears: d.clears ?? [],
+  meets: d.meets ?? [],
   closes: d.closes ?? [],
   notifies: d.notifies ?? [],
   files: d.files ?? null,

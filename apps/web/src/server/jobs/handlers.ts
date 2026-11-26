@@ -14,8 +14,9 @@ export const JOB_HANDLERS: JobHandlers = {
   'security.throttle-summaries': async () => {
     await flushThrottleSummaries();
   },
-  'filing.fixed-copy': (payload, context) => prepareFixedCopy(payload.draftId, payload.textDigest, context),
-  'payment.receipt': (payload, context) => issuePaymentReceipt(payload.paymentId, context),
-  'filing.receipt': (payload, context) => issueFilingReceipt(payload.caseFileId, context),
-  'filing.signature-certificate': (payload, context) => issueSignatureCertificate(payload.documentId, context),
+  // What a job prints carries the basis of the act that queued it (review of the IR-12 fix).
+  'filing.fixed-copy': (payload, context) => prepareFixedCopy(payload.draftId, payload.textDigest, context, payload.legalBasis ?? null),
+  'payment.receipt': (payload, context) => issuePaymentReceipt(payload.paymentId, context, payload.legalBasis ?? null),
+  'filing.receipt': (payload, context) => issueFilingReceipt(payload.caseFileId, context, payload.legalBasis ?? null),
+  'filing.signature-certificate': (payload, context) => issueSignatureCertificate(payload.documentId, context, payload.legalBasis ?? null),
 };

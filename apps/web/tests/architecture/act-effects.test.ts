@@ -125,7 +125,7 @@ describe('the declarations of the procedure are applied in one place (independen
   });
 
   it('detects a write whose fields are built elsewhere (the detector itself)', () => {
-    const of = (bare: string) => opaqueCaseFileWrites({ path: 'x', rel: 'server/x.ts', text: bare, code: bare, bare } as SourceFile);
+    const of = (bare: string) => opaqueCaseFileWrites({ path: 'x', rel: 'server/x.ts', text: bare, code: bare, bare });
     expect(of('await tx.caseFile.update({ where: { id }, data });')).toEqual(['src/server/x.ts:1: data built elsewhere']);
     expect(of('await tx.caseFile.update({ where: { id }, data: next });')).toEqual(['src/server/x.ts:1: data built elsewhere']);
     expect(of('await tx.caseFile.update(args);')).toEqual(['src/server/x.ts:1: arguments built elsewhere']);

@@ -71,7 +71,7 @@ export interface CaseView {
     addresses: readonly { kind: string; value: string; source: string }[];
     eServiceAcceptedAt: Date | null;
   }[];
-  /** the notes of the registry office to the judge (art. 619): never shown to a party or its counsel */
+  /** the notes of the registry office to the judge (core procedure/notes.ts): never shown to a party or its counsel */
   readonly notes: readonly { id: string; reason: string; text: string; createdAt: Date; authorRole: string }[];
   readonly claims: readonly { id: string; category: string; nature: string; amountCents: bigint | null; party: string | null }[];
   readonly services: readonly {
@@ -329,9 +329,9 @@ function isLawBasis(value: unknown): value is { kind: 'LAW'; articles: number[] 
 
 /**
  * Kept in the event log, never shown on the file's timeline: the access records, and
- * the facts an act establishes, which the act's own line already shows (decision 73).
+ * the facts an act establishes or ends, which the act's own line already shows (decision 73).
  */
-const OFF_TIMELINE: ReadonlySet<string> = new Set(['document.downloaded', 'signature.verified', 'case.facts.set']);
+const OFF_TIMELINE: ReadonlySet<string> = new Set(['document.downloaded', 'signature.verified', 'case.facts.set', 'case.facts.cleared']);
 /** Acts of the deliberation, secret until pronouncement (art. 108): the panel's alone. */
 const DELIBERATION_ACTS: ReadonlySet<string> = new Set(['case.deliberation.open', 'case.judgment.draft', 'case.judgment.sign', 'case.judgment.sign-substitute']);
 

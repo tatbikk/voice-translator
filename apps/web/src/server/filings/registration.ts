@@ -341,7 +341,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         actor,
         legalBasis,
       });
-      await enqueue(tx, 'filing.signature-certificate', { documentId: applicationDocumentId });
+      await enqueue(tx, 'filing.signature-certificate', { documentId: applicationDocumentId, legalBasis });
     }
 
     // 9. The fee, its payment and the treasury entry are linked to the file.
@@ -386,7 +386,7 @@ export async function submitDraft(draftId: string, subject: UserSubject, secret:
         await createNotification(tx, { userId, kind: 'INFORMATION', templateKey: 'notifications.case.referred', params, targetPath: target, caseFileId });
       }
     }
-    await enqueue(tx, 'filing.receipt', { caseFileId });
+    await enqueue(tx, 'filing.receipt', { caseFileId, legalBasis });
     return { ok: true, caseFileId, number, code, year, nationalRef };
   });
   if (!result.ok) return refused(draftId, actor, result.status, result.code);

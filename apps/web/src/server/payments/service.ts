@@ -170,7 +170,7 @@ export async function settlePayment(intentId: string, subject: UserSubject, chos
         },
       });
       await appendEvent(tx, { action: 'payment.succeeded', details: { intentId, paymentId, amountCents: Number(intent.amountCents), operationRef: result.operationRef }, actor, legalBasis });
-      await enqueue(tx, 'payment.receipt', { paymentId });
+      await enqueue(tx, 'payment.receipt', { paymentId, legalBasis });
     } else {
       await appendEvent(tx, { action: result.status === 'FAILED' ? 'payment.failed' : 'payment.cancelled', details: { intentId, paymentId }, actor, legalBasis });
     }

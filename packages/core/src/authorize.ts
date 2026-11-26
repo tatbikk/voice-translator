@@ -84,8 +84,8 @@ export function seesPartyContacts(subject: UserSubject): boolean {
 const CONTACT_READERS: readonly RoleCode[] = ['LAWYER', 'LAWYER_ASSISTANT'];
 
 /**
- * Whether the subject reads the notes of the registry office to the judge (art.
- * 619): the registry office and the court president read them all; a judge
+ * Whether the subject reads the notes of the registry office to the judge
+ * (procedure/notes.ts): the registry office and the court president read them all; a judge
  * reads those addressed to him, and the rapporteur those of his file. A party
  * and its counsel never do, nor learn that one exists.
  */

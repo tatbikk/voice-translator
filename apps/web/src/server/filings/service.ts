@@ -332,7 +332,7 @@ export async function pasteApplication(draft: DraftWithParts, text: string, acto
       where: { id: draft.id },
       data: { applicationMode: 'PASTE', applicationText: text, applicationParagraphs: asJson(paragraphs), fixedCopyStatus: 'PENDING', updatedAt: now },
     });
-    await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest });
+    await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest, legalBasis: basisOf('filing.draft.edit', now) });
     await appendEvent(tx, {
       action: 'filing.application.pasted',
       details: { draftId: draft.id, paragraphs: paragraphs.length, characters: text.length },
@@ -441,7 +441,7 @@ export async function uploadDocument(
           updatedAt: now,
         },
       });
-      if (paragraphs) await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest: paragraphsDigest(paragraphs) });
+      if (paragraphs) await enqueue(tx, 'filing.fixed-copy', { draftId: draft.id, textDigest: paragraphsDigest(paragraphs), legalBasis: basisOf('filing.draft.edit', now) });
     } else {
       await tx.filingDraft.update({ where: { id: draft.id }, data: { updatedAt: now } });
     }

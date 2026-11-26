@@ -1,6 +1,7 @@
 // What an act declares in the table (transitions.ts: its next status, the facts
-// it sets, the time limits it opens and closes), checked against the snapshot of
-// the file rebuilt after it (independent review IR-10, decision 73). The server's
+// it sets and clears, the time limits it opens, meets and closes), checked
+// against the snapshot of the file rebuilt after it (independent review IR-10,
+// decision 73). The server's
 // applier carries the declaration out inside the act's transaction, then asks
 // this function; any violation fails the transaction. Pure: the snapshots, the
 // limits the act opened and the instant are given.
@@ -20,11 +21,13 @@ export type EffectViolation =
   | { readonly kind: 'STATUS'; readonly expected: CaseStatus; readonly actual: CaseStatus }
   /** a fact the act declares is not true after it */
   | { readonly kind: 'FACT'; readonly fact: CaseFact }
+  /** a fact the act declares it ends is still true after it */
+  | { readonly kind: 'NOT_CLEARED'; readonly fact: CaseFact }
   /** a limit the act declares was not opened (stated by nobody, or absent from the snapshot) */
   | { readonly kind: 'NOT_OPENED'; readonly code: DeadlineCode; readonly partyId: string | null }
   /** a limit was opened that the act does not declare */
   | { readonly kind: 'NOT_DECLARED'; readonly code: DeadlineCode; readonly partyId: string | null }
-  /** a limit the act closes is still open after it */
+  /** a limit the act meets or closes is still open after it */
   | { readonly kind: 'NOT_CLOSED'; readonly code: DeadlineCode; readonly partyId: string | null };
 
 export function effectViolations(
@@ -38,6 +41,7 @@ export function effectViolations(
   const expected = action.nextStatus ?? before.status;
   if (after.status !== expected) out.push({ kind: 'STATUS', expected, actual: after.status });
   for (const fact of action.sets) if (!after.facts.includes(fact)) out.push({ kind: 'FACT', fact });
+  for (const fact of action.clears) if (after.facts.includes(fact)) out.push({ kind: 'NOT_CLEARED', fact });
 
   for (const code of action.opens) {
     if (!opened.some((o) => o.code === code)) out.push({ kind: 'NOT_OPENED', code, partyId: null });
@@ -52,8 +56,8 @@ export function effectViolations(
     }
   }
 
-  // What the act closes is open no more, save what it opened itself.
-  for (const code of action.closes) {
+  // What the act meets or closes is open no more, save what it opened itself.
+  for (const code of [...action.meets, ...action.closes]) {
     const reopened = opened.filter((o) => o.code === code);
     const stillOpen = after.deadlines.filter((d) => d.code === code && deadlineState([d], code, d.partyId, now) === 'OPEN');
     for (const deadline of stillOpen.slice(reopened.length)) out.push({ kind: 'NOT_CLOSED', code, partyId: deadline.partyId });

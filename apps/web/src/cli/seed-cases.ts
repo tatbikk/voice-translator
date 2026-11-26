@@ -407,7 +407,9 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
   const facts: string[] = [];
   const history: [string, string, string][] = [];
   const hearingDay = row.nextHearing ? formatMoroccoDate(row.nextHearing.startsAt) : '';
-  if (stamped) history.push(['case.registration.stamp', 'REGISTERED', 'RAPPORTEUR_ASSIGNED'], ['case.rapporteur.confirm', 'RAPPORTEUR_ASSIGNED', 'RAPPORTEUR_ASSIGNED']);
+  // As the core's table declares each act (review of the IR-10 fix): «تأشير» moves no file, the
+  // confirmation of the rapporteur moves it (art. 628).
+  if (stamped) history.push(['case.registration.stamp', 'REGISTERED', 'REGISTERED'], ['case.rapporteur.confirm', 'REGISTERED', 'RAPPORTEUR_ASSIGNED']);
   if (stamped && row.nextHearing) history.push(['case.hearing.set', 'RAPPORTEUR_ASSIGNED', 'RAPPORTEUR_ASSIGNED']);
   if (stamped && status !== 'RAPPORTEUR_ASSIGNED') history.push([appeal ? 'case.appeal.order-service' : 'case.summons.order', 'RAPPORTEUR_ASSIGNED', 'IN_NOTIFICATION']);
 
@@ -433,10 +435,10 @@ async function fillCase(content: DemoCaseContent, ctx: SeedCaseContext): Promise
   const addPartyFact = (partyId: string, fact: string) => servedFacts.set(partyId, [...(servedFacts.get(partyId) ?? []), fact]);
 
   if (status === 'IN_NOTIFICATION') {
+    // «ENVELOPES_READY» is read from this envelope (decision 73), never stored.
     await db.envelope.create({
       data: { caseFileId: file.id, partyId: second.id, purpose: 'SUMMONS', channel: 'BAILIFF', agentUserId: bailiff, status: 'READY', createdAt: now },
     });
-    facts.push('ENVELOPES_READY');
   } else if (stamped && status !== 'RAPPORTEUR_ASSIGNED') {
     for (const p of parties.slice(1)) {
       const electronic = content.parties.find((c) => c.key === p.key)?.litigant === true;

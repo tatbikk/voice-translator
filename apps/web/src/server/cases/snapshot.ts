@@ -22,15 +22,25 @@ import { getDb } from '../db';
 /**
  * The facts of a file read from its data, never from a stored code (decision 73):
  * the moment of the stamp and of the referrals, an electronic document, the
- * hearing, the day of pronouncement, the judgment and its signature circle. A
- * code of one of them found in CaseFile.facts is ignored, so that a stored fact
- * never contradicts the data. Every other fact of the file is stored.
+ * envelopes ready to be sent, the latest investigation's columns, the hearing,
+ * the day of pronouncement, the judgment and its signature circle. A code of one
+ * of them found in CaseFile.facts is ignored, so that a stored fact never
+ * contradicts the data. Every other fact of the file is stored.
  */
 export const DERIVED_CASE_FACTS: ReadonlySet<CaseFact> = new Set<CaseFact>([
   'REGISTRATION_STAMPED',
   'REFERRED_TO_PROSECUTION',
   'REFERRED_TO_COMMISSIONER',
   'ELECTRONIC_DOCUMENT',
+  'ENVELOPES_READY',
+  'DEPOSIT_MADE',
+  'MISSION_ACCEPTED',
+  'MISSION_DECLINED',
+  'EXPERT_PARTIES_SUMMONED',
+  'REPORT_DEPOSITED',
+  'REPORT_RETURNED',
+  'FEES_ORDERED',
+  'FEES_PAID',
   'HEARING_SET',
   'HEARING_HELD',
   'HEARING_UPCOMING',
@@ -70,7 +80,23 @@ export async function caseSnapshot(
       },
       // Every limit with its stored status: one recorded ELAPSED must not read as absent (review P1-S-02).
       timeLimits: { select: { ruleCode: true, partyId: true, endsAt: true, status: true } },
-      investigations: { orderBy: { createdAt: 'desc' }, take: 1, select: { expertUserId: true } },
+      // The latest investigation: its expert, and the facts its columns record (review of the IR-10 fix).
+      investigations: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          expertUserId: true,
+          depositedAt: true,
+          acceptedAt: true,
+          declinedAt: true,
+          partiesSummonedAt: true,
+          reportDepositedAt: true,
+          returnedAt: true,
+          feesOrderedCents: true,
+          feesPaidAt: true,
+        },
+      },
+      envelopes: { where: { status: 'READY' }, take: 1, select: { id: true } },
       decisions: { select: { kind: true, pronouncedAt: true, final: true, provisionalEnforcement: true, signatureCircleId: true } },
       documents: { where: { generated: false, channel: 'ELECTRONIC' }, take: 1, select: { id: true } },
       enforcement: { where: { kind: 'GARNISHMENT' }, select: { organizationId: true } },
@@ -83,6 +109,18 @@ export async function caseSnapshot(
   if (file.referredToProsecutionAt) facts.add('REFERRED_TO_PROSECUTION');
   if (file.referredToCommissionerAt) facts.add('REFERRED_TO_COMMISSIONER');
   if (file.documents.length > 0) facts.add('ELECTRONIC_DOCUMENT');
+  if (file.envelopes.length > 0) facts.add('ENVELOPES_READY');
+  const investigation = file.investigations[0];
+  if (investigation) {
+    if (investigation.depositedAt) facts.add('DEPOSIT_MADE');
+    if (investigation.acceptedAt) facts.add('MISSION_ACCEPTED');
+    if (investigation.declinedAt) facts.add('MISSION_DECLINED');
+    if (investigation.partiesSummonedAt) facts.add('EXPERT_PARTIES_SUMMONED');
+    if (investigation.reportDepositedAt) facts.add('REPORT_DEPOSITED');
+    if (investigation.returnedAt) facts.add('REPORT_RETURNED');
+    if (investigation.feesOrderedCents !== null) facts.add('FEES_ORDERED');
+    if (investigation.feesPaidAt) facts.add('FEES_PAID');
+  }
   const hearing = file.nextHearing;
   if (hearing) {
     facts.add('HEARING_SET');
@@ -129,7 +167,7 @@ export async function caseSnapshot(
     // From the court's specialty (review P1-A-04, in part).
     administrativeCourt: file.court.specialty === 'ADMINISTRATIVE',
     rapporteurUserId: file.rapporteurUserId,
-    expertUserId: file.investigations[0]?.expertUserId ?? null,
+    expertUserId: investigation?.expertUserId ?? null,
     facts: [...facts],
     parties: file.parties.map((p) => {
       const partyFacts = new Set<PartyFact>(asFacts(p.facts, PARTY_FACT_SET));

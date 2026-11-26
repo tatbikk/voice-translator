@@ -1,7 +1,25 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { ACTIONS, authorize, CAPACITY_STATUSES, PUBLIC_ENTITY_KINDS, referralsFor, SECURITY_POLICY, sortReferrals, stripInvisible, type CaseSnapshot, type CaseTypeRule, type NotifyTarget, type Referral, type ReferralRuleSet, type UserSubject } from '@mahkama/core';
+import {
+  ACTIONS,
+  authorize,
+  CAPACITY_STATUSES,
+  moroccoDay,
+  NOTE_REASONS,
+  noteToJudgeBasis,
+  PUBLIC_ENTITY_KINDS,
+  referralsFor,
+  SECURITY_POLICY,
+  sortReferrals,
+  stripInvisible,
+  type CaseSnapshot,
+  type CaseTypeRule,
+  type NotifyTarget,
+  type Referral,
+  type ReferralRuleSet,
+  type UserSubject,
+} from '@mahkama/core';
 import type { Prisma } from '@/generated/prisma/client';
 import { clock } from '../clock';
 import { getEnv } from '../config/env';
@@ -204,7 +222,6 @@ const reclassify: ActExecutor<{ caseType: string; rule: CaseTypeRule; rules: Ref
   },
 };
 
-export const NOTE_REASONS = ['FEE_SHORTFALL', 'CLASSIFICATION', 'PARTIES', 'OTHER'] as const;
 const NoteBody = z.strictObject({ reason: z.enum(NOTE_REASONS), text: z.string().trim().min(1).max(2000) });
 
 const noteToJudge: ActExecutor<z.infer<typeof NoteBody>> = {
@@ -215,19 +232,20 @@ const noteToJudge: ActExecutor<z.infer<typeof NoteBody>> = {
   },
   async run(context) {
     const { tx, caseFileId, subject, actor, now, value, snapshot } = context;
-    // The rapporteur once assigned; the court president before (art. 619).
+    // The rapporteur once assigned; the court president, who assigns him, before (art. 628).
     const addressee = snapshot.rapporteurUserId ?? (await courtPresidentOf(tx, snapshot.courtId));
     const noteId = randomUUID();
     await tx.caseNote.create({
       data: { id: noteId, caseFileId, authorUserId: subject.userId, authorRole: subject.role, reason: value.reason, text: value.text, addressedToUserId: addressee, createdAt: now },
     });
-    // The event records that a note exists and why, never its text (memo row 25).
+    // The event records that a note exists and why, never its text (memo row 25); its basis is
+    // the reason's: art. 619 for a fee shortfall only (review of the IR-12 fix, decision 74).
     await appendEvent(tx, {
       action: 'case.note.added',
       details: { caseFileId, noteId, reason: value.reason },
       caseFileId,
       actor,
-      legalBasis: basisOfAct('case.registration.note-to-judge', context),
+      legalBasis: noteToJudgeBasis(value.reason, moroccoDay(now)),
     });
     await inform(tx, context, 'case.registration.note-to-judge', 'notifications.case.note-to-judge');
     return { data: { noteId } };
