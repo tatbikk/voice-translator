@@ -2,12 +2,18 @@
 // and the rule table in force (rules/time-limits.json).
 import { describe, expect, it } from 'vitest';
 import {
+  addDays,
   appearanceDelayRespected,
   computeTimeLimit,
+  deadlineState,
   deemedServiceDate,
+  moroccoDay,
   moroccoInstant,
   ruleInForce,
+  type DeadlineCode,
   type HolidayCalendar,
+  type TimeLimitResult,
+  type TimeLimitRule,
   type TimeLimitRuleSet,
   type TimeLimitUncertainty,
 } from '../../src/index';
@@ -30,12 +36,46 @@ function ruleAt(code: string, date: string) {
   return { set, rule };
 }
 
+/** The articles of a «السند» cell: «م 204 و602 و603» is [204, 602, 603]. */
+function articlesOf(cell: string): number[] {
+  if (!/^م \d+( و\d+)*$/.test(cell)) throw new Error(`«السند» not read: «${cell}»`);
+  return [...cell.matchAll(/\d+/g)].map((m) => Number(m[0]));
+}
+
+/**
+ * The «السند» of a case against the table (independent review IR-19): every
+ * article of the rules applied is cited, and nothing but those articles and
+ * the articles of the table's counting settings (602, 603, 639).
+ */
+function expectBasis(cell: string | undefined, set: TimeLimitRuleSet, applied: readonly TimeLimitRule[]): void {
+  const cited = articlesOf(cell ?? '');
+  for (const rule of applied) {
+    for (const article of rule.articles) expect(cited, `«${cell ?? ''}» cites art. ${String(article)} of ${rule.code}`).toContain(article);
+  }
+  const allowed = new Set([...applied.flatMap((r) => r.articles), ...set.settings.electronicCounting.articles, ...set.settings.weekendIsHoliday.articles]);
+  expect(cited.filter((a) => !allowed.has(a)), `«${cell ?? ''}» cites only articles of ${applied.map((r) => r.code).join(', ')} or of the counting`).toEqual([]);
+}
+
+/**
+ * A limit counted in days, months or years ends at 00:00 in Morocco of the day
+ * after its last day: open an instant before, elapsed at it (review IR-19).
+ */
+function expectEndOfLastDay(result: TimeLimitResult, code: string): void {
+  const end = moroccoInstant(`${addDays(result.lastDay, 1)} 00:00`);
+  expect(result.endsAt.toISOString(), `${code} ends at midnight at the end of ${result.lastDay}`).toBe(end.toISOString());
+  const deadlines = [{ code: code as DeadlineCode, partyId: null, endsAt: result.endsAt }];
+  expect(deadlineState(deadlines, code as DeadlineCode, null, new Date(end.getTime() - 1)), 'open a millisecond before its end').toBe('OPEN');
+  expect(deadlineState(deadlines, code as DeadlineCode, null, end), 'elapsed at its end').toBe('ELAPSED');
+}
+
 describe('time limits in plain language', () => {
-  for (const [caseText, code = '', date = '', electronic, expected] of rows(FILE, 'الآجال بالأيام والأشهر والسنوات')) {
+  for (const [caseText, code = '', date = '', electronic, expected, basis] of rows(FILE, 'الآجال بالأيام والأشهر والسنوات')) {
     it(caseText ?? '', () => {
       const found = ruleAt(code, date);
       if (expected === 'لا قاعدة سارية') {
         expect(found).toBeNull();
+        // The entry into force of the law (art. 643), before which no table is in force.
+        expect(articlesOf(basis ?? '')).toEqual([643]);
         return;
       }
       if (!found) throw new Error('no rule in force');
@@ -47,10 +87,28 @@ describe('time limits in plain language', () => {
         calendar,
       });
       expect(result.lastDay).toBe(expected);
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [found.rule]);
     });
   }
 
-  for (const [caseText, code = '', date = '', expected] of rows(FILE, 'الآجال التي يحددها القاضي')) {
+  for (const [caseText, code = '', at = '', electronic, expected, endsAt = '', basis] of rows(FILE, 'حدود الأجل')) {
+    it(caseText ?? '', () => {
+      const trigger = moroccoInstant(at);
+      // A case a few minutes after midnight in Morocco is still the day before in UTC: the case tests that.
+      if (at.endsWith(' 00:10')) expect(trigger.toISOString().slice(0, 10), 'the UTC day is the day before').toBe(addDays(at.slice(0, 10), -1));
+      expect(moroccoDay(trigger)).toBe(at.slice(0, 10));
+      const found = ruleAt(code, at.slice(0, 10));
+      if (!found) throw new Error('no rule in force');
+      const result = computeTimeLimit({ rule: found.rule, settings: found.set.settings, trigger, electronic: yes(electronic), calendar });
+      expect(result.lastDay).toBe(expected);
+      expect(result.endsAt.toISOString()).toBe(moroccoInstant(endsAt).toISOString());
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [found.rule]);
+    });
+  }
+
+  for (const [caseText, code = '', date = '', expected, basis] of rows(FILE, 'الآجال التي يحددها القاضي')) {
     it(caseText ?? '', () => {
       const found = ruleAt(code, '2027-03-15');
       if (!found) throw new Error('no rule in force');
@@ -64,10 +122,12 @@ describe('time limits in plain language', () => {
         calendar,
       });
       expect(result.lastDay).toBe(expected);
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [found.rule]);
     });
   }
 
-  for (const [caseText, code = '', at = '', expected] of rows(FILE, 'الآجال بالساعات')) {
+  for (const [caseText, code = '', at = '', expected, basis] of rows(FILE, 'الآجال بالساعات')) {
     it(caseText ?? '', () => {
       const found = ruleAt(code, at.slice(0, 10));
       if (!found) throw new Error('no rule in force');
@@ -79,15 +139,18 @@ describe('time limits in plain language', () => {
         calendar,
       });
       expect(result.endsAt.getTime()).toBe(moroccoInstant(expected ?? '').getTime());
+      expectBasis(basis, found.set, [found.rule]);
     });
   }
 
-  for (const [caseText, refusal = '', deemed, code = '', expected] of rows(FILE, 'رفض التسلم')) {
+  for (const [caseText, refusal = '', deemed = '', code = '', expected, basis] of rows(FILE, 'رفض التسلم')) {
     it(caseText ?? '', () => {
       const deemedRule = ruleAt('DEEMED_SERVICE_AFTER_REFUSAL', refusal);
       if (!deemedRule) throw new Error('no rule in force');
       const servedAt = deemedServiceDate(moroccoInstant(`${refusal} 10:00`), deemedRule.rule);
       expect(servedAt.day).toBe(deemed);
+      // Served from the first instant of the tenth day, in Morocco.
+      expect(servedAt.at.toISOString()).toBe(moroccoInstant(`${deemed} 00:00`).toISOString());
       const found = ruleAt(code, servedAt.day);
       if (!found) throw new Error('no rule in force');
       const result = computeTimeLimit({
@@ -98,10 +161,12 @@ describe('time limits in plain language', () => {
         calendar,
       });
       expect(result.lastDay).toBe(expected);
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [deemedRule.rule, found.rule]);
     });
   }
 
-  for (const [caseText, code = '', date = '', from = '', to = '', expected] of rows(FILE, 'تعذر الولوج إلى المنصة')) {
+  for (const [caseText, code = '', date = '', from = '', to = '', expected, basis] of rows(FILE, 'تعذر الولوج إلى المنصة')) {
     it(caseText ?? '', () => {
       const found = ruleAt(code, date);
       if (!found) throw new Error('no rule in force');
@@ -114,15 +179,18 @@ describe('time limits in plain language', () => {
         outages: [{ from: moroccoInstant(from), to: moroccoInstant(to) }],
       });
       expect(result.lastDay).toBe(expected);
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [found.rule]);
     });
   }
 
-  for (const [caseText, served = '', hearing = '', place, respected] of rows(FILE, 'أجل الحضور')) {
+  for (const [caseText, served = '', hearing = '', place, respected, basis] of rows(FILE, 'أجل الحضور')) {
     it(caseText ?? '', () => {
       const code = place === 'داخل الدائرة' ? 'APPEARANCE_IN_DISTRICT' : place === 'خارج المملكة' ? 'APPEARANCE_ABROAD' : 'APPEARANCE_IN_KINGDOM';
       const found = ruleAt(code, served);
       if (!found) throw new Error('no rule in force');
       expect(appearanceDelayRespected(served, hearing, found.rule)).toBe(yes(respected));
+      expectBasis(basis, found.set, [found.rule]);
     });
   }
 
@@ -143,7 +211,7 @@ describe('time limits in plain language', () => {
     weekendDays: [6, 0],
     coversUntil: rows(FILE, 'أفق قائمة العطل في هذه الحالات')[0]?.[0] ?? null,
   };
-  for (const [caseText, code = '', date = '', electronic, expected, flagged, reasons = ''] of rows(FILE, 'حالات القيم المؤقتة')) {
+  for (const [caseText, code = '', date = '', electronic, expected, flagged, reasons = '', basis] of rows(FILE, 'حالات القيم المؤقتة')) {
     it(caseText ?? '', () => {
       const found = ruleAt(code, date);
       if (!found) throw new Error('no rule in force');
@@ -155,6 +223,8 @@ describe('time limits in plain language', () => {
         calendar: uncertainCalendar,
       });
       expect(result.lastDay).toBe(expected);
+      expectEndOfLastDay(result, code);
+      expectBasis(basis, found.set, [found.rule]);
       expect(result.uncertainties.length > 0).toBe(yes(flagged));
       const kinds = reasons.split('، ').map((r) => {
         if (!(r in REASONS)) throw new Error(`unknown reason «${r}»`);
